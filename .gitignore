@@ -1,0 +1,77 @@
+# =====================
+# Go backend
+# =====================
+
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Coverage
+*.out
+coverage.*
+*.coverprofile
+
+# Go workspace
+go.work
+go.work.sum
+
+# vendor (uncomment if not vendoring)
+# vendor/
+
+# =====================
+# Node / Vue frontend
+# =====================
+frontend/node_modules/
+frontend/dist/
+frontend/.cache/
+frontend/.parcel-cache/
+
+# =====================
+# env file
+# =====================
+.env.*
+!.env
+!.env.*.example
+
+# =====================
+# Editor/IDE
+# =====================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# =====================
+# OS
+# =====================
+.DS_Store
+Thumbs.db
+
+# =====================
+# Claude Code
+# =====================
+.claude/settings.json
+
+# =====================
+# Build output
+# =====================
+bin/
+dist/
+
+# =====================
+# Log files
+# =====================
+*.log
+logs/
+
+# =====================
+# Docker / local data
+# =====================
+data/
