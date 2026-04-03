@@ -38,7 +38,7 @@ T18 后端集成测试
 - nil slice/map 初始化辅助函数（`EnsureItems`）可用
 - `go build ./...` 通过
 
-[ ] 未完成
+[x] 已完成
 
 ---
 

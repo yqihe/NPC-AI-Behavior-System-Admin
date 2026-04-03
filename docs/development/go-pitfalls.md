@@ -10,6 +10,7 @@
 - **struct tag 拼写**：`json:"name"` 和 `bson:"name"` 标签必须同时写。漏写 bson tag 会导致 MongoDB 字段名变成大写开头（Go 默认导出名）
 - **omitempty 陷阱**：`omitempty` 会吞掉零值（`0`、`""`、`false`）。事件的 `default_severity: 0` 是合法值，带 omitempty 会丢失。只在确实需要省略空值时使用
 - **config 字段是 `bson.Raw` / `json.RawMessage`**：`{name, config}` 中 config 字段不应反序列化为具体 Go struct（各 collection 的 config 结构不同）。用 Raw 类型透传，校验时按需解析
+- **bson.MarshalExtJSON canonical 模式**：`bson.MarshalExtJSON(raw, true, false)` 的 `canonical=true` 会把数字输出为 `{"$numberInt":"80"}`，前端无法解析。从 MongoDB 读取后转 JSON 给前端时必须用 `canonical=false`（relaxed 模式）。同理，`bson.UnmarshalExtJSON` 接收普通 JSON 时必须用 `canonical=false`
 
 ## HTTP Handler
 
