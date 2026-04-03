@@ -38,15 +38,26 @@
 - 不准读其他 Agent worktree 的中间文件，等返回结果
 - 不准给 Agent 设不同模型
 
-## 写代码时必须检查
+## 写 Go 代码时必须检查
 
 参考 `docs/development/go-pitfalls.md`，重点关注：
 
-- **并发安全**：是否有共享状态？多 goroutine 读写同一个 map/slice/struct？加锁了吗？
-- **资源泄漏**：goroutine 有退出路径吗？打开的连接/文件有 defer Close 吗？
+- **序列化安全**：nil slice/map 初始化了吗？bson tag 写了吗？omitempty 会吞零值吗？
+- **HTTP Handler**：写错误响应后 return 了吗？WriteHeader 只调一次了吗？
+- **MongoDB 操作**：context 带超时了吗？ErrNoDocuments 单独判断了吗？MatchedCount==0 返回 404 了吗？
+- **Redis 操作**：redis.Nil 判断了吗？缓存 key 有统一前缀吗？写操作后清缓存了吗？
+- **错误处理**：error 没忽略吧？errors.Is/As 而非 ==？错误信息没暴露给前端吧？
 - **nil 安全**：map 初始化了吗？指针解引用前检查 nil 了吗？
-- **接口契约**：类型断言用两值形式了吗？error 有处理吗？
-- **边界条件**：空 slice、零值 struct、空字符串 key 会怎样？
+
+## 写前端代码时必须检查
+
+参考 `docs/development/frontend-pitfalls.md`，重点关注：
+
+- **响应式**：解构 reactive 用 toRefs 了吗？ref 用了 .value 吗？reactive 没整体替换吧？
+- **Element Plus 表单**：el-form-item 的 prop 和 model 字段名一致吗？dialog 关闭时重置表单了吗？
+- **请求处理**：按钮提交时有 loading 防重复吗？错误提示取的是 response.data.error 吗？
+- **空值防御**：后端返回 null 时前端不会 crash 吧？v-for 有稳定的 :key 吗？
+- **环境差异**：API baseURL 用环境变量了吗？没有硬编码地址吧？
 
 ## DEBUG 日志
 
@@ -58,11 +69,11 @@ log.Debug("组件.动作", "key1", val1, "key2", val2)
 **判断标准**：这行代码出 bug 时，有这条日志能帮助排查吗？能就加。
 
 重点加日志的位置：
-- FSM 状态转换
-- BT 节点执行结果
-- 事件发布和分发
-- Blackboard 写入
-- 配置加载
+- API 请求入口（method、path、关键参数）
+- MongoDB 操作（collection、操作类型、name）
+- Redis 缓存命中/未命中/失效
+- 配置校验失败（哪个字段、什么原因）
+- 错误处理分支（原始 error 写 slog，不暴露给前端）
 
 ## 完成摘要模板
 
@@ -75,10 +86,15 @@ log.Debug("组件.动作", "key1", val1, "key2", val2)
 **新增测试**：[有/无，覆盖什么]
 **文档同步**：[更新了哪些文档 / 无需更新]
 **Go 陷阱检查**：[检查了哪些项，有无发现]
+**前端陷阱检查**：[检查了哪些项，有无发现]（仅涉及前端时）
 
 → 建议跑 `/verify <feature-name>` 验证
 ```
 
 ## 经验沉淀
 
-执行过程中踩到的 Go 坑追加到 `docs/development/go-pitfalls.md`。发现的新禁令追加到 `docs/architecture/red-lines.md`。
+执行过程中踩到的坑，按类型追加到对应文档：
+- Go 相关 → `docs/development/go-pitfalls.md`
+- 前端相关 → `docs/development/frontend-pitfalls.md`
+- 新禁令 → `docs/architecture/red-lines.md`
+- 新规则 → `docs/development/dev-rules.md`

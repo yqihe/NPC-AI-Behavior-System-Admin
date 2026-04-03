@@ -28,12 +28,14 @@
 
 | 域 | 典型症状 |
 |----|----------|
-| 编译/启动 | go build 失败、panic at startup、import cycle |
-| 配置加载 | Key 不存在 panic、JSON 解析失败、配置缺字段 |
-| NPC 行为 | 状态不变、BT 不触发、Tick 停止、FSM 卡死 |
-| 事件/决策 | 事件丢失、NPC 没收到事件、威胁等级没更新 |
-| 网络/WS | 连接断开、消息无响应、广播延迟 |
-| 并发 | race detector 报告、死锁、数据不一致 |
+| 后端编译/启动 | go build 失败、panic at startup、import cycle |
+| MongoDB/Redis | 连接失败、超时、查询无结果、缓存脏数据 |
+| API 行为 | 状态码错误、响应格式异常、数据没写入、缓存没失效 |
+| 数据校验 | 校验该拦没拦、引用检查遗漏、合法输入被拒 |
+| 前端构建 | npm run build 失败、TypeScript 类型错误、依赖缺失 |
+| 前端运行时 | 页面白屏、控制台报错、Vue warning、响应式不更新 |
+| 前端交互 | 表单校验不触发、弹窗数据残留、请求竞态 |
+| Docker | 容器启动失败、端口冲突、服务间网络不通 |
 
 ### Step 2：假设 → 验证
 
@@ -46,7 +48,7 @@
 ### Step 3：修复
 
 - **一次只改一个点**——不准同时改多个可疑位置
-- 改完后检查 `docs/development/go-pitfalls.md`，确认修复没有引入新问题
+- 改完后检查 `docs/development/go-pitfalls.md` 和 `docs/development/frontend-pitfalls.md`，确认修复没有引入新问题
 
 ### Step 4：验证修复
 
@@ -89,4 +91,8 @@
 
 ## 经验沉淀
 
-排查过程中发现的新坑追加到 `docs/development/go-pitfalls.md`。发现的架构缺陷追加到 `docs/architecture/red-lines.md`。
+排查过程中发现的新坑，按类型追加到对应文档：
+- Go 相关 → `docs/development/go-pitfalls.md`
+- 前端相关 → `docs/development/frontend-pitfalls.md`
+- 新禁令 → `docs/architecture/red-lines.md`
+- 新规则 → `docs/development/dev-rules.md`
