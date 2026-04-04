@@ -199,7 +199,7 @@ T18 后端集成测试
 - 本地 `go run ./cmd/admin/` 配合 docker 中的 mongo + redis 可正常启动，curl 测试 20 个端点均可达
 - `go test ./...` 通过
 
-[ ] 未完成
+[x] 已完成
 
 ---
 
