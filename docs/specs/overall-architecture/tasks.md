@@ -331,7 +331,7 @@ T18 后端集成测试
 - `docker-compose.yml`：4 个服务（admin-backend、admin-frontend、mongo、redis）+ volumes
 - `docker compose up --build` 一键启动，无报错，浏览器访问 `localhost:3000` 可正常使用
 
-[ ] 未完成
+[x] 已完成
 
 ---
 

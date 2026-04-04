@@ -1,0 +1,39 @@
+services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  admin-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "9821:9821"
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DATABASE: npc_ai
+      REDIS_ADDR: redis:6379
+      LISTEN_ADDR: ":9821"
+    depends_on:
+      - mongo
+      - redis
+
+  admin-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - admin-backend
+
+volumes:
+  mongo_data:
