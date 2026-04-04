@@ -47,7 +47,7 @@
 
 **做完是什么样**：`.env` 被 gitignore，模板文件存在，docker-compose 默认值不变但支持环境变量覆盖。
 
-## T5: dev-rules.md Git 规则更新 (R11)
+## [x] T5: dev-rules.md Git 规则更新 (R11)
 
 **文件**：`docs/development/dev-rules.md`
 
