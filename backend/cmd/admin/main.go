@@ -55,8 +55,11 @@ func main() {
 	fsmConfigH := handler.NewFsmConfigHandler(fsmConfigSvc)
 	btTreeH := handler.NewBtTreeHandler(btTreeSvc)
 
+	// 创建配置导出 handler（供游戏服务端拉取全量配置）
+	configExportH := handler.NewConfigExportHandler(mongoStore)
+
 	// 注册路由
-	router := handler.NewRouter(eventTypeH, npcTypeH, fsmConfigH, btTreeH)
+	router := handler.NewRouter(eventTypeH, npcTypeH, fsmConfigH, btTreeH, configExportH)
 
 	// 启动 HTTP server
 	server := &http.Server{

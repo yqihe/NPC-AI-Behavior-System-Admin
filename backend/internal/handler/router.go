@@ -12,9 +12,11 @@ func NewRouter(
 	npcType *NpcTypeHandler,
 	fsmConfig *FsmConfigHandler,
 	btTree *BtTreeHandler,
+	configExport *ConfigExportHandler,
 ) http.Handler {
 	mux := http.NewServeMux()
 
+	// 管理接口（前端 CRUD）
 	mux.HandleFunc("/api/v1/event-types", corsMiddleware(resourceHandler(eventType.List, eventType.Create)))
 	mux.HandleFunc("/api/v1/event-types/", corsMiddleware(resourceItemHandler(eventType.Get, eventType.Update, eventType.Delete)))
 
@@ -26,6 +28,12 @@ func NewRouter(
 
 	mux.HandleFunc("/api/v1/bt-trees", corsMiddleware(resourceHandler(btTree.List, btTree.Create)))
 	mux.HandleFunc("/api/v1/bt-trees/", corsMiddleware(resourceItemHandler(btTree.Get, btTree.Update, btTree.Delete)))
+
+	// 配置导出接口（供游戏服务端拉取全量配置）
+	mux.HandleFunc("/api/configs/event_types", corsMiddleware(configExport.ExportCollection("event_types")))
+	mux.HandleFunc("/api/configs/npc_types", corsMiddleware(configExport.ExportCollection("npc_types")))
+	mux.HandleFunc("/api/configs/fsm_configs", corsMiddleware(configExport.ExportCollection("fsm_configs")))
+	mux.HandleFunc("/api/configs/bt_trees", corsMiddleware(configExport.ExportCollection("bt_trees")))
 
 	return mux
 }

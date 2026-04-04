@@ -14,7 +14,7 @@
 
 ---
 
-## T2: 注册路由 + 注入依赖 (R7, R8)
+## [x] T2: 注册路由 + 注入依赖 (R7, R8)
 
 **涉及文件**：
 - `backend/internal/handler/router.go`（修改）
