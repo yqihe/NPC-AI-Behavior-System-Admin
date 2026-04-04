@@ -11,7 +11,7 @@
 
 **做完是什么样**：`#app` 不再限制最大宽度，AppLayout 的 `el-container` 可以全屏展开。
 
-## T2: EventTypeList + FsmConfigList 表格列自适应 (R1, R2)
+## [x] T2: EventTypeList + FsmConfigList 表格列自适应 (R1, R2)
 
 **文件**：
 - `frontend/src/views/EventTypeList.vue`
