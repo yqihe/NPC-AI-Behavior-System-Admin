@@ -33,18 +33,18 @@ var leafNodeTypes = map[string]bool{
 // 运营平台产出的 set_bb_value / check_bb_float / check_bb_string 节点的 key 必须在此列表内，
 // 否则游戏服务端加载时会 panic。
 var validBBKeys = map[string]bool{
-	"threat_level":       true,
-	"threat_source":      true,
-	"threat_expire_at":   true,
-	"last_event_type":    true,
-	"current_time":       true,
-	"fsm_state":          true,
-	"npc_type":           true,
-	"npc_pos_x":          true,
-	"npc_pos_z":          true,
-	"current_action":     true,
-	"alert_start_tick":   true,
-	"exit_cleanup_done":  true,
+	"threat_level":      true,
+	"threat_source":     true,
+	"threat_expire_at":  true,
+	"last_event_type":   true,
+	"current_time":      true,
+	"fsm_state":         true,
+	"npc_type":          true,
+	"npc_pos_x":         true,
+	"npc_pos_z":         true,
+	"current_action":    true,
+	"alert_start_tick":  true,
+	"exit_cleanup_done": true,
 }
 
 // validStubResults 是 stub_action 节点合法的 result 值。
