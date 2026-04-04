@@ -271,7 +271,7 @@ T18 后端集成测试
 - **表单页**：type_name（el-input）、fsm_ref（el-select 下拉已有 FSM 列表）、bt_refs（动态表单：状态名→BT 名，状态名从 FSM 配置的 states 自动获取，BT 名用 el-select 下拉已有 BT 列表）、visual_range/auditory_range（el-slider）
 - fsm_ref 选择后自动拉取 states 刷新 bt_refs 映射
 
-[ ] 未完成
+[x] 已完成
 
 ---
 
@@ -292,7 +292,7 @@ T18 后端集成测试
   - 叶子条件：key（el-select，中文标签）+ op（el-select）+ value/ref_key（el-input 或 el-select）
   - 组合条件：and/or 切换 + 子条件列表（动态增删，递归嵌套 ConditionEditor）
 
-[ ] 未完成
+[x] 已完成
 
 ---
 
@@ -312,7 +312,7 @@ T18 后端集成测试
   - 叶子节点：params 表单（根据 type 动态渲染不同字段）
   - 树形缩进展示父子关系
 
-[ ] 未完成
+[x] 已完成
 
 ---
 
