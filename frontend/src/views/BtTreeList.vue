@@ -13,16 +13,16 @@
             <el-tag size="small" style="margin-left: 8px">{{ group.items.length }} 棵</el-tag>
           </h3>
           <el-table :data="group.items" stripe size="small">
-            <el-table-column label="名称" width="200">
+            <el-table-column label="名称" min-width="200">
               <template #default="{ row }">{{ row.shortName }}</template>
             </el-table-column>
-            <el-table-column label="完整路径" width="200">
+            <el-table-column label="完整路径" min-width="200">
               <template #default="{ row }">{{ row.name }}</template>
             </el-table-column>
-            <el-table-column label="根节点类型" width="150">
+            <el-table-column label="根节点类型" min-width="150">
               <template #default="{ row }">{{ nodeTypeLabel(row.config?.type) }}</template>
             </el-table-column>
-            <el-table-column label="子节点数" width="100">
+            <el-table-column label="子节点数" min-width="100">
               <template #default="{ row }">{{ (row.config?.children || []).length }}</template>
             </el-table-column>
             <el-table-column label="操作" width="180" fixed="right">

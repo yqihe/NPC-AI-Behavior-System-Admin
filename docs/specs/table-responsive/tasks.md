@@ -21,7 +21,7 @@
 
 **做完是什么样**：两个列表页表格铺满内容区，宽屏无右侧留白。
 
-## T3: NpcTypeList + BtTreeList 表格列自适应 (R1, R2)
+## [x] T3: NpcTypeList + BtTreeList 表格列自适应 (R1, R2)
 
 **文件**：
 - `frontend/src/views/NpcTypeList.vue`
