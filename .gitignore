@@ -35,8 +35,9 @@ frontend/.parcel-cache/
 # =====================
 # env file
 # =====================
+.env
 .env.*
-!.env
+!.env.example
 !.env.*.example
 
 # =====================

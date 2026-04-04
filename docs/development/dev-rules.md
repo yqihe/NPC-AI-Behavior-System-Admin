@@ -40,6 +40,20 @@ slog.Warn("validator.error", "collection", "fsm_configs", "name", name, "err", e
 
 ## Git 规则
 
+### main 分支保护
+
+- main 分支**禁止直接 push**，只能通过 PR 合并
+- main 分支**禁止 force push**
+- 所有代码变更必须走 feature 分支 → PR → Squash Merge 流程
+
+### 合并策略
+
+- **仅允许 Squash Merge**（merge commit 和 rebase 已禁用）
+- 每个 PR 合并后在 main 上产生一条干净的 commit
+- PR 合并后远端分支**自动删除**
+
+### 分支与提交
+
 - 每个需求创建 feature 分支：`feature/<spec-name>`
 - commit message 格式：`类型(范围): 描述`
   - 类型：`feat` / `fix` / `test` / `refactor` / `docs` / `chore`
@@ -51,7 +65,7 @@ slog.Warn("validator.error", "collection", "fsm_configs", "name", name, "err", e
 - 在 feature 分支上且尚未准备好 review → 可以暂缓
 - 明确有后续 commit 要一起推 → 可以攒几个一起推
 
-在 main 分支上直接工作时，commit 后必须立即推送，不允许积压本地 commit。
+在 feature 分支上完成所有任务后，必须 push 并创建 PR。
 
 ## CRUD 通用规则
 
