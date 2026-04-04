@@ -27,10 +27,10 @@ services:
     ports:
       - "9821:9821"
     environment:
-      MONGO_URI: mongodb://mongo:27017
-      MONGO_DATABASE: npc_ai
-      REDIS_ADDR: redis:6379
-      LISTEN_ADDR: ":9821"
+      MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
+      MONGO_DATABASE: ${MONGO_DATABASE:-npc_ai}
+      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
+      LISTEN_ADDR: ${LISTEN_ADDR:-:9821}
     depends_on:
       - mongo
       - redis
