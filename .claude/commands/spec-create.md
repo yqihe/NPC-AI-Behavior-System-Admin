@@ -70,7 +70,9 @@
 - 不准拆出定义模糊的任务（"完善 XX 模块"）
 - 不准在任务中包含"顺便重构"、"顺便优化"
 
-**→ 停下，等用户审批。审批后建议创建 feature 分支，开始 `/spec-execute T1 <feature-name>`**
+**→ 停下，等用户审批。审批后：**
+1. **创建 feature 分支**：`git checkout -b feature/<feature-name>`（从当前主开发分支拉出）
+2. 开始 `/spec-execute T1 <feature-name>`
 
 ---
 

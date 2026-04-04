@@ -9,15 +9,27 @@
 
 ---
 
+## 分支规范
+
+- **开始前**：确认已在 `feature/<feature-name>` 分支上。如果不在，先创建：`git checkout -b feature/<feature-name>`
+- **每个任务完成后**：commit 当前改动（遵循 Git 规则中的 commit message 格式）
+- **所有任务完成后**：
+  1. 从远端拉取最新代码并合并：`git fetch origin && git merge origin/main`（如有冲突则解决）
+  2. 确认编译/构建通过
+  3. push 到远端：`git push -u origin feature/<feature-name>`
+  4. 提示用户是否需要创建 PR
+
 ## 执行流程
 
-1. 加载 `docs/specs/<feature-name>/` 下的 requirements.md、design.md、tasks.md
-2. 定位目标任务，确认未完成
-3. 读取任务涉及的所有文件（先读再改，不准盲改）
-4. 执行实现
-5. 检查文档是否需要同步更新（参考 `docs/development/dev-rules.md` 文档同步章节）
-6. 在 tasks.md 中将任务标记为 `[x]`
-7. 停下，输出完成摘要，建议跑 `/verify <feature-name>`
+1. 确认在正确的 feature 分支上（不在则创建并切换）
+2. 加载 `docs/specs/<feature-name>/` 下的 requirements.md、design.md、tasks.md
+3. 定位目标任务，确认未完成
+4. 读取任务涉及的所有文件（先读再改，不准盲改）
+5. 执行实现
+6. 检查文档是否需要同步更新（参考 `docs/development/dev-rules.md` 文档同步章节）
+7. 在 tasks.md 中将任务标记为 `[x]`
+8. commit 当前改动
+9. 停下，输出完成摘要，建议跑 `/verify <feature-name>`
 
 ---
 
