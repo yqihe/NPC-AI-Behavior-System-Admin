@@ -38,7 +38,7 @@
 
 - **方案描述**：技术方案、数据结构、接口定义
 - **方案对比**：至少列出一个备选方案，说明为什么不选
-- **红线检查**：逐条对照 `docs/architecture/red-lines.md`，确认不违反。如果方案触及任何一条红线，必须修改方案或说明为什么需要修改红线本身（需用户批准）
+- **红线检查**：逐条对照 `docs/standards/red-lines.md`、`docs/standards/go-red-lines.md`、`docs/standards/frontend-red-lines.md`、`docs/architecture/red-lines.md`，确认不违反。如果方案触及任何一条红线，必须修改方案或说明为什么需要修改红线本身（需用户批准）
 - **扩展性影响**：这个设计是否影响运营平台的扩展方向（新增配置类型 / 新增表单字段），正面还是负面
 - **依赖方向**：画出涉及的包之间的依赖关系，确认单向向下
 - **Go 陷阱检查**：是否涉及共享状态、序列化、错误处理等（参考 `docs/development/go-pitfalls.md`）
@@ -47,7 +47,7 @@
 - **测试策略**：怎么测，单元测试覆盖什么，e2e 覆盖什么
 
 **禁止**：
-- 不准设计违反 `docs/architecture/red-lines.md` 的方案（除非审批修改红线）
+- 不准设计违反 `docs/standards/` 或 `docs/architecture/red-lines.md` 的方案（除非审批修改红线）
 - 不准跳过方案对比直接给一个方案
 - 不准设计新增配置类型时需要改已有模块代码的方案
 
@@ -78,4 +78,4 @@
 
 ## 经验沉淀
 
-执行过程中发现本 Skill 遗漏的检查项、需求分析角度、设计考量，追加到本文件对应阶段的检查清单中，或追加到 `docs/development/dev-rules.md`。
+执行过程中发现的新规则/禁令，按类型追加到对应文档（参考 `docs/development/dev-rules.md` 经验沉淀指引）。发现本 Skill 遗漏的检查项，追加到本文件对应阶段。

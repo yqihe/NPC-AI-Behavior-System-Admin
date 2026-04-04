@@ -14,7 +14,7 @@ const router = createRouter({
       component: () => import('@/views/EventTypeList.vue'),
     },
     {
-      path: '/event-types/:name',
+      path: '/event-types/:name(.*)',
       name: 'EventTypeForm',
       component: () => import('@/views/EventTypeForm.vue'),
     },
@@ -24,7 +24,7 @@ const router = createRouter({
       component: () => import('@/views/FsmConfigList.vue'),
     },
     {
-      path: '/fsm-configs/:name',
+      path: '/fsm-configs/:name(.*)',
       name: 'FsmConfigForm',
       component: () => import('@/views/FsmConfigForm.vue'),
     },
@@ -44,7 +44,7 @@ const router = createRouter({
       component: () => import('@/views/NpcTypeList.vue'),
     },
     {
-      path: '/npc-types/:name',
+      path: '/npc-types/:name(.*)',
       name: 'NpcTypeForm',
       component: () => import('@/views/NpcTypeForm.vue'),
     },

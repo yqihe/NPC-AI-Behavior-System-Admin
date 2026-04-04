@@ -107,7 +107,10 @@ log.Debug("组件.动作", "key1", val1, "key2", val2)
 ## 经验沉淀
 
 执行过程中踩到的坑，按类型追加到对应文档：
-- Go 相关 → `docs/development/go-pitfalls.md`
-- 前端相关 → `docs/development/frontend-pitfalls.md`
-- 新禁令 → `docs/architecture/red-lines.md`
-- 新规则 → `docs/development/dev-rules.md`
+- 通用禁令 → `docs/standards/red-lines.md`
+- Go 语言禁令 → `docs/standards/go-red-lines.md`
+- 前端禁令 → `docs/standards/frontend-red-lines.md`
+- ADMIN 项目禁令 → `docs/architecture/red-lines.md`
+- Go 陷阱 → `docs/development/go-pitfalls.md`
+- 前端陷阱 → `docs/development/frontend-pitfalls.md`
+- 开发规则 → `docs/development/dev-rules.md`

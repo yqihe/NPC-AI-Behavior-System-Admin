@@ -103,11 +103,11 @@ func validateBtNode(raw json.RawMessage, b *validationBuilder, path string) {
 		// parallel 节点的 policy 参数校验
 		if node.Type == "parallel" && len(node.Params) > 0 && string(node.Params) != "null" {
 			var pParams map[string]string
-			if err := json.Unmarshal(node.Params, &pParams); err == nil {
-				if policy, ok := pParams["policy"]; ok {
-					if policy != "require_all" && policy != "require_one" {
-						b.addf("%s (parallel): policy 必须是 require_all 或 require_one，当前值: \"%s\"", path, policy)
-					}
+			if err := json.Unmarshal(node.Params, &pParams); err != nil {
+				b.addf("%s (parallel): params 格式错误，无法解析", path)
+			} else if policy, ok := pParams["policy"]; ok {
+				if policy != "require_all" && policy != "require_one" {
+					b.addf("%s (parallel): policy 必须是 require_all 或 require_one，当前值: \"%s\"", path, policy)
 				}
 			}
 		}
@@ -163,10 +163,10 @@ func validateLeafParams(nodeType string, params json.RawMessage, b *validationBu
 			return // result 可选，服务端默认 success
 		}
 		var result string
-		if err := json.Unmarshal(resultRaw, &result); err == nil {
-			if !validStubResults[result] {
-				b.addf("%s (stub_action): result 必须是 success/failure/running，当前值: \"%s\"", path, result)
-			}
+		if err := json.Unmarshal(resultRaw, &result); err != nil {
+			b.addf("%s (stub_action): result 字段格式错误", path)
+		} else if !validStubResults[result] {
+			b.addf("%s (stub_action): result 必须是 success/failure/running，当前值: \"%s\"", path, result)
 		}
 	}
 }

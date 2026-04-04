@@ -144,7 +144,9 @@ func validateCondition(raw json.RawMessage, b *validationBuilder, transIdx int) 
 		b.addf("转换 #%d: 条件缺少 op 字段", transIdx)
 	} else {
 		var op string
-		if err := json.Unmarshal(opRaw, &op); err == nil {
+		if err := json.Unmarshal(opRaw, &op); err != nil {
+			b.addf("转换 #%d: op 字段格式错误", transIdx)
+		} else {
 			validOps := map[string]bool{
 				"==": true, "!=": true,
 				">": true, ">=": true,
