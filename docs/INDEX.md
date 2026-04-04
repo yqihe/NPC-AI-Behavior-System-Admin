@@ -8,7 +8,9 @@
 ## development/ — 开发规范
 | 文档 | 内容概括 | 何时查阅 |
 |------|----------|----------|
-| [dev-rules.md](development/dev-rules.md) | 日志格式、文档同步、Git 规则、前后端协作、继承的经验教训 | 所有开发活动 |
+| [dev-rules.md](development/dev-rules.md) | 日志格式、文档同步、Git 规则、前后端协作、CRUD 通用规则、继承的经验教训 | 所有开发活动 |
+| [go-pitfalls.md](development/go-pitfalls.md) | Go 陷阱清单（JSON/BSON 序列化、HTTP Handler、MongoDB/Redis 操作、错误处理） | 编写 Go 代码时 |
+| [frontend-pitfalls.md](development/frontend-pitfalls.md) | 前端陷阱清单（JS 基础、Vue 3 响应式、Element Plus、Axios、Vite 构建） | 编写前端代码时 |
 
 ## 游戏服务端参考文档
 | 文档 | 位置 | 何时查阅 |
