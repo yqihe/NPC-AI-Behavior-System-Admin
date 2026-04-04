@@ -2,6 +2,7 @@ package validator
 
 import (
 	"encoding/json"
+	"strconv"
 )
 
 type fsmConfig struct {
@@ -36,6 +37,9 @@ func ValidateFsmConfig(config json.RawMessage) error {
 		if s.Name == "" {
 			b.add("状态名称不能为空")
 		} else {
+			if stateSet[s.Name] {
+				b.addf("状态名 \"%s\" 重复", s.Name)
+			}
 			stateSet[s.Name] = true
 		}
 	}
@@ -91,6 +95,17 @@ func validateCondition(raw json.RawMessage, b *validationBuilder, transIdx int) 
 		return
 	}
 
+	// 检查组合条件与叶子条件互斥
+	_, hasAnd := m["and"]
+	_, hasOr := m["or"]
+	_, hasKey := m["key"]
+	isComposite := hasAnd || hasOr
+
+	if isComposite && hasKey {
+		b.addf("转换 #%d: 条件不能同时包含 and/or 和 key，请拆分为组合条件或叶子条件", transIdx)
+		return
+	}
+
 	// and/or 组合条件
 	if andRaw, ok := m["and"]; ok {
 		var children []json.RawMessage
@@ -125,8 +140,21 @@ func validateCondition(raw json.RawMessage, b *validationBuilder, transIdx int) 
 	if _, ok := m["key"]; !ok {
 		b.addf("转换 #%d: 条件缺少 key 字段", transIdx)
 	}
-	if _, ok := m["op"]; !ok {
+	if opRaw, ok := m["op"]; !ok {
 		b.addf("转换 #%d: 条件缺少 op 字段", transIdx)
+	} else {
+		var op string
+		if err := json.Unmarshal(opRaw, &op); err == nil {
+			validOps := map[string]bool{
+				"==": true, "!=": true,
+				">": true, ">=": true,
+				"<": true, "<=": true,
+				"in": true,
+			}
+			if !validOps[op] {
+				b.addf("转换 #%d: 不支持的操作符 \"%s\"，合法值: ==, !=, >, >=, <, <=, in", transIdx, op)
+			}
+		}
 	}
 	// value 或 ref_key 至少有一个
 	_, hasValue := m["value"]
@@ -136,19 +164,7 @@ func validateCondition(raw json.RawMessage, b *validationBuilder, transIdx int) 
 	}
 }
 
-// itoa 简单整数转字符串，避免引入 strconv。
+// itoa 整数转字符串，使用 strconv.Itoa。
 func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	digits := make([]byte, 0, 4)
-	for n > 0 {
-		digits = append(digits, byte('0'+n%10))
-		n /= 10
-	}
-	// 反转
-	for i, j := 0, len(digits)-1; i < j; i, j = i+1, j-1 {
-		digits[i], digits[j] = digits[j], digits[i]
-	}
-	return string(digits)
+	return strconv.Itoa(n)
 }

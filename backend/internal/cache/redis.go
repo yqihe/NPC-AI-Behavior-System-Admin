@@ -39,6 +39,11 @@ func NewRedisCache(ctx context.Context, addr string) (*RedisCache, error) {
 	return &RedisCache{client: client}, nil
 }
 
+// Close 关闭 Redis 连接，用于优雅关闭。
+func (c *RedisCache) Close() error {
+	return c.client.Close()
+}
+
 func (c *RedisCache) cacheKey(collection string) string {
 	return keyPrefix + collection + ":list"
 }

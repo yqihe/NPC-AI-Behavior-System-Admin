@@ -50,7 +50,7 @@ T18 后端集成测试
 
 **做完的样子**：
 - `store.go` 定义 `Store` 接口：`List(ctx, collection) → []Document`、`Get(ctx, collection, name)`、`Create(ctx, collection, doc)`、`Update(ctx, collection, name, doc)`、`Delete(ctx, collection, name)`
-- `mongo.go` 实现 `MongoStore`：连接初始化、确保 4 个 collection 的 name unique index
+- `mongo.go` 实现 `MongoStore`：连接初始化、确保 4 个 collection 的 name unique index、保存 `client` 引用并提供 `Close(ctx) error` 用于优雅关闭
 - 所有操作带 `context.WithTimeout(ctx, 5*time.Second)`
 - `FindOne` 无结果返回自定义 `ErrNotFound`，`InsertOne` 重复返回自定义 `ErrDuplicate`
 - `_id` / ObjectId 不出现在返回结果中
@@ -70,7 +70,7 @@ T18 后端集成测试
 
 **做完的样子**：
 - `cache.go` 定义 `Cache` 接口：`GetList(ctx, collection) → ([]Document, error)`、`SetList(ctx, collection, docs)`、`Invalidate(ctx, collection)`
-- `redis.go` 实现 `RedisCache`：连接初始化，key 前缀 `admin:`，TTL 5 分钟
+- `redis.go` 实现 `RedisCache`：连接初始化，key 前缀 `admin:`，TTL 5 分钟，提供 `Close() error` 用于优雅关闭
 - `GetList` 未命中返回自定义 `ErrCacheMiss`（封装 redis.Nil）
 - Redis 连接失败时所有方法返回 error（service 层降级处理）
 - `go build ./...` 通过
@@ -89,7 +89,7 @@ T18 后端集成测试
 - `common.go` 定义 `ValidationError` 类型（包含 `[]string` 错误列表，中文描述）和通用校验辅助函数
 - `event_type.go` 实现 `ValidateEventType(config json.RawMessage) error`：
   - 反序列化为临时结构体
-  - 校验 name 非空、severity ∈ [0,100]、ttl > 0、perception_mode ∈ {visual, auditory, global}、range ≥ 0
+  - 校验 name 非空、severity ∈ [0,100]（float64 类型，与游戏服务端一致）、ttl > 0、perception_mode ∈ {visual, auditory, global}、range ≥ 0
 - 校验失败返回 `ValidationError`，含所有违反项的中文描述
 - `go build ./...` 通过
 
@@ -106,8 +106,8 @@ T18 后端集成测试
 
 **做完的样子**：
 - `npc_type.go`：校验 type_name 非空、perception 范围 ≥ 0、fsm_ref 存在（调 store 检查）、bt_refs 每个值存在（调 store 检查）
-- `fsm_config.go`：校验 initial_state 在 states 中、transition from/to 在 states 中、priority > 0、condition 结构合法（递归校验 and/or/叶子节点）
-- `bt_tree.go`：校验节点 type 合法、复合节点有 children、叶子节点有 params、递归校验子节点
+- `fsm_config.go`：校验 initial_state 在 states 中、状态名重复检测、transition from/to 在 states 中、priority > 0、condition 结构合法（递归校验 and/or/叶子节点、叶子与组合互斥检测）、op 操作符枚举校验（==、!=、>、>=、<、<=、in）
+- `bt_tree.go`：校验节点 type 合法（三类：复合/装饰/叶子）、复合节点有 children、装饰节点（inverter）有 child（单个子节点对象）、parallel 的 policy 参数校验、叶子节点有 params、BB key 白名单校验（防止未注册 key 导致服务端 panic）、stub_action result 枚举校验（success/failure/running）、递归校验子节点
 - 所有错误描述为中文
 - `go build ./...` 通过
 
@@ -307,8 +307,9 @@ T18 后端集成测试
 - **列表页**：el-table 展示 name、根节点类型、子节点数（第一层）
 - **表单页**：BtNodeEditor 组件编辑根节点
 - **BtNodeEditor**：递归组件
-  - type（el-select：sequence/selector/parallel/inverter/check_bb_float/check_bb_string/set_bb_value/stub_action）
+  - type（el-select 三个分组：复合节点 sequence/selector/parallel、装饰节点 inverter、叶子节点 check_bb_float/check_bb_string/set_bb_value/stub_action）
   - 复合节点：children 列表，每个子节点递归渲染 BtNodeEditor，支持增删子节点
+  - 装饰节点（inverter）：child 单个子节点，递归渲染 BtNodeEditor，不可删除（必须有且仅有一个子节点），产出 JSON 使用 `child` 字段而非 `children`
   - 叶子节点：params 表单（根据 type 动态渲染不同字段）
   - 树形缩进展示父子关系
 

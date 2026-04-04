@@ -69,4 +69,14 @@
 
 ---
 
+## BT 节点编辑器
+
+- **装饰节点 ≠ 复合节点**：`inverter` 是装饰节点，只有一个子节点（`child`），不是复合节点（`children` 数组）。前端 BtNodeEditor 必须区分三类节点：复合（sequence/selector/parallel）、装饰（inverter）、叶子。产出的 JSON 中装饰节点使用 `child: {...}` 而非 `children: [...]`
+- **装饰节点切换类型时**：从复合节点切换到装饰节点时，需清空 `children` 并初始化 `decoratorChild`；反之亦然。忘记清理会导致产出的 JSON 同时携带 `children` 和 `child`，游戏服务端解析会忽略多余字段但行为不可预期
+- **BB Key 必须用下拉选择器**：`set_bb_value` / `check_bb_float` / `check_bb_string` 的 key 参数必须用 `el-select` 从白名单中选择，**不能用 `el-input` 手动输入**。原因：未注册的 BB key 会导致游戏服务端 panic。白名单定义在 BtNodeEditor.vue 的 `bbKeys` 常量中，与游戏服务端 `blackboard/keys.go` 对齐。下拉选项同时显示中文标签和原始 key 名
+- **stub_action result 有三个值**：`success` / `failure` / `running`（不是只有两个）。前端 `el-select` 必须包含这三个选项。无效值服务端静默降级为 success
+- **NPC 编辑页关联列表缓存窗口期**：NPC 编辑页的 FSM/BT 下拉列表通过后端 list API 获取，走 Redis 5 分钟缓存。极端情况下（刚创建的 FSM/BT 还未出现在缓存中），策划可能在下拉中看不到新配置。刷新页面即可解决。这是已知限制，低并发场景下几乎不会出现
+
+---
+
 *在开发过程中踩到新坑时追加到本文档对应分类下。*

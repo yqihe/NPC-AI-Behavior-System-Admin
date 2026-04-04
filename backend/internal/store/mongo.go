@@ -22,7 +22,8 @@ var Collections = []string{"event_types", "npc_types", "fsm_configs", "bt_trees"
 
 // MongoStore 实现 Store 接口，操作 MongoDB。
 type MongoStore struct {
-	db *mongo.Database
+	client *mongo.Client
+	db     *mongo.Database
 }
 
 // NewMongoStore 连接 MongoDB 并确保 4 个 collection 的 name unique index。
@@ -40,7 +41,7 @@ func NewMongoStore(ctx context.Context, uri string, database string) (*MongoStor
 	}
 
 	db := client.Database(database)
-	s := &MongoStore{db: db}
+	s := &MongoStore{client: client, db: db}
 
 	// 确保 unique index
 	if err := s.ensureIndexes(ctx); err != nil {
@@ -49,6 +50,11 @@ func NewMongoStore(ctx context.Context, uri string, database string) (*MongoStor
 
 	slog.Info("store.mongo_connected", "uri", uri, "database", database)
 	return s, nil
+}
+
+// Close 断开 MongoDB 连接，用于优雅关闭。
+func (s *MongoStore) Close(ctx context.Context) error {
+	return s.client.Disconnect(ctx)
 }
 
 func (s *MongoStore) ensureIndexes(ctx context.Context) error {

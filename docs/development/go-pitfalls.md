@@ -67,4 +67,18 @@
 
 ---
 
+## 游戏服务端对接
+
+- **校验用结构体字段类型必须与游戏服务端一致**：运营平台的 validator 中定义临时结构体做校验，字段类型必须与游戏服务端的 Go struct 严格对齐。例如游戏服务端 `EventTypeConfig.DefaultSeverity` 是 `float64`，运营平台也必须用 `*float64`，不能用 `*int`。否则 `json.Unmarshal` 遇到浮点值（如 75.5）会直接报错
+- **BT 节点分类不能想当然**：`inverter` 不是复合节点。游戏服务端用 `child`（单个 `*TreeConfig`）而非 `children`（`[]TreeConfig`）。如果产出 `{"type": "inverter", "children": [...]}` 格式的 JSON，游戏服务端构建时会报 `"bt: inverter requires a child node"`。正确格式是 `{"type": "inverter", "child": {...}}`
+- **枚举值必须与游戏服务端定义对齐**：FSM 条件的 `op` 操作符、parallel 的 `policy` 参数等枚举值，必须查游戏服务端源码确认合法值列表，在校验层拦截非法值。游戏服务端对无效枚举值通常静默降级（不报错但行为不符预期），极难排查
+- **Store/Cache 需要 Close()**：`MongoStore` 和 `RedisCache` 必须暴露 `Close()` 方法用于优雅关闭。`mongo.Client` 未 Disconnect 会导致连接泄漏
+- **BB Key 白名单是数据安全红线**：`set_bb_value` / `check_bb_float` / `check_bb_string` 节点的 `params.key` 必须在游戏服务端 Blackboard 注册表白名单内。未注册的 key 写入 MongoDB 后，游戏服务端加载时会直接 panic——这是生产事故级别的问题。白名单维护在 `validator/bt_tree.go` 的 `validBBKeys`，来源为游戏服务端 `internal/core/blackboard/keys.go`
+- **stub_action result 枚举**：`stub_action` 的 `result` 合法值为 `success` / `failure` / `running`。无效值服务端默认 success 静默降级
+- **FSM 状态名重复不报错但不覆盖**：如果 `states` 列表中有两个同名状态，`stateSet[s.Name] = true` 只会覆盖 true → true，表面无异常。但游戏服务端加载时报 duplicate state error。必须显式检测 `if stateSet[s.Name]` 并报错
+- **condition 叶子与组合互斥**：一个 condition 节点不能同时有 `key` 和 `and`/`or`。当前代码先检查 and/or 有就 return，如果同时存在 key 会被静默忽略。需要在进入 and/or 分支前显式拒绝混用
+- **自定义 itoa 不处理负数**：自行实现的 itoa 函数遇到负数返回空字符串。直接用 `strconv.Itoa`，或确保处理负数
+
+---
+
 *在开发过程中踩到新坑时追加到本文档对应分类下。*

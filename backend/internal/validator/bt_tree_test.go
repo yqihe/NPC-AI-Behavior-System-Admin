@@ -17,12 +17,50 @@ func TestValidateBtTree_SequenceNode(t *testing.T) {
 	config := json.RawMessage(`{
 		"type":"sequence",
 		"children":[
-			{"type":"set_bb_value","params":{"key":"x","value":"y"}},
+			{"type":"set_bb_value","params":{"key":"current_action","value":"patrol"}},
 			{"type":"stub_action","params":{"name":"run","result":"success"}}
 		]
 	}`)
 	if err := ValidateBtTree(config); err != nil {
 		t.Errorf("valid sequence should pass, got: %v", err)
+	}
+}
+
+func TestValidateBtTree_InvalidBBKey(t *testing.T) {
+	config := json.RawMessage(`{"type":"set_bb_value","params":{"key":"mood","value":"happy"}}`)
+	err := ValidateBtTree(config)
+	if err == nil {
+		t.Fatal("expected error for unregistered BB key")
+	}
+}
+
+func TestValidateBtTree_InvalidStubResult(t *testing.T) {
+	config := json.RawMessage(`{"type":"stub_action","params":{"name":"test","result":"ok"}}`)
+	err := ValidateBtTree(config)
+	if err == nil {
+		t.Fatal("expected error for invalid stub_action result")
+	}
+}
+
+func TestValidateBtTree_DecoratorInverter(t *testing.T) {
+	config := json.RawMessage(`{
+		"type":"inverter",
+		"child":{"type":"check_bb_float","params":{"key":"threat_level","op":">=","value":50}}
+	}`)
+	if err := ValidateBtTree(config); err != nil {
+		t.Errorf("valid inverter with child should pass, got: %v", err)
+	}
+}
+
+func TestValidateBtTree_InverterWithChildren(t *testing.T) {
+	// inverter 用 children 而非 child 应该报错
+	config := json.RawMessage(`{
+		"type":"inverter",
+		"children":[{"type":"stub_action","params":{"name":"test","result":"success"}}]
+	}`)
+	err := ValidateBtTree(config)
+	if err == nil {
+		t.Fatal("expected error for inverter using children instead of child")
 	}
 }
 

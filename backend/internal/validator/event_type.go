@@ -6,11 +6,11 @@ import (
 
 // eventConfig 是事件类型 config 的校验用临时结构体，不存储。
 type eventConfig struct {
-	Name           string  `json:"name"`
-	DefaultSeverity *int   `json:"default_severity"`
-	DefaultTTL     *float64 `json:"default_ttl"`
-	PerceptionMode string  `json:"perception_mode"`
-	Range          *float64 `json:"range"`
+	Name            string   `json:"name"`
+	DefaultSeverity *float64 `json:"default_severity"`
+	DefaultTTL      *float64 `json:"default_ttl"`
+	PerceptionMode  string   `json:"perception_mode"`
+	Range           *float64 `json:"range"`
 }
 
 var validPerceptionModes = map[string]bool{
@@ -35,7 +35,7 @@ func ValidateEventType(config json.RawMessage) error {
 	if c.DefaultSeverity == nil {
 		b.add("威胁等级（default_severity）不能为空")
 	} else if *c.DefaultSeverity < 0 || *c.DefaultSeverity > 100 {
-		b.addf("威胁等级必须在 0-100 之间，当前值: %d", *c.DefaultSeverity)
+		b.addf("威胁等级必须在 0-100 之间，当前值: %v", *c.DefaultSeverity)
 	}
 
 	if c.DefaultTTL == nil {

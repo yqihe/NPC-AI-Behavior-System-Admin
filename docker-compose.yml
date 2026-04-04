@@ -1,3 +1,12 @@
+# MongoDB 共享策略说明：
+# 开发阶段：本 compose 自带 mongo 容器，端口 27017。
+# 如果游戏服务端也在本机运行且有自己的 mongo 容器，两者端口会冲突。
+# 解决方案：
+#   1. 共享模式（推荐）：只在一侧启动 mongo，另一侧通过 MONGO_URI 指向宿主机端口
+#      例：admin 使用本 compose 的 mongo，Server 设置 MONGO_URI=mongodb://host.docker.internal:27017
+#   2. 独立模式：修改本文件的端口映射（如 "27018:27017"），两个 mongo 各跑各的（数据不互通）
+#   3. 统一编排：在项目根目录创建顶层 docker-compose.yml 统一管理 Server + Admin + 共享 mongo
+# 生产环境：两者共享同一个外部 MongoDB 实例，通过 MONGO_URI 环境变量配置。
 services:
   mongo:
     image: mongo:7

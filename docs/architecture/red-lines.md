@@ -44,6 +44,15 @@
 - **禁止**使用 `context.Background()` 或 `context.TODO()` 直接调用 MongoDB / Redis。所有外部 IO 操作必须使用带超时的 context（`context.WithTimeout`），防止网络异常导致 handler 永久挂起
 - **禁止** HTTP handler 内不设请求体大小限制。必须用 `http.MaxBytesReader` 限制 body 上限（1MB）
 
+## 禁止与游戏服务端 Schema 不一致
+
+来源：首次联调反馈，发现 5 处不一致，其中 inverter 节点分类错误导致产出的配置无法加载。
+
+- **禁止**校验用结构体的字段类型与游戏服务端不一致。例如游戏服务端 `DefaultSeverity` 是 `float64`，运营平台必须也用 `float64`（不能用 `int`）。新增校验字段时必须查游戏服务端源码确认类型
+- **禁止**将装饰节点（如 `inverter`）归类为复合节点。游戏服务端 `inverter` 使用 `child`（单个 `*TreeConfig`），不是 `children`（`[]TreeConfig`）。错误分类会导致产出的 JSON 格式游戏服务端无法解析
+- **禁止**放行游戏服务端不支持的枚举值。FSM 条件的 `op` 操作符必须在游戏服务端支持的列表内（`==`、`!=`、`>`、`>=`、`<`、`<=`、`in`），`parallel` 的 `policy` 必须是 `require_all` 或 `require_one`，`stub_action` 的 `result` 必须是 `success` / `failure` / `running`。无效枚举在游戏服务端静默降级，不报错但行为不符预期，极难排查
+- **禁止**写入未注册的 Blackboard Key。`set_bb_value` / `check_bb_float` / `check_bb_string` 节点的 `key` 必须在游戏服务端 `blackboard/keys.go` 的注册表白名单内。未注册的 key 写入 MongoDB 后，游戏服务端加载行为树时会直接 **panic**——这是生产事故级别的问题。前端必须使用下拉选择器（不允许手动输入），后端 validator 必须白名单校验
+
 ## 禁止过度设计
 
 - **禁止**实现用户认证/权限系统。毕设阶段所有用户等权

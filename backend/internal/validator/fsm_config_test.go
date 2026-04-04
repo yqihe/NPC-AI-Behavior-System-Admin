@@ -96,3 +96,40 @@ func TestValidateFsmConfig_ConditionWithRefKey(t *testing.T) {
 		t.Errorf("condition with ref_key should pass, got: %v", err)
 	}
 }
+
+func TestValidateFsmConfig_DuplicateStateName(t *testing.T) {
+	config := json.RawMessage(`{
+		"initial_state":"Idle",
+		"states":[{"name":"Idle"},{"name":"Idle"}],
+		"transitions":[]
+	}`)
+	err := ValidateFsmConfig(config)
+	if err == nil {
+		t.Fatal("expected error for duplicate state name")
+	}
+}
+
+func TestValidateFsmConfig_InvalidOp(t *testing.T) {
+	config := json.RawMessage(`{
+		"initial_state":"Idle",
+		"states":[{"name":"Idle"},{"name":"X"}],
+		"transitions":[{"from":"Idle","to":"X","priority":5,"condition":{"key":"threat_level","op":"contains","value":"test"}}]
+	}`)
+	err := ValidateFsmConfig(config)
+	if err == nil {
+		t.Fatal("expected error for invalid op 'contains'")
+	}
+}
+
+func TestValidateFsmConfig_ConditionMixedLeafAndComposite(t *testing.T) {
+	// condition 同时有 and 和 key，应该报错
+	config := json.RawMessage(`{
+		"initial_state":"Idle",
+		"states":[{"name":"Idle"},{"name":"X"}],
+		"transitions":[{"from":"Idle","to":"X","priority":5,"condition":{"and":[{"key":"threat_level","op":">=","value":50}],"key":"extra","op":"==","value":"bad"}}]
+	}`)
+	err := ValidateFsmConfig(config)
+	if err == nil {
+		t.Fatal("expected error for condition with both and and key")
+	}
+}
