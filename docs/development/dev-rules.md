@@ -33,6 +33,14 @@ slog.Warn("validator.error", "collection", "fsm_configs", "name", name, "err", e
   - 类型：`feat` / `fix` / `test` / `refactor` / `docs` / `chore`
   - 范围：`backend/handler`、`frontend/views`、`backend/store` 等
 
+### 提交即推送
+
+**每次 commit 后必须考虑是否推送到远端。** 默认行为：commit 完成后立即 `git push`。以下情况例外：
+- 在 feature 分支上且尚未准备好 review → 可以暂缓
+- 明确有后续 commit 要一起推 → 可以攒几个一起推
+
+在 main 分支上直接工作时，commit 后必须立即推送，不允许积压本地 commit。
+
 ## CRUD 通用规则
 
 ### Name 唯一性
