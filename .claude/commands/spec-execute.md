@@ -28,8 +28,9 @@
 5. 执行实现
 6. 检查文档是否需要同步更新（参考 `docs/development/dev-rules.md` 文档同步章节）
 7. 在 tasks.md 中将任务标记为 `[x]`
-8. commit 当前改动
-9. 停下，输出完成摘要，建议跑 `/verify <feature-name>`
+8. **立即执行 `/verify <feature-name> --task=T[N]`**——写完代码必须先验证，不允许跳过
+9. verify PASS → commit 当前改动 → 自动继续下一个 task
+10. verify FAIL → 停下报告，修复后重新 verify
 
 ---
 
