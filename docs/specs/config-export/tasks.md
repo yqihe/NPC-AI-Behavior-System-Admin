@@ -1,6 +1,6 @@
 # 任务拆解：配置导出 API（config-export）
 
-## T1: 新增 ConfigExportHandler (R1, R2, R3, R4, R5, R6)
+## [x] T1: 新增 ConfigExportHandler (R1, R2, R3, R4, R5, R6)
 
 **涉及文件**：
 - `backend/internal/handler/config_export.go`（新增）
