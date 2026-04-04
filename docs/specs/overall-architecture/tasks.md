@@ -58,7 +58,7 @@ T18 后端集成测试
 - `json.RawMessage` ↔ `bson.Raw` 转换在此层处理
 - `go build ./...` 通过
 
-[ ] 未完成
+[x] 已完成
 
 ---
 
