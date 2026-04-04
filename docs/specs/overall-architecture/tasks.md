@@ -240,7 +240,7 @@ T18 后端集成测试
 - 4 个 API 文件各导出 `list()`、`get(name)`、`create(data)`、`update(name, data)`、`remove(name)` 五个函数
 - 无硬编码 URL
 
-[ ] 未完成
+[x] 已完成
 
 ---
 
