@@ -88,6 +88,14 @@ func main() {
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		slog.Error("main.shutdown_error", "err", err)
 	}
+
+	// 关闭数据库和缓存连接
+	if err := redisCache.Close(); err != nil {
+		slog.Error("main.redis_close_error", "err", err)
+	}
+	if err := mongoStore.Close(shutdownCtx); err != nil {
+		slog.Error("main.mongo_close_error", "err", err)
+	}
 	slog.Info("main.server_stopped")
 }
 

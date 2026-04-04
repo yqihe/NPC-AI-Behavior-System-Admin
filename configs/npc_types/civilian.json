@@ -4,7 +4,8 @@
     "bt_refs": {
         "Idle": "civilian/idle",
         "Alarmed": "civilian/alarmed",
-        "Flee": "civilian/flee"
+        "Flee": "civilian/flee",
+        "Cower": "civilian/cower"
     },
     "perception": {
         "visual_range": 200.0,

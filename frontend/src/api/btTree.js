@@ -1,15 +1,11 @@
 import request from './index'
 
-function encodeName(name) {
-  return encodeURIComponent(name)
-}
-
 export function list() {
   return request.get('/bt-trees')
 }
 
 export function get(name) {
-  return request.get(`/bt-trees/${encodeName(name)}`)
+  return request.get(`/bt-trees/${encodeURIComponent(name)}`)
 }
 
 export function create(data) {
@@ -17,9 +13,9 @@ export function create(data) {
 }
 
 export function update(name, data) {
-  return request.put(`/bt-trees/${encodeName(name)}`, data)
+  return request.put(`/bt-trees/${encodeURIComponent(name)}`, data)
 }
 
 export function remove(name) {
-  return request.delete(`/bt-trees/${encodeName(name)}`)
+  return request.delete(`/bt-trees/${encodeURIComponent(name)}`)
 }

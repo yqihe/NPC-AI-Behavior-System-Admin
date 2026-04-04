@@ -91,7 +91,8 @@ func (s *BtTreeService) checkBtRef(ctx context.Context, btName string) error {
 			BtRefs map[string]string `json:"bt_refs"`
 		}
 		if err := json.Unmarshal(doc.Config, &cfg); err != nil {
-			continue
+			slog.Error("service.bt_tree.check_ref_unmarshal", "npc", doc.Name, "err", err)
+			return fmt.Errorf("解析 NPC 类型 \"%s\" 配置时出错: %w", doc.Name, err)
 		}
 		for _, ref := range cfg.BtRefs {
 			if ref == btName {

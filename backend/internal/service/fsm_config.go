@@ -91,7 +91,8 @@ func (s *FsmConfigService) checkFsmRef(ctx context.Context, fsmName string) erro
 			FsmRef string `json:"fsm_ref"`
 		}
 		if err := json.Unmarshal(doc.Config, &cfg); err != nil {
-			continue
+			slog.Error("service.fsm_config.check_ref_unmarshal", "npc", doc.Name, "err", err)
+			return fmt.Errorf("解析 NPC 类型 \"%s\" 配置时出错: %w", doc.Name, err)
 		}
 		if cfg.FsmRef == fsmName {
 			return &validator.ValidationError{

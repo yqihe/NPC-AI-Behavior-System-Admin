@@ -5,7 +5,7 @@ export function list() {
 }
 
 export function get(name) {
-  return request.get(`/event-types/${name}`)
+  return request.get(`/event-types/${encodeURIComponent(name)}`)
 }
 
 export function create(data) {
@@ -13,9 +13,9 @@ export function create(data) {
 }
 
 export function update(name, data) {
-  return request.put(`/event-types/${name}`, data)
+  return request.put(`/event-types/${encodeURIComponent(name)}`, data)
 }
 
 export function remove(name) {
-  return request.delete(`/event-types/${name}`)
+  return request.delete(`/event-types/${encodeURIComponent(name)}`)
 }

@@ -5,7 +5,7 @@ export function list() {
 }
 
 export function get(name) {
-  return request.get(`/fsm-configs/${name}`)
+  return request.get(`/fsm-configs/${encodeURIComponent(name)}`)
 }
 
 export function create(data) {
@@ -13,9 +13,9 @@ export function create(data) {
 }
 
 export function update(name, data) {
-  return request.put(`/fsm-configs/${name}`, data)
+  return request.put(`/fsm-configs/${encodeURIComponent(name)}`, data)
 }
 
 export function remove(name) {
-  return request.delete(`/fsm-configs/${name}`)
+  return request.delete(`/fsm-configs/${encodeURIComponent(name)}`)
 }

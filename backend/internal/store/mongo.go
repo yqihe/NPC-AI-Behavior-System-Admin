@@ -85,7 +85,7 @@ func (s *MongoStore) List(ctx context.Context, collection string) ([]model.Docum
 		slog.Error("store.list_error", "collection", collection, "err", err)
 		return nil, fmt.Errorf("store.list: %w", err)
 	}
-	defer cursor.Close(opCtx)
+	defer cursor.Close(context.Background())
 
 	var bsonDocs []model.BsonDocument
 	if err := cursor.All(opCtx, &bsonDocs); err != nil {
