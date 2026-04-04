@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/npc-admin/backend/internal/model"
@@ -46,7 +47,7 @@ func handleServiceError(w http.ResponseWriter, err error) {
 	writeError(w, http.StatusInternalServerError, "服务器内部错误，请联系开发人员")
 }
 
-// pathName 从 URL path 末尾提取 name 参数。
+// pathName 从 URL path 末尾提取 name 参数并 URL 解码。
 // 例如 /api/v1/event-types/explosion → "explosion"
 func pathName(r *http.Request) string {
 	parts := strings.Split(strings.TrimRight(r.URL.Path, "/"), "/")
@@ -54,6 +55,28 @@ func pathName(r *http.Request) string {
 		return ""
 	}
 	return parts[len(parts)-1]
+}
+
+// pathNameAfterPrefix 从 URL 中截取指定前缀之后的部分作为 name。
+// 用于 name 可能包含 "/" 的资源（如行为树 "civilian/idle"）。
+// 优先使用 RawPath（保留 %2F 编码），再 URL 解码得到原始 name。
+// 例如 /api/v1/bt-trees/civilian%2Fidle（前缀 /api/v1/bt-trees/）→ "civilian/idle"
+func pathNameAfterPrefix(r *http.Request, prefix string) string {
+	// 优先用 RawPath（保留 %2F），如果为空则回退到 Path
+	path := r.URL.RawPath
+	if path == "" {
+		path = r.URL.Path
+	}
+	raw := strings.TrimPrefix(path, prefix)
+	raw = strings.TrimRight(raw, "/")
+	if raw == "" {
+		return ""
+	}
+	decoded, err := url.PathUnescape(raw)
+	if err != nil {
+		return raw
+	}
+	return decoded
 }
 
 // decodeBody 读取并解析请求体为 Document。

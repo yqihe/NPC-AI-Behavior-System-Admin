@@ -1,15 +1,15 @@
 <template>
   <div :style="{ marginLeft: depth > 0 ? '24px' : '0', borderLeft: depth > 0 ? '2px solid #dcdfe6' : 'none', paddingLeft: depth > 0 ? '12px' : '0', marginBottom: '8px' }">
     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px">
-      <el-select v-model="node.type" size="small" style="width: 160px" @change="onTypeChange">
-        <el-option-group label="复合节点">
-          <el-option v-for="t in compositeTypes" :key="t" :label="t" :value="t" />
+      <el-select v-model="node.type" size="small" style="width: 200px" @change="onTypeChange" placeholder="选择节点类型">
+        <el-option-group label="复合节点（包含多个子节点）">
+          <el-option v-for="t in compositeTypes" :key="t.value" :label="t.label" :value="t.value" />
         </el-option-group>
-        <el-option-group label="装饰节点">
-          <el-option v-for="t in decoratorTypes" :key="t" :label="t" :value="t" />
+        <el-option-group label="装饰节点（包含一个子节点）">
+          <el-option v-for="t in decoratorTypes" :key="t.value" :label="t.label" :value="t.value" />
         </el-option-group>
-        <el-option-group label="叶子节点">
-          <el-option v-for="t in leafTypes" :key="t" :label="t" :value="t" />
+        <el-option-group label="叶子节点（执行具体操作）">
+          <el-option v-for="t in leafTypes" :key="t.value" :label="t.label" :value="t.value" />
         </el-option-group>
       </el-select>
       <el-button v-if="removable" size="small" type="danger" plain @click="$emit('remove')">删除</el-button>
@@ -87,9 +87,24 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:modelValue', 'remove'])
 
-const compositeTypes = ['sequence', 'selector', 'parallel']
-const decoratorTypes = ['inverter']
-const leafTypes = ['check_bb_float', 'check_bb_string', 'set_bb_value', 'stub_action']
+const compositeTypes = [
+  { value: 'sequence', label: '顺序执行 (sequence)' },
+  { value: 'selector', label: '选择执行 (selector)' },
+  { value: 'parallel', label: '并行执行 (parallel)' },
+]
+const decoratorTypes = [
+  { value: 'inverter', label: '结果反转 (inverter)' },
+]
+const leafTypes = [
+  { value: 'check_bb_float', label: '检查数值 (check_bb_float)' },
+  { value: 'check_bb_string', label: '检查文本 (check_bb_string)' },
+  { value: 'set_bb_value', label: '设置黑板值 (set_bb_value)' },
+  { value: 'stub_action', label: '占位动作 (stub_action)' },
+]
+
+const compositeTypeValues = compositeTypes.map(t => t.value)
+const decoratorTypeValues = decoratorTypes.map(t => t.value)
+const leafTypeValues = leafTypes.map(t => t.value)
 
 // Blackboard Key 白名单（与游戏服务端 internal/core/blackboard/keys.go 对齐）
 const bbKeys = [
@@ -112,9 +127,9 @@ const params = ref({})
 const children = ref([])
 const decoratorChild = ref({})
 
-const isComposite = computed(() => compositeTypes.includes(node.value.type))
-const isDecorator = computed(() => decoratorTypes.includes(node.value.type))
-const isLeaf = computed(() => leafTypes.includes(node.value.type))
+const isComposite = computed(() => compositeTypeValues.includes(node.value.type))
+const isDecorator = computed(() => decoratorTypeValues.includes(node.value.type))
+const isLeaf = computed(() => leafTypeValues.includes(node.value.type))
 
 function parseValue(val) {
   if (!val || typeof val !== 'object') {

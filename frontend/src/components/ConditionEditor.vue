@@ -12,12 +12,16 @@
 
     <!-- 叶子条件 -->
     <div v-if="condType === 'leaf'" style="display: flex; gap: 8px; flex-wrap: wrap">
-      <el-input v-model="leaf.key" size="small" placeholder="BB Key" style="width: 150px" @input="emitChange" />
+      <el-select v-model="leaf.key" size="small" placeholder="选择 BB Key" style="width: 180px" @change="emitChange">
+        <el-option v-for="k in bbKeys" :key="k.value" :label="k.label" :value="k.value" />
+      </el-select>
       <el-select v-model="leaf.op" size="small" style="width: 80px" @change="emitChange">
         <el-option v-for="op in ops" :key="op" :label="op" :value="op" />
       </el-select>
       <el-input v-model="leaf.value" size="small" placeholder="值" style="width: 120px" @input="emitChange" />
-      <el-input v-model="leaf.ref_key" size="small" placeholder="引用 Key（可选）" style="width: 150px" @input="emitChange" />
+      <el-select v-model="leaf.ref_key" size="small" placeholder="引用 Key（可选）" style="width: 180px" clearable @change="emitChange">
+        <el-option v-for="k in bbKeys" :key="k.value" :label="k.label" :value="k.value" />
+      </el-select>
     </div>
 
     <!-- 组合条件 -->
@@ -44,7 +48,24 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:modelValue', 'remove'])
 
-const ops = ['==', '!=', '>', '<', '>=', '<=']
+const ops = ['==', '!=', '>', '<', '>=', '<=', 'in']
+
+// Blackboard Key 白名单（与游戏服务端 internal/core/blackboard/keys.go 对齐）
+const bbKeys = [
+  { value: 'threat_level', label: '威胁等级 (threat_level)' },
+  { value: 'threat_source', label: '威胁来源 (threat_source)' },
+  { value: 'threat_expire_at', label: '威胁过期时间 (threat_expire_at)' },
+  { value: 'last_event_type', label: '最近事件类型 (last_event_type)' },
+  { value: 'current_time', label: '当前时间 (current_time)' },
+  { value: 'fsm_state', label: 'FSM 状态 (fsm_state)' },
+  { value: 'npc_type', label: 'NPC 类型 (npc_type)' },
+  { value: 'npc_pos_x', label: 'NPC X 坐标 (npc_pos_x)' },
+  { value: 'npc_pos_z', label: 'NPC Z 坐标 (npc_pos_z)' },
+  { value: 'current_action', label: '当前动作 (current_action)' },
+  { value: 'alert_start_tick', label: '警戒开始 Tick (alert_start_tick)' },
+  { value: 'exit_cleanup_done', label: '退出清理完成 (exit_cleanup_done)' },
+]
+
 const condType = ref('leaf')
 const leaf = ref({ key: '', op: '==', value: '', ref_key: '' })
 const children = ref([])

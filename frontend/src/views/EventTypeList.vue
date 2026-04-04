@@ -22,13 +22,18 @@
       <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
           <el-button size="small" @click="$router.push(`/event-types/${row.name}`)">编辑</el-button>
-          <el-popconfirm title="确认删除？" @confirm="handleDelete(row.name)">
+          <el-popconfirm :title="`确认删除事件「${row.name}」？删除后不可恢复。`" @confirm="handleDelete(row.name)">
             <template #reference>
               <el-button size="small" type="danger">删除</el-button>
             </template>
           </el-popconfirm>
         </template>
       </el-table-column>
+      <template #empty>
+        <el-empty description="暂无事件类型">
+          <el-button type="primary" @click="$router.push('/event-types/new')">创建第一个事件</el-button>
+        </el-empty>
+      </template>
     </el-table>
   </div>
 </template>

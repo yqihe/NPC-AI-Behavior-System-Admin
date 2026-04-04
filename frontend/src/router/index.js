@@ -5,7 +5,8 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/event-types',
+      name: 'Dashboard',
+      component: () => import('@/views/Dashboard.vue'),
     },
     {
       path: '/event-types',
@@ -16,16 +17,6 @@ const router = createRouter({
       path: '/event-types/:name',
       name: 'EventTypeForm',
       component: () => import('@/views/EventTypeForm.vue'),
-    },
-    {
-      path: '/npc-types',
-      name: 'NpcTypeList',
-      component: () => import('@/views/NpcTypeList.vue'),
-    },
-    {
-      path: '/npc-types/:name',
-      name: 'NpcTypeForm',
-      component: () => import('@/views/NpcTypeForm.vue'),
     },
     {
       path: '/fsm-configs',
@@ -43,9 +34,19 @@ const router = createRouter({
       component: () => import('@/views/BtTreeList.vue'),
     },
     {
-      path: '/bt-trees/:name',
+      path: '/bt-trees/:name(.*)',
       name: 'BtTreeForm',
       component: () => import('@/views/BtTreeForm.vue'),
+    },
+    {
+      path: '/npc-types',
+      name: 'NpcTypeList',
+      component: () => import('@/views/NpcTypeList.vue'),
+    },
+    {
+      path: '/npc-types/:name',
+      name: 'NpcTypeForm',
+      component: () => import('@/views/NpcTypeForm.vue'),
     },
   ],
 })
