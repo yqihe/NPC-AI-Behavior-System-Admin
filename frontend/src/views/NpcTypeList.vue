@@ -6,17 +6,17 @@
     </div>
 
     <el-table :data="items" v-loading="loading" stripe>
-      <el-table-column prop="name" label="名称" width="150" />
-      <el-table-column label="状态机" width="150">
+      <el-table-column prop="name" label="名称" min-width="150" />
+      <el-table-column label="状态机" min-width="150">
         <template #default="{ row }">{{ row.config?.fsm_ref }}</template>
       </el-table-column>
-      <el-table-column label="行为树数" width="100">
+      <el-table-column label="行为树数" min-width="100">
         <template #default="{ row }">{{ Object.keys(row.config?.bt_refs || {}).length }}</template>
       </el-table-column>
-      <el-table-column label="视觉范围" width="100">
+      <el-table-column label="视觉范围" min-width="100">
         <template #default="{ row }">{{ row.config?.perception?.visual_range }}</template>
       </el-table-column>
-      <el-table-column label="听觉范围" width="100">
+      <el-table-column label="听觉范围" min-width="100">
         <template #default="{ row }">{{ row.config?.perception?.auditory_range }}</template>
       </el-table-column>
       <el-table-column label="操作" width="180" fixed="right">

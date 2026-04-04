@@ -6,17 +6,17 @@
     </div>
 
     <el-table :data="items" v-loading="loading" stripe>
-      <el-table-column prop="name" label="名称" width="150" />
-      <el-table-column label="威胁等级" width="100">
+      <el-table-column prop="name" label="名称" min-width="150" />
+      <el-table-column label="威胁等级" min-width="100">
         <template #default="{ row }">{{ row.config?.default_severity }}</template>
       </el-table-column>
-      <el-table-column label="持续时间(s)" width="120">
+      <el-table-column label="持续时间(s)" min-width="120">
         <template #default="{ row }">{{ row.config?.default_ttl }}</template>
       </el-table-column>
-      <el-table-column label="传播方式" width="100">
+      <el-table-column label="传播方式" min-width="100">
         <template #default="{ row }">{{ modeLabel(row.config?.perception_mode) }}</template>
       </el-table-column>
-      <el-table-column label="传播范围(m)" width="120">
+      <el-table-column label="传播范围(m)" min-width="120">
         <template #default="{ row }">{{ row.config?.range }}</template>
       </el-table-column>
       <el-table-column label="操作" width="180" fixed="right">

@@ -6,14 +6,14 @@
     </div>
 
     <el-table :data="items" v-loading="loading" stripe>
-      <el-table-column prop="name" label="名称" width="150" />
-      <el-table-column label="状态数" width="100">
+      <el-table-column prop="name" label="名称" min-width="150" />
+      <el-table-column label="状态数" min-width="100">
         <template #default="{ row }">{{ (row.config?.states || []).length }}</template>
       </el-table-column>
-      <el-table-column label="转换数" width="100">
+      <el-table-column label="转换数" min-width="100">
         <template #default="{ row }">{{ (row.config?.transitions || []).length }}</template>
       </el-table-column>
-      <el-table-column label="初始状态" width="120">
+      <el-table-column label="初始状态" min-width="120">
         <template #default="{ row }">{{ row.config?.initial_state }}</template>
       </el-table-column>
       <el-table-column label="操作" width="180" fixed="right">
