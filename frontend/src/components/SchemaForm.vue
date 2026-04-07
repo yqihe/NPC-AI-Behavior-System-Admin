@@ -1,67 +1,199 @@
 <template>
   <div class="schema-form">
-    <!-- 有 schema 时用 VueForm 渲染 -->
-    <vue-form
-      v-if="hasSchema"
-      v-model="localData"
-      :schema="processedSchema"
-      :ui-schema="dynamicUiSchema"
-      :form-footer="formFooter"
-      :form-props="formProps"
-      @submit="handleSubmit"
-    />
-
     <!-- schema 加载中 -->
-    <div v-else-if="schemaLoading" style="padding: 20px; text-align: center">
-      <el-skeleton :rows="4" animated />
-    </div>
+    <el-skeleton v-if="schemaLoading" :rows="4" animated />
 
-    <!-- 无 schema 时提示 -->
-    <div v-else class="json-editor-fallback">
-      <el-alert
-        type="warning"
-        :closable="false"
-        show-icon
-        title="该配置类型尚未定义表单模板"
-        description="请联系开发人员导入对应的 Schema 定义后再进行配置"
-        style="margin-bottom: 16px"
-      />
-    </div>
+    <!-- 有 schema 时渲染表单 -->
+    <el-form
+      v-else-if="hasSchema"
+      :model="localData"
+      label-position="top"
+    >
+      <template v-for="field in visibleFields" :key="field.name">
+        <!-- 字符串 + 枚举 → 下拉选择 -->
+        <el-form-item
+          v-if="field.type === 'string' && field.enum"
+          :label="field.title"
+          :required="field.required"
+        >
+          <el-select
+            :model-value="localData[field.name]"
+            :placeholder="`请选择${field.title}`"
+            style="width: 100%"
+            @change="updateField(field.name, $event)"
+          >
+            <el-option v-for="opt in field.enum" :key="opt" :label="opt" :value="opt" />
+          </el-select>
+          <div v-if="field.description" class="field-desc">{{ field.description }}</div>
+        </el-form-item>
+
+        <!-- 字符串 → 文本输入 -->
+        <el-form-item
+          v-else-if="field.type === 'string'"
+          :label="field.title"
+          :required="field.required"
+        >
+          <el-input
+            :model-value="localData[field.name] || ''"
+            :placeholder="`请输入${field.title}`"
+            @input="updateField(field.name, $event)"
+          />
+          <div v-if="field.description" class="field-desc">{{ field.description }}</div>
+        </el-form-item>
+
+        <!-- 数字（有 min/max）→ 滑块 -->
+        <el-form-item
+          v-else-if="field.type === 'number' && field.minimum !== undefined && field.maximum !== undefined"
+          :label="field.title"
+          :required="field.required"
+        >
+          <el-slider
+            :model-value="localData[field.name] ?? field.default ?? field.minimum"
+            :min="field.minimum"
+            :max="field.maximum"
+            :step="field.maximum <= 1 ? 0.1 : 1"
+            show-input
+            @input="updateField(field.name, $event)"
+          />
+          <div v-if="field.description" class="field-desc">{{ field.description }}</div>
+        </el-form-item>
+
+        <!-- 数字/整数 → 数字输入 -->
+        <el-form-item
+          v-else-if="field.type === 'number' || field.type === 'integer'"
+          :label="field.title"
+          :required="field.required"
+        >
+          <el-input-number
+            :model-value="localData[field.name] ?? field.default ?? 0"
+            :min="field.minimum"
+            :max="field.maximum"
+            :step="field.type === 'integer' ? 1 : 0.1"
+            :precision="field.type === 'integer' ? 0 : 1"
+            style="width: 200px"
+            @change="updateField(field.name, $event)"
+          />
+          <div v-if="field.description" class="field-desc">{{ field.description }}</div>
+        </el-form-item>
+
+        <!-- 数组（字符串枚举项）→ 多选 -->
+        <el-form-item
+          v-else-if="field.type === 'array' && field.items?.enum"
+          :label="field.title"
+          :required="field.required"
+        >
+          <el-checkbox-group
+            :model-value="localData[field.name] || []"
+            @change="updateField(field.name, $event)"
+          >
+            <el-checkbox v-for="opt in field.items.enum" :key="opt" :label="opt" :value="opt" />
+          </el-checkbox-group>
+          <div v-if="field.description" class="field-desc">{{ field.description }}</div>
+        </el-form-item>
+
+        <!-- 数组（字符串项）→ 标签输入 -->
+        <el-form-item
+          v-else-if="field.type === 'array' && field.items?.type === 'string'"
+          :label="field.title"
+          :required="field.required"
+        >
+          <div class="tag-input">
+            <el-tag
+              v-for="(item, idx) in (localData[field.name] || [])"
+              :key="idx"
+              closable
+              style="margin: 2px"
+              @close="removeArrayItem(field.name, idx)"
+            >{{ item }}</el-tag>
+            <el-input
+              v-model="tagInputs[field.name]"
+              size="small"
+              placeholder="输入后回车添加"
+              style="width: 140px"
+              @keyup.enter="addArrayItem(field.name)"
+            />
+          </div>
+          <div v-if="field.description" class="field-desc">{{ field.description }}</div>
+        </el-form-item>
+
+        <!-- 对象 → 嵌套字段（一层）-->
+        <el-form-item
+          v-else-if="field.type === 'object' && field.properties"
+          :label="field.title"
+          :required="field.required"
+        >
+          <el-card shadow="never" style="width: 100%">
+            <template v-for="(subProp, subKey) in field.properties" :key="subKey">
+              <el-form-item
+                :label="subProp.title || subKey"
+                style="margin-bottom: 12px"
+              >
+                <el-input-number
+                  v-if="subProp.type === 'number' || subProp.type === 'integer'"
+                  :model-value="(localData[field.name] || {})[subKey] ?? subProp.default ?? 0"
+                  :min="subProp.minimum"
+                  :max="subProp.maximum"
+                  :step="subProp.type === 'integer' ? 1 : 0.1"
+                  style="width: 200px"
+                  @change="updateNestedField(field.name, subKey, $event)"
+                />
+                <el-input
+                  v-else
+                  :model-value="(localData[field.name] || {})[subKey] || ''"
+                  :placeholder="subProp.description || ''"
+                  @input="updateNestedField(field.name, subKey, $event)"
+                />
+              </el-form-item>
+            </template>
+          </el-card>
+          <div v-if="field.description" class="field-desc">{{ field.description }}</div>
+        </el-form-item>
+
+        <!-- 其他类型 → 文本输入 fallback -->
+        <el-form-item v-else :label="field.title" :required="field.required">
+          <el-input
+            :model-value="localData[field.name] != null ? String(localData[field.name]) : ''"
+            :placeholder="field.description || ''"
+            @input="updateField(field.name, $event)"
+          />
+          <div v-if="field.description" class="field-desc">{{ field.description }}</div>
+        </el-form-item>
+      </template>
+
+      <!-- 保存按钮 -->
+      <el-form-item v-if="!readonly && showSubmit">
+        <el-button type="primary" @click="handleSubmit">保存</el-button>
+      </el-form-item>
+    </el-form>
+
+    <!-- 无 schema -->
+    <el-alert
+      v-else
+      type="warning"
+      :closable="false"
+      show-icon
+      title="该配置类型尚未定义表单模板"
+      description="请联系开发人员导入对应的 Schema 定义后再进行配置"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
-import VueForm from '@lljj/vue3-form-element'
+import { ref, reactive, computed, watch } from 'vue'
 
 const props = defineProps({
-  modelValue: {
-    type: Object,
-    default: () => ({}),
-  },
-  schema: {
-    type: Object,
-    default: null,
-  },
-  readonly: {
-    type: Boolean,
-    default: false,
-  },
-  schemaLoading: {
-    type: Boolean,
-    default: false,
-  },
+  modelValue: { type: Object, default: () => ({}) },
+  schema: { type: Object, default: null },
+  readonly: { type: Boolean, default: false },
+  schemaLoading: { type: Boolean, default: false },
+  showSubmit: { type: Boolean, default: true },
 })
 
 const emit = defineEmits(['update:modelValue', 'submit'])
 
-// ========== Schema 模式 ==========
+const hasSchema = computed(() => props.schema && props.schema.type === 'object' && props.schema.properties)
 
-const hasSchema = computed(() => {
-  return props.schema && props.schema.type === 'object'
-})
-
-// 本地表单数据（双向绑定，JSON 比较防止循环触发）
+// 本地数据
 const localData = ref({ ...props.modelValue })
 
 watch(() => props.modelValue, (val) => {
@@ -70,43 +202,20 @@ watch(() => props.modelValue, (val) => {
   }
 }, { deep: true })
 
-watch(localData, (val) => {
-  if (JSON.stringify(val) !== JSON.stringify(props.modelValue)) {
-    emit('update:modelValue', { ...val })
-  }
-}, { deep: true })
+// ========== 条件字段 ==========
 
-// ========== 条件字段解析 ==========
-
-/**
- * 从 schema.allOf 中提取 if/then 条件规则。
- * 格式：[{ triggerField, triggerValue, showFields: [field1, field2] }]
- *
- * 示例输入（movement schema）：
- *   allOf: [
- *     { if: { properties: { move_type: { const: "wander" } } }, then: { required: ["wander_radius"] } }
- *   ]
- * 输出：[{ triggerField: "move_type", triggerValue: "wander", showFields: ["wander_radius"] }]
- */
 function extractConditionalRules(schema) {
   if (!schema || !schema.allOf) return []
-
   const rules = []
   for (const entry of schema.allOf) {
     if (!entry.if || !entry.then) continue
-
     const ifProps = entry.if.properties
     if (!ifProps) continue
-
     for (const [field, condition] of Object.entries(ifProps)) {
       if (condition.const !== undefined) {
         const showFields = entry.then.required || []
         if (showFields.length > 0) {
-          rules.push({
-            triggerField: field,
-            triggerValue: condition.const,
-            showFields,
-          })
+          rules.push({ triggerField: field, triggerValue: condition.const, showFields })
         }
       }
     }
@@ -114,98 +223,99 @@ function extractConditionalRules(schema) {
   return rules
 }
 
-/**
- * 收集所有条件字段名（这些字段只在条件满足时显示）。
- */
 function collectConditionalFields(rules) {
   const fields = new Set()
   for (const rule of rules) {
-    for (const f of rule.showFields) {
-      fields.add(f)
-    }
+    for (const f of rule.showFields) fields.add(f)
   }
   return fields
 }
 
-// 条件规则（从原始 schema 提取）
 const conditionalRules = computed(() => extractConditionalRules(props.schema))
-const conditionalFields = computed(() => collectConditionalFields(conditionalRules.value))
+const allConditionalFields = computed(() => collectConditionalFields(conditionalRules.value))
 
-// 处理 schema：移除 allOf（VueForm 不支持），保留所有字段为可选
-const processedSchema = computed(() => {
-  if (!props.schema) return {}
-
-  const schema = JSON.parse(JSON.stringify(props.schema))
-
-  // 移除 $schema 字段（VueForm 不需要）
-  delete schema.$schema
-
-  // 移除 allOf（条件字段用 uiSchema 控制显隐）
-  if (schema.allOf) {
-    delete schema.allOf
-  }
-
-  // 条件字段从 required 中移除（由条件逻辑控制）
-  if (schema.required && conditionalFields.value.size > 0) {
-    schema.required = schema.required.filter(f => !conditionalFields.value.has(f))
-  }
-
-  return schema
-})
-
-// 动态 uiSchema：根据当前表单数据控制条件字段的显隐
-const dynamicUiSchema = computed(() => {
-  const ui = {}
-  const rules = conditionalRules.value
-
-  if (rules.length === 0) return ui
-
-  for (const field of conditionalFields.value) {
-    // 默认隐藏所有条件字段
-    let shouldShow = false
-
-    for (const rule of rules) {
-      if (rule.showFields.includes(field)) {
-        // 检查触发条件是否满足
-        if (localData.value[rule.triggerField] === rule.triggerValue) {
-          shouldShow = true
-          break
-        }
-      }
-    }
-
-    if (!shouldShow) {
-      ui[field] = { 'ui:hidden': true }
+function isFieldVisible(fieldName) {
+  if (!allConditionalFields.value.has(fieldName)) return true
+  for (const rule of conditionalRules.value) {
+    if (rule.showFields.includes(fieldName) && localData.value[rule.triggerField] === rule.triggerValue) {
+      return true
     }
   }
+  return false
+}
 
-  return ui
+// ========== 字段列表 ==========
+
+const visibleFields = computed(() => {
+  if (!props.schema?.properties) return []
+  const required = props.schema.required || []
+
+  return Object.entries(props.schema.properties)
+    .filter(([name]) => isFieldVisible(name))
+    .map(([name, prop]) => ({
+      name,
+      title: prop.title || name,
+      description: prop.description || '',
+      type: prop.type || 'string',
+      required: required.includes(name),
+      enum: prop.enum || null,
+      minimum: prop.minimum,
+      maximum: prop.maximum,
+      default: prop.default,
+      items: prop.items || null,
+      properties: prop.properties || null,
+    }))
 })
 
-// VueForm 配置
-const formFooter = computed(() => ({
-  show: !props.readonly,
-  okBtn: '保存',
-  cancelBtn: '',
-}))
+// ========== 数据更新 ==========
 
-const formProps = {
-  labelPosition: 'top',
-  labelWidth: 'auto',
+function updateField(name, value) {
+  localData.value = { ...localData.value, [name]: value }
+  emit('update:modelValue', { ...localData.value })
 }
 
-function handleSubmit(data) {
-  emit('submit', data)
+function updateNestedField(parentName, subKey, value) {
+  const parent = { ...(localData.value[parentName] || {}) }
+  parent[subKey] = value
+  updateField(parentName, parent)
 }
 
+// 标签输入辅助
+const tagInputs = reactive({})
+
+function addArrayItem(fieldName) {
+  const val = (tagInputs[fieldName] || '').trim()
+  if (!val) return
+  const arr = [...(localData.value[fieldName] || []), val]
+  updateField(fieldName, arr)
+  tagInputs[fieldName] = ''
+}
+
+function removeArrayItem(fieldName, index) {
+  const arr = [...(localData.value[fieldName] || [])]
+  arr.splice(index, 1)
+  updateField(fieldName, arr)
+}
+
+function handleSubmit() {
+  emit('submit', { ...localData.value })
+}
 </script>
 
 <style scoped>
 .schema-form {
   max-width: 800px;
 }
-.json-editor-fallback :deep(.el-textarea__inner) {
-  font-family: 'Courier New', monospace;
-  font-size: 13px;
+.field-desc {
+  color: #909399;
+  font-size: 12px;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+.tag-input {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
 }
 </style>
