@@ -161,7 +161,7 @@
       </template>
 
       <!-- 保存按钮 -->
-      <el-form-item v-if="!readonly && showSubmit">
+      <el-form-item v-if="!readonly && showSubmit" style="margin-top: 24px">
         <el-button type="primary" @click="handleSubmit">保存</el-button>
       </el-form-item>
     </el-form>
