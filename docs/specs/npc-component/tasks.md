@@ -1,6 +1,8 @@
 # 需求 2：任务拆解
 
-## T1: ComponentPanel 折叠面板组件 (R4, R5, R12)
+> **状态：全部完成** — 2026-04-07
+
+## [x] T1: ComponentPanel 折叠面板组件 (R4, R5, R12)
 
 **新增文件：**
 - `frontend/src/components/ComponentPanel.vue`
@@ -15,7 +17,7 @@
 
 ---
 
-## T2: NpcTemplateForm — 预设选择 + 组件勾选 (R1, R2, R3)
+## [x] T2: NpcTemplateForm — 预设选择 + 组件勾选 (R1, R2, R3)
 
 **新增文件：**
 - `frontend/src/views/NpcTemplateForm.vue`
@@ -33,7 +35,7 @@
 
 ---
 
-## T3: NpcTemplateForm — 组件面板区 + 保存逻辑 (R4, R5, R6, R7)
+## [x] T3: NpcTemplateForm — 组件面板区 + 保存逻辑 (R4, R5, R6, R7)
 
 **修改文件：**
 - `frontend/src/views/NpcTemplateForm.vue` — 添加组件面板区 + 保存
@@ -50,7 +52,7 @@
 
 ---
 
-## T4: NpcTemplateList 专用列表页 (R8, R9)
+## [x] T4: NpcTemplateList 专用列表页 (R8, R9)
 
 **新增文件：**
 - `frontend/src/views/NpcTemplateList.vue`
@@ -66,7 +68,7 @@
 
 ---
 
-## T5: 路由更新 + 构建验证 (R10, R11)
+## [x] T5: 路由更新 + 构建验证 (R10, R11)
 
 **修改文件：**
 - `frontend/src/router/index.js` — NPC 模板路由指向专用页面
@@ -85,7 +87,7 @@
 
 ---
 
-## T6: 文档更新 (R10)
+## [x] T6: 文档更新 (R10)
 
 **修改文件：**
 - `docs/specs/v3-roadmap.md` — 需求 2 状态更新
