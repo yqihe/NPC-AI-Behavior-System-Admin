@@ -67,15 +67,19 @@ const hasSchema = computed(() => {
   return props.schema && props.schema.type === 'object'
 })
 
-// 本地表单数据（双向绑定）
+// 本地表单数据（双向绑定，JSON 比较防止循环触发）
 const localData = ref({ ...props.modelValue })
 
 watch(() => props.modelValue, (val) => {
-  localData.value = { ...val }
+  if (JSON.stringify(val) !== JSON.stringify(localData.value)) {
+    localData.value = { ...val }
+  }
 }, { deep: true })
 
 watch(localData, (val) => {
-  emit('update:modelValue', { ...val })
+  if (JSON.stringify(val) !== JSON.stringify(props.modelValue)) {
+    emit('update:modelValue', { ...val })
+  }
 }, { deep: true })
 
 // ========== 条件字段解析 ==========

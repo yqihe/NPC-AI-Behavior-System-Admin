@@ -47,11 +47,15 @@ const emit = defineEmits(['update:modelValue'])
 const localData = ref({ ...props.modelValue })
 
 watch(() => props.modelValue, (val) => {
-  localData.value = { ...val }
+  if (JSON.stringify(val) !== JSON.stringify(localData.value)) {
+    localData.value = { ...val }
+  }
 }, { deep: true })
 
 watch(localData, (val) => {
-  emit('update:modelValue', { ...val })
+  if (JSON.stringify(val) !== JSON.stringify(props.modelValue)) {
+    emit('update:modelValue', { ...val })
+  }
 }, { deep: true })
 </script>
 

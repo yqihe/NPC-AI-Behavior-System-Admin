@@ -94,7 +94,9 @@ const emit = defineEmits(['update:modelValue', 'remove'])
 const node = ref(JSON.parse(JSON.stringify(props.modelValue)))
 
 watch(() => props.modelValue, (val) => {
-  node.value = JSON.parse(JSON.stringify(val))
+  if (JSON.stringify(val) !== JSON.stringify(node.value)) {
+    node.value = JSON.parse(JSON.stringify(val))
+  }
 }, { deep: true })
 
 function emitUpdate() {

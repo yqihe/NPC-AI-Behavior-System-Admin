@@ -19,6 +19,7 @@
 - **watch 深层对象**：默认浅监听，需 `{ deep: true }` 或 watch 具体字段
 - **computed 无副作用**：不发请求、不修改其他响应式数据
 - **v-for 必须有 key**：key 必须唯一稳定，不能用 index
+- **双向 deep watcher 死循环**：`watch(prop, set local)` + `watch(local, emit)` 两个 deep watcher 互相触发无限循环（spread 每次创建新对象，deep watcher 视为变化）。必须加 `JSON.stringify` 比较防止循环
 - **异步组件状态**：API 回来时组件可能已卸载，赋值前检查
 
 ## Element Plus 组件
