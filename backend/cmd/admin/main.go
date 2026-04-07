@@ -76,6 +76,8 @@ func main() {
 	}{
 		{"/api/v1/component-schemas", "component_schemas"},
 		{"/api/v1/npc-presets", "npc_presets"},
+		{"/api/v1/node-type-schemas", "node_type_schemas"},
+		{"/api/v1/condition-type-schemas", "condition_type_schemas"},
 	}
 	readonlyHandlers := make([]*handler.ReadOnlyHandler, 0, len(readonlyConfigs))
 	for _, rc := range readonlyConfigs {

@@ -26,6 +26,7 @@ var Collections = []string{
 	"regions",
 	// ADMIN 元数据（只读，由种子脚本导入）
 	"component_schemas", "npc_presets",
+	"node_type_schemas", "condition_type_schemas",
 }
 
 // MongoStore 实现 Store 接口，操作 MongoDB。
