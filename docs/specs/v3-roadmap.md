@@ -23,7 +23,7 @@
 | 1 | Schema 驱动动态表单 | `docs/specs/schema-driven-form/` | **已完成** | 需求 0 |
 | 2 | NPC 模板组件化 | `docs/specs/npc-component/` | **已完成** | 需求 0, 1 |
 | 3 | 区域管理 | `docs/specs/region-management/` | **已完成** | 需求 0 |
-| 4 | 关键字搜索 | 待创建 | 未开始 | 需求 0 |
+| 4 | 关键字搜索 | `docs/specs/keyword-search/` | **已完成** | 需求 0 |
 | 5 | 侧边栏重构 | 待创建 | 未开始 | 需求 0（骨架在 0 中完成） |
 | 6 | FSM/BT 编辑器 Schema 化 | 待创建 | 未开始 | 需求 0, 1 |
 

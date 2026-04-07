@@ -2,14 +2,22 @@
   <div class="npc-template-list">
     <div class="list-header">
       <h2>NPC 模板管理</h2>
-      <el-button type="primary" @click="$router.push('/npc-templates/new')">
-        新建
-      </el-button>
+      <div class="list-actions">
+        <el-input
+          v-model="searchKeyword"
+          placeholder="搜索名称、预设或组件"
+          clearable
+          style="width: 240px; margin-right: 12px"
+        />
+        <el-button type="primary" @click="$router.push('/npc-templates/new')">
+          新建
+        </el-button>
+      </div>
     </div>
 
     <el-table
       v-loading="loading"
-      :data="items"
+      :data="filteredItems"
       stripe
       style="width: 100%"
     >
@@ -69,12 +77,24 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { npcTemplateApi } from '@/api/generic'
 
 const loading = ref(false)
 const items = ref([])
+const searchKeyword = ref('')
+
+const filteredItems = computed(() => {
+  const kw = searchKeyword.value.trim().toLowerCase()
+  if (!kw) return items.value
+  return items.value.filter(item => {
+    const nameMatch = (item.name || '').toLowerCase().includes(kw)
+    const presetMatch = (item.config?.preset || '').toLowerCase().includes(kw)
+    const comps = getComponents(item).join(' ').toLowerCase()
+    return nameMatch || presetMatch || comps.includes(kw)
+  })
+})
 
 function getComponents(row) {
   return Object.keys(row.config?.components || {})
@@ -114,5 +134,9 @@ onMounted(loadList)
   margin: 0;
   color: #303133;
   font-size: 20px;
+}
+.list-actions {
+  display: flex;
+  align-items: center;
 }
 </style>
