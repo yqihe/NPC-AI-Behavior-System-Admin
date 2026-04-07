@@ -7,46 +7,52 @@ const router = createRouter({
       path: '/',
       name: 'Dashboard',
       component: () => import('@/views/Dashboard.vue'),
+      meta: { title: '首页' },
+    },
+    // 配置管理
+    {
+      path: '/npc-templates',
+      name: 'NpcTemplates',
+      component: () => import('@/views/PlaceholderList.vue'),
+      meta: { title: 'NPC 模板管理' },
     },
     {
       path: '/event-types',
-      name: 'EventTypeList',
-      component: () => import('@/views/EventTypeList.vue'),
-    },
-    {
-      path: '/event-types/:name(.*)',
-      name: 'EventTypeForm',
-      component: () => import('@/views/EventTypeForm.vue'),
+      name: 'EventTypes',
+      component: () => import('@/views/PlaceholderList.vue'),
+      meta: { title: '事件类型管理' },
     },
     {
       path: '/fsm-configs',
-      name: 'FsmConfigList',
-      component: () => import('@/views/FsmConfigList.vue'),
-    },
-    {
-      path: '/fsm-configs/:name(.*)',
-      name: 'FsmConfigForm',
-      component: () => import('@/views/FsmConfigForm.vue'),
+      name: 'FsmConfigs',
+      component: () => import('@/views/PlaceholderList.vue'),
+      meta: { title: '状态机管理' },
     },
     {
       path: '/bt-trees',
-      name: 'BtTreeList',
-      component: () => import('@/views/BtTreeList.vue'),
+      name: 'BtTrees',
+      component: () => import('@/views/PlaceholderList.vue'),
+      meta: { title: '行为树管理' },
+    },
+    // 世界管理
+    {
+      path: '/regions',
+      name: 'Regions',
+      component: () => import('@/views/PlaceholderList.vue'),
+      meta: { title: '区域管理' },
+    },
+    // 系统设置
+    {
+      path: '/schemas',
+      name: 'Schemas',
+      component: () => import('@/views/PlaceholderList.vue'),
+      meta: { title: 'Schema 管理' },
     },
     {
-      path: '/bt-trees/:name(.*)',
-      name: 'BtTreeForm',
-      component: () => import('@/views/BtTreeForm.vue'),
-    },
-    {
-      path: '/npc-types',
-      name: 'NpcTypeList',
-      component: () => import('@/views/NpcTypeList.vue'),
-    },
-    {
-      path: '/npc-types/:name(.*)',
-      name: 'NpcTypeForm',
-      component: () => import('@/views/NpcTypeForm.vue'),
+      path: '/exports',
+      name: 'Exports',
+      component: () => import('@/views/PlaceholderList.vue'),
+      meta: { title: '导出管理' },
     },
   ],
 })

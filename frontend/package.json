@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@lljj/vue3-form-element": "^1.19.0",
     "axios": "^1.14.0",
     "element-plus": "^2.13.6",
     "unplugin-auto-import": "^21.0.0",

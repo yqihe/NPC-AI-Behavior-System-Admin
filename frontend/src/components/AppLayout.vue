@@ -5,7 +5,7 @@
         style="padding: 20px; color: #fff; font-size: 16px; text-align: center; font-weight: bold; cursor: pointer"
         @click="$router.push('/')"
       >
-        NPC 配置管理
+        NPC AI 行为系统
       </div>
       <el-menu
         :default-active="activeMenu"
@@ -17,18 +17,34 @@
         <el-menu-item index="/">
           <span>首页</span>
         </el-menu-item>
-        <el-menu-item-group title="按创建顺序">
+
+        <el-menu-item-group title="配置管理">
+          <el-menu-item index="/npc-templates">
+            <span>NPC 模板</span>
+          </el-menu-item>
           <el-menu-item index="/event-types">
-            <span>1. 事件管理</span>
+            <span>事件类型</span>
           </el-menu-item>
           <el-menu-item index="/fsm-configs">
-            <span>2. 状态机管理</span>
+            <span>状态机</span>
           </el-menu-item>
           <el-menu-item index="/bt-trees">
-            <span>3. 行为树管理</span>
+            <span>行为树</span>
           </el-menu-item>
-          <el-menu-item index="/npc-types">
-            <span>4. NPC 管理</span>
+        </el-menu-item-group>
+
+        <el-menu-item-group title="世界管理">
+          <el-menu-item index="/regions">
+            <span>区域管理</span>
+          </el-menu-item>
+        </el-menu-item-group>
+
+        <el-menu-item-group title="系统设置">
+          <el-menu-item index="/schemas">
+            <span>Schema 管理</span>
+          </el-menu-item>
+          <el-menu-item index="/exports">
+            <span>导出管理</span>
           </el-menu-item>
         </el-menu-item-group>
       </el-menu>
@@ -46,7 +62,6 @@ import { useRoute } from 'vue-router'
 const route = useRoute()
 const activeMenu = computed(() => {
   if (route.path === '/') return '/'
-  // 从 /event-types/xxx 提取 /event-types
   const parts = route.path.split('/')
   return '/' + (parts[1] || '')
 })
