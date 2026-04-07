@@ -50,7 +50,7 @@
       </el-menu>
     </el-aside>
     <el-main style="padding: 20px; background: #f0f2f5">
-      <router-view />
+      <router-view :key="route.fullPath" />
     </el-main>
   </el-container>
 </template>

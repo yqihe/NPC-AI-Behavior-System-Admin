@@ -1,6 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import {
-  npcTemplateApi,
   eventTypeApi,
   fsmConfigApi,
   btTreeApi,
@@ -46,8 +45,25 @@ const router = createRouter({
       meta: { title: '首页' },
     },
 
-    // 配置管理
-    ...entityRoutes('npc-templates', 'NPC 模板', npcTemplateApi),
+    // 配置管理 — NPC 模板使用专用页面
+    {
+      path: '/npc-templates',
+      name: 'npc-templates-list',
+      component: () => import('@/views/NpcTemplateList.vue'),
+      meta: { title: 'NPC 模板管理' },
+    },
+    {
+      path: '/npc-templates/new',
+      name: 'npc-templates-new',
+      component: () => import('@/views/NpcTemplateForm.vue'),
+      meta: { title: 'NPC 模板' },
+    },
+    {
+      path: '/npc-templates/:name(.*)',
+      name: 'npc-templates-edit',
+      component: () => import('@/views/NpcTemplateForm.vue'),
+      meta: { title: 'NPC 模板' },
+    },
     ...entityRoutes('event-types', '事件类型', eventTypeApi),
     ...entityRoutes('fsm-configs', '状态机', fsmConfigApi),
     ...entityRoutes('bt-trees', '行为树', btTreeApi, { allowSlash: true }),
