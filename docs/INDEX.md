@@ -1,5 +1,12 @@
 # 文档索引
 
+## V3 规划
+| 文档 | 内容概括 | 何时查阅 |
+|------|----------|----------|
+| [V3_PLAN.md](V3_PLAN.md) | V2 经验总结 + V3 架构设计（中间件/分层/同步/缓存） | V3 开发前 |
+| [v3-pages.md](v3-pages.md) | V3 页面清单（9 个页面的第一级广度需求） | 确定每个页面深入功能时 |
+| [api-contract.md](api-contract.md) | ADMIN 与游戏服务端的导出 API 契约（5 个接口 + JSON 格式） | 开发导出接口 / 联调时 |
+
 ## standards/ — 通用标准（跨项目复用）
 | 文档 | 内容概括 | 何时查阅 |
 |------|----------|----------|
@@ -17,17 +24,10 @@
 |------|----------|----------|
 | [dev-rules.md](development/dev-rules.md) | 协作流程、日志格式、文档同步、Git 规则、CRUD 规则、Docker | 所有开发活动 |
 | [go-pitfalls.md](development/go-pitfalls.md) | Go 陷阱清单（JSON/BSON、HTTP Handler、MongoDB/Redis、错误处理） | 编写 Go 代码时 |
-| [frontend-pitfalls.md](development/frontend-pitfalls.md) | 前端陷阱清单（JS 基础、Vue 3 响应式、Element Plus、Axios、Vite） | 编写前端代码时 |
-
-## specs/ — 功能 Spec（需求 -> 设计 -> 任务）
-| 目录 | 状态 | 内容概括 |
-|------|------|----------|
-| [specs/overall-architecture/](specs/overall-architecture/) | 已完成 | 整体架构设计 |
-| [specs/config-export/](specs/config-export/) | 已完成 | 配置导出接口（供游戏服务端拉取） |
+| [frontend-pitfalls.md](development/frontend-pitfalls.md) | 前端陷阱清单（JS 基础、Vue 3 响应式、Element Plus、Axios、Router） | 编写前端代码时 |
 
 ## 游戏服务端参考文档
 | 文档 | 位置 | 何时查阅 |
 |------|------|----------|
-| 配置字段定义 | `../NPC-AI-Behavior-System-Server/docs/protocol.md` | 理解配置 JSON 结构时 |
-| BB Key 定义 | `../NPC-AI-Behavior-System-Server/internal/core/blackboard/keys.go` | 构建 Key 下拉列表时 |
-| BT 节点类型 | `../NPC-AI-Behavior-System-Server/internal/core/bt/registry.go` | 构建节点类型列表时 |
+| BB Key 定义 | `../NPC-AI-Behavior-System-Server/internal/core/blackboard/keys.go` | BB Key 同步时 |
+| BT 节点类型 | `../NPC-AI-Behavior-System-Server/internal/core/bt/registry.go` | 节点类型同步时 |
