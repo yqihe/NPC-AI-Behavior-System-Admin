@@ -54,6 +54,10 @@
 - **BB Key 下拉**：必须用 `el-select`，不能 `el-input`。白名单来源与服务端 `keys.go` 对齐
 - **stub_action result**：三个值 `success`/`failure`/`running`，不是两个
 
+## Vue Router 组件复用
+
+- **同组件多路由不刷新**：多个路由指向同一组件（如 GenericList）时，路由切换 Vue 复用实例，`onMounted` 不重新执行，setup 中赋值的常量（`route.meta`）也不更新。**解法**：在 `<router-view :key="route.fullPath" />` 加 key 强制重建；或在组件内 `watch(() => route.fullPath, reload)` 监听路由变化重新加载
+
 ---
 
 *踩到新坑时追加到对应分类下。*
