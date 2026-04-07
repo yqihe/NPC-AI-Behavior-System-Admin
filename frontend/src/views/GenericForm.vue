@@ -46,6 +46,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import SchemaForm from '@/components/SchemaForm.vue'
 import { createNameRules } from '@/utils/nameRules'
+import { componentSchemaApi } from '@/api/schema'
 
 const route = useRoute()
 const router = useRouter()
@@ -55,8 +56,10 @@ const entityPath = route.meta?.entityPath || ''
 const api = route.meta?.api
 const allowSlash = route.meta?.allowSlash || false
 
-// schema 对象（从路由 meta 获取，可选）
-const configSchema = route.meta?.configSchema || null
+// schema：优先静态传入，其次按 schemaName 异步加载
+const staticSchema = route.meta?.configSchema || null
+const schemaName = route.meta?.schemaName || null
+const configSchema = ref(staticSchema)
 
 // 编辑模式判断
 const routeName = route.params.name
@@ -77,8 +80,16 @@ const nameFieldRules = computed(() => ({
     : createNameRules({ listApi: api?.list, label: title, allowSlash }),
 }))
 
-// 编辑模式：加载已有数据
 onMounted(async () => {
+  // 按 schemaName 异步加载 schema（如果没有静态传入）
+  if (!configSchema.value && schemaName) {
+    try {
+      const res = await componentSchemaApi.get(schemaName)
+      configSchema.value = res.data.config?.schema || null
+    } catch { /* schema 加载失败则降级为 JSON 编辑器 */ }
+  }
+
+  // 编辑模式：加载已有数据
   if (isEdit.value && api) {
     try {
       const res = await api.get(routeName)

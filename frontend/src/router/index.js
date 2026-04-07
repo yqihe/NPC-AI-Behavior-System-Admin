@@ -11,7 +11,7 @@ import {
  */
 function entityRoutes(path, title, api, options = {}) {
   const entityPath = path // 如 'event-types'
-  const { allowSlash = false, configSchema = null } = options
+  const { allowSlash = false, configSchema = null, schemaName = null } = options
 
   return [
     {
@@ -24,13 +24,13 @@ function entityRoutes(path, title, api, options = {}) {
       path: `/${path}/new`,
       name: `${path}-new`,
       component: () => import('@/views/GenericForm.vue'),
-      meta: { title, api, entityPath, allowSlash, configSchema },
+      meta: { title, api, entityPath, allowSlash, configSchema, schemaName },
     },
     {
       path: `/${path}/:name(.*)`,
       name: `${path}-edit`,
       component: () => import('@/views/GenericForm.vue'),
-      meta: { title, api, entityPath, allowSlash, configSchema },
+      meta: { title, api, entityPath, allowSlash, configSchema, schemaName },
     },
   ]
 }
@@ -69,7 +69,7 @@ const router = createRouter({
     ...entityRoutes('bt-trees', '行为树', btTreeApi, { allowSlash: true }),
 
     // 世界管理
-    ...entityRoutes('regions', '区域', regionApi),
+    ...entityRoutes('regions', '区域', regionApi, { schemaName: '_region' }),
 
     // 系统设置
     {
