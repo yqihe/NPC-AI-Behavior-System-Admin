@@ -25,7 +25,7 @@
 | 3 | 区域管理 | `docs/specs/region-management/` | **已完成** | 需求 0 |
 | 4 | 关键字搜索 | `docs/specs/keyword-search/` | **已完成** | 需求 0 |
 | 5 | 侧边栏重构 | — | **已完成**（需求 0 中完成） | 需求 0 |
-| 6 | FSM/BT 编辑器 Schema 化 | 待创建 | 未开始 | 需求 0, 1 |
+| 6 | FSM/BT 编辑器 Schema 化 | `docs/specs/fsm-bt-schema/` | **已完成** | 需求 0, 1 |
 
 ## 依赖链
 

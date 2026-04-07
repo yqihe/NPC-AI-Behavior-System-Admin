@@ -65,8 +65,44 @@ const router = createRouter({
       meta: { title: 'NPC 模板' },
     },
     ...entityRoutes('event-types', '事件类型', eventTypeApi),
-    ...entityRoutes('fsm-configs', '状态机', fsmConfigApi),
-    ...entityRoutes('bt-trees', '行为树', btTreeApi, { allowSlash: true }),
+    // FSM — 专用编辑器
+    {
+      path: '/fsm-configs',
+      name: 'fsm-configs-list',
+      component: () => import('@/views/GenericList.vue'),
+      meta: { title: '状态机管理', api: fsmConfigApi, entityPath: 'fsm-configs' },
+    },
+    {
+      path: '/fsm-configs/new',
+      name: 'fsm-configs-new',
+      component: () => import('@/views/FsmConfigForm.vue'),
+      meta: { title: '状态机' },
+    },
+    {
+      path: '/fsm-configs/:name(.*)',
+      name: 'fsm-configs-edit',
+      component: () => import('@/views/FsmConfigForm.vue'),
+      meta: { title: '状态机' },
+    },
+    // BT — 专用编辑器
+    {
+      path: '/bt-trees',
+      name: 'bt-trees-list',
+      component: () => import('@/views/GenericList.vue'),
+      meta: { title: '行为树管理', api: btTreeApi, entityPath: 'bt-trees' },
+    },
+    {
+      path: '/bt-trees/new',
+      name: 'bt-trees-new',
+      component: () => import('@/views/BtTreeForm.vue'),
+      meta: { title: '行为树' },
+    },
+    {
+      path: '/bt-trees/:name(.*)',
+      name: 'bt-trees-edit',
+      component: () => import('@/views/BtTreeForm.vue'),
+      meta: { title: '行为树' },
+    },
 
     // 世界管理
     ...entityRoutes('regions', '区域', regionApi, { schemaName: '_region' }),
