@@ -1,6 +1,8 @@
 # 需求 1：任务拆解
 
-## T1: 后端新增 node_type_schemas / condition_type_schemas 集合 + 只读 API (R3, R4, R7)
+> **状态：全部完成** — 2026-04-07
+
+## [x] T1: 后端新增 node_type_schemas / condition_type_schemas 集合 + 只读 API (R3, R4, R7)
 
 **修改文件：**
 - `backend/internal/store/mongo.go` — Collections 新增 `node_type_schemas`、`condition_type_schemas`
@@ -10,7 +12,7 @@
 
 ---
 
-## T2: 种子脚本 — 框架 + 组件 schema 导入 (R1, R5)
+## [x] T2: 种子脚本 — 框架 + 组件 schema 导入 (R1, R5)
 
 **新增文件：**
 - `backend/cmd/seed/main.go` — 种子脚本入口
@@ -26,7 +28,7 @@
 
 ---
 
-## T3: 种子脚本 — 预设 + 节点类型 + 条件类型导入 (R2, R3, R4, R5)
+## [x] T3: 种子脚本 — 预设 + 节点类型 + 条件类型导入 (R2, R3, R4, R5)
 
 **修改文件：**
 - `backend/cmd/seed/main.go` — 新增 presets / node_types / condition_types 目录扫描
@@ -40,7 +42,7 @@
 
 ---
 
-## T4: 前端 SchemaForm 组件 — 基础渲染 (R13, R18)
+## [x] T4: 前端 SchemaForm 组件 — 基础渲染 (R13, R18)
 
 **新增文件：**
 - `frontend/src/components/SchemaForm.vue` — JSON Schema 表单包装组件
@@ -55,7 +57,7 @@
 
 ---
 
-## T5: 前端 SchemaForm 组件 — 条件字段处理 (R14)
+## [x] T5: 前端 SchemaForm 组件 — 条件字段处理 (R14)
 
 **修改文件：**
 - `frontend/src/components/SchemaForm.vue` — 新增条件字段解析和动态显隐逻辑
@@ -70,7 +72,7 @@
 
 ---
 
-## T6: 前端通用列表页 GenericList.vue (R8-R12, R17)
+## [x] T6: 前端通用列表页 GenericList.vue (R8-R12, R17)
 
 **新增文件：**
 - `frontend/src/views/GenericList.vue` — 通用 CRUD 列表页
@@ -87,7 +89,7 @@
 
 ---
 
-## T7: 前端通用表单页 GenericForm.vue (R8-R12, R19)
+## [x] T7: 前端通用表单页 GenericForm.vue (R8-R12, R19)
 
 **新增文件：**
 - `frontend/src/views/GenericForm.vue` — 通用 CRUD 表单页
@@ -104,7 +106,7 @@
 
 ---
 
-## T8: 路由重构 — 所有实体指向真实页面 (R8-R12, R16)
+## [x] T8: 路由重构 — 所有实体指向真实页面 (R8-R12, R16)
 
 **修改文件：**
 - `frontend/src/router/index.js` — 每个实体注册 list + new + edit 三条路由
@@ -123,7 +125,7 @@
 
 ---
 
-## T9: Schema 管理页 SchemaManager.vue (R15)
+## [x] T9: Schema 管理页 SchemaManager.vue (R15)
 
 **新增文件：**
 - `frontend/src/views/SchemaManager.vue` — 只读展示所有 schema
@@ -141,7 +143,7 @@
 
 ---
 
-## T10: 导出管理页 ExportManager.vue + 清理 (R16)
+## [x] T10: 导出管理页 ExportManager.vue + 清理 (R16)
 
 **新增文件：**
 - `frontend/src/views/ExportManager.vue` — 导出接口一览
@@ -159,7 +161,7 @@
 
 ---
 
-## T11: 更新文档 + Roadmap (R6, R7)
+## [x] T11: 更新文档 + Roadmap (R6, R7)
 
 **修改文件：**
 - `docs/specs/v3-roadmap.md` — 需求 1 状态更新为"已完成"
