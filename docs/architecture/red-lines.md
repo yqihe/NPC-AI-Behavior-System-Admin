@@ -12,12 +12,12 @@
 
 ## 禁止破坏游戏服务端数据格式
 
-- **禁止**修改 MongoDB collection 结构（`{name, config}` 格式由游戏服务端定义）
+- **禁止**修改游戏配置集合的 MongoDB 文档结构（`{name, config}` 格式由游戏服务端定义）。ADMIN 元数据集合（`component_schemas`、`npc_presets`）不受此限制
 - **禁止**在 config 字段中添加游戏服务端不认识的字段。运营平台私有数据用独立 collection
 - **禁止**校验用结构体字段类型与游戏服务端不一致（如 `default_severity` 必须 `float64` 不能 `int`）
 - **禁止**将装饰节点（`inverter`）归类为复合节点。装饰用 `child`（单对象），复合用 `children`（数组）
 - **禁止**放行游戏服务端不支持的枚举值（`op`、`policy`、`result`）。无效枚举在服务端静默降级，极难排查
-- **禁止**写入未注册的 Blackboard Key。未注册 key 会导致游戏服务端加载时 **panic**
+- **禁止**写入不属于当前 NPC 模板的 Blackboard Key。BB Key 白名单由组件 schema 的 `blackboard_keys` 字段定义，BT 编辑器只允许选择当前 NPC 模板已启用组件声明的 keys
 
 ## 禁止缓存与数据库不一致
 

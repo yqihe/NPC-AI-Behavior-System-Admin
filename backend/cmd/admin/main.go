@@ -43,23 +43,52 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 创建 service
-	eventTypeSvc := service.NewEventTypeService(mongoStore, redisCache)
-	npcTypeSvc := service.NewNpcTypeService(mongoStore, redisCache)
-	fsmConfigSvc := service.NewFsmConfigService(mongoStore, redisCache)
-	btTreeSvc := service.NewBtTreeService(mongoStore, redisCache)
+	// 实体注册表：定义所有可管理的实体类型
+	entities := []handler.EntityConfig{
+		{APIPrefix: "/api/v1/npc-templates", Collection: "npc_templates"},
+		{APIPrefix: "/api/v1/event-types", Collection: "event_types"},
+		{APIPrefix: "/api/v1/fsm-configs", Collection: "fsm_configs"},
+		{APIPrefix: "/api/v1/bt-trees", Collection: "bt_trees", AllowSlash: true},
+		{APIPrefix: "/api/v1/regions", Collection: "regions"},
+	}
 
-	// 创建 handler
-	eventTypeH := handler.NewEventTypeHandler(eventTypeSvc)
-	npcTypeH := handler.NewNpcTypeHandler(npcTypeSvc)
-	fsmConfigH := handler.NewFsmConfigHandler(fsmConfigSvc)
-	btTreeH := handler.NewBtTreeHandler(btTreeSvc)
+	// 需要导出给游戏服务端的集合
+	exportCollections := []handler.EntityConfig{
+		{Collection: "npc_templates"},
+		{Collection: "event_types"},
+		{Collection: "fsm_configs"},
+		{Collection: "bt_trees"},
+		{Collection: "regions"},
+	}
 
-	// 创建配置导出 handler（供游戏服务端拉取全量配置）
+	// 为每个实体创建 service + handler
+	handlers := make([]*handler.GenericHandler, 0, len(entities))
+	for _, ec := range entities {
+		svc := service.NewGenericService(mongoStore, redisCache, ec.Collection, nil)
+		h := handler.NewGenericHandler(svc, ec.APIPrefix, ec.AllowSlash)
+		handlers = append(handlers, h)
+	}
+
+	// 只读元数据 API（component-schemas / npc-presets）
+	readonlyConfigs := []struct {
+		apiPrefix  string
+		collection string
+	}{
+		{"/api/v1/component-schemas", "component_schemas"},
+		{"/api/v1/npc-presets", "npc_presets"},
+	}
+	readonlyHandlers := make([]*handler.ReadOnlyHandler, 0, len(readonlyConfigs))
+	for _, rc := range readonlyConfigs {
+		svc := service.NewReadOnlyService(mongoStore, rc.collection)
+		h := handler.NewReadOnlyHandler(svc, rc.apiPrefix)
+		readonlyHandlers = append(readonlyHandlers, h)
+	}
+
+	// 配置导出 handler
 	configExportH := handler.NewConfigExportHandler(mongoStore)
 
 	// 注册路由
-	router := handler.NewRouter(eventTypeH, npcTypeH, fsmConfigH, btTreeH, configExportH)
+	router := handler.NewRouter(handlers, readonlyHandlers, configExportH, exportCollections)
 
 	// 启动 HTTP server
 	server := &http.Server{

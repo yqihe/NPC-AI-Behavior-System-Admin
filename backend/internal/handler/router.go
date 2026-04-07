@@ -5,35 +5,41 @@ import (
 	"strings"
 )
 
+// EntityConfig 定义一个可管理的实体类型的路由配置。
+type EntityConfig struct {
+	APIPrefix  string // 如 "/api/v1/npc-templates"
+	Collection string // 如 "npc_templates"
+	AllowSlash bool   // name 是否允许 "/"（行为树需要）
+}
+
 // NewRouter 注册所有 API 路由并返回 http.Handler。
-// Go 1.21 的 http.ServeMux 不支持方法匹配，手动分发。
+// handlers 是通过 EntityConfig 实例化的通用 CRUD handler 列表。
 func NewRouter(
-	eventType *EventTypeHandler,
-	npcType *NpcTypeHandler,
-	fsmConfig *FsmConfigHandler,
-	btTree *BtTreeHandler,
+	handlers []*GenericHandler,
+	readonlyHandlers []*ReadOnlyHandler,
 	configExport *ConfigExportHandler,
+	exportCollections []EntityConfig,
 ) http.Handler {
 	mux := http.NewServeMux()
 
-	// 管理接口（前端 CRUD）
-	mux.HandleFunc("/api/v1/event-types", corsMiddleware(resourceHandler(eventType.List, eventType.Create)))
-	mux.HandleFunc("/api/v1/event-types/", corsMiddleware(resourceItemHandler(eventType.Get, eventType.Update, eventType.Delete)))
+	// 注册管理接口（前端 CRUD）
+	for _, h := range handlers {
+		prefix := h.apiPrefix
+		mux.HandleFunc(prefix, corsMiddleware(resourceHandler(h.List, h.Create)))
+		mux.HandleFunc(prefix+"/", corsMiddleware(resourceItemHandler(h.Get, h.Update, h.Delete)))
+	}
 
-	mux.HandleFunc("/api/v1/npc-types", corsMiddleware(resourceHandler(npcType.List, npcType.Create)))
-	mux.HandleFunc("/api/v1/npc-types/", corsMiddleware(resourceItemHandler(npcType.Get, npcType.Update, npcType.Delete)))
+	// 注册只读接口（ADMIN 元数据）
+	for _, h := range readonlyHandlers {
+		prefix := h.apiPrefix
+		mux.HandleFunc(prefix, corsMiddleware(readOnlyResourceHandler(h.List)))
+		mux.HandleFunc(prefix+"/", corsMiddleware(readOnlyResourceItemHandler(h.Get)))
+	}
 
-	mux.HandleFunc("/api/v1/fsm-configs", corsMiddleware(resourceHandler(fsmConfig.List, fsmConfig.Create)))
-	mux.HandleFunc("/api/v1/fsm-configs/", corsMiddleware(resourceItemHandler(fsmConfig.Get, fsmConfig.Update, fsmConfig.Delete)))
-
-	mux.HandleFunc("/api/v1/bt-trees", corsMiddleware(resourceHandler(btTree.List, btTree.Create)))
-	mux.HandleFunc("/api/v1/bt-trees/", corsMiddleware(resourceItemHandler(btTree.Get, btTree.Update, btTree.Delete)))
-
-	// 配置导出接口（供游戏服务端拉取全量配置）
-	mux.HandleFunc("/api/configs/event_types", corsMiddleware(configExport.ExportCollection("event_types")))
-	mux.HandleFunc("/api/configs/npc_types", corsMiddleware(configExport.ExportCollection("npc_types")))
-	mux.HandleFunc("/api/configs/fsm_configs", corsMiddleware(configExport.ExportCollection("fsm_configs")))
-	mux.HandleFunc("/api/configs/bt_trees", corsMiddleware(configExport.ExportCollection("bt_trees")))
+	// 注册配置导出接口（供游戏服务端拉取全量配置）
+	for _, ec := range exportCollections {
+		mux.HandleFunc("/api/configs/"+ec.Collection, corsMiddleware(configExport.ExportCollection(ec.Collection)))
+	}
 
 	return mux
 }
@@ -50,6 +56,34 @@ func resourceHandler(list, create http.HandlerFunc) http.HandlerFunc {
 			w.WriteHeader(http.StatusNoContent)
 		default:
 			writeError(w, http.StatusMethodNotAllowed, "不支持的请求方法")
+		}
+	}
+}
+
+// readOnlyResourceHandler 处理只读集合级别的请求（仅列表）。
+func readOnlyResourceHandler(list http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			list(w, r)
+		case http.MethodOptions:
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			writeError(w, http.StatusMethodNotAllowed, "该接口为只读，不支持写操作")
+		}
+	}
+}
+
+// readOnlyResourceItemHandler 处理只读单条资源的请求（仅详情）。
+func readOnlyResourceItemHandler(get http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			get(w, r)
+		case http.MethodOptions:
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			writeError(w, http.StatusMethodNotAllowed, "该接口为只读，不支持写操作")
 		}
 	}
 }

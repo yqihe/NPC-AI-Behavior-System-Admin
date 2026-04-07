@@ -1,7 +1,0 @@
-{
-    "name": "shout",
-    "default_severity": 30,
-    "default_ttl": 8.0,
-    "perception_mode": "auditory",
-    "range": 200.0
-}
