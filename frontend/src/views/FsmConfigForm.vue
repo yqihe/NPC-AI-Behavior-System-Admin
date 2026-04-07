@@ -5,6 +5,16 @@
       <el-button @click="goBack">返回列表</el-button>
     </div>
 
+    <el-alert
+      v-if="!isEdit"
+      type="info"
+      :closable="true"
+      show-icon
+      style="margin-bottom: 16px"
+      title="什么是状态机？"
+      description="状态机定义 NPC 可以处于哪些状态（如空闲、警觉、逃跑），以及在什么条件下从一个状态切换到另一个。操作步骤：① 先添加几个状态 → ② 选择初始状态 → ③ 添加转换规则（定义何时切换状态）→ ④ 保存。"
+    />
+
     <el-form
       ref="formRef"
       :model="formModel"

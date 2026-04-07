@@ -11,14 +11,14 @@ import {
  */
 function entityRoutes(path, title, api, options = {}) {
   const entityPath = path // 如 'event-types'
-  const { allowSlash = false, configSchema = null, schemaName = null } = options
+  const { allowSlash = false, configSchema = null, schemaName = null, hint = '' } = options
 
   return [
     {
       path: `/${path}`,
       name: `${path}-list`,
       component: () => import('@/views/GenericList.vue'),
-      meta: { title, api, entityPath },
+      meta: { title, api, entityPath, hint },
     },
     {
       path: `/${path}/new`,
@@ -64,13 +64,16 @@ const router = createRouter({
       component: () => import('@/views/NpcTemplateForm.vue'),
       meta: { title: 'NPC 模板' },
     },
-    ...entityRoutes('event-types', '事件类型', eventTypeApi, { schemaName: '_event_type' }),
+    ...entityRoutes('event-types', '事件类型管理', eventTypeApi, {
+      schemaName: '_event_type',
+      hint: '定义游戏世界中会发生的事件，比如爆炸、枪声。NPC 会根据事件类型做出不同反应。',
+    }),
     // FSM — 专用编辑器
     {
       path: '/fsm-configs',
       name: 'fsm-configs-list',
       component: () => import('@/views/GenericList.vue'),
-      meta: { title: '状态机管理', api: fsmConfigApi, entityPath: 'fsm-configs' },
+      meta: { title: '状态机管理', api: fsmConfigApi, entityPath: 'fsm-configs', hint: '状态机定义 NPC 的行为状态（如空闲、警觉、逃跑），以及什么情况下从一个状态切换到另一个。' },
     },
     {
       path: '/fsm-configs/new',
@@ -89,7 +92,7 @@ const router = createRouter({
       path: '/bt-trees',
       name: 'bt-trees-list',
       component: () => import('@/views/GenericList.vue'),
-      meta: { title: '行为树管理', api: btTreeApi, entityPath: 'bt-trees' },
+      meta: { title: '行为树管理', api: btTreeApi, entityPath: 'bt-trees', hint: '行为树定义 NPC 在某个状态下的具体行为逻辑，比如"检查威胁等级 → 如果大于 50 → 逃跑"。' },
     },
     {
       path: '/bt-trees/new',
@@ -105,7 +108,10 @@ const router = createRouter({
     },
 
     // 世界管理
-    ...entityRoutes('regions', '区域', regionApi, { schemaName: '_region' }),
+    ...entityRoutes('regions', '区域管理', regionApi, {
+      schemaName: '_region',
+      hint: '区域是游戏世界中的场景，每个区域有自己的天气、NPC 出生点等配置。',
+    }),
 
     // 系统设置
     {

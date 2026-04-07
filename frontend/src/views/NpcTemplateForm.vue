@@ -5,6 +5,16 @@
       <el-button @click="goBack">返回列表</el-button>
     </div>
 
+    <el-alert
+      v-if="!isEdit"
+      type="info"
+      :closable="true"
+      show-icon
+      style="margin-bottom: 16px"
+      title="如何创建 NPC？"
+      description="① 输入模板名称 → ② 选择预设类型（决定 NPC 的复杂程度）→ ③ 勾选需要的功能组件 → ④ 展开每个组件填写参数 → ⑤ 保存。标记为「必选」的组件不能取消。"
+    />
+
     <el-form
       ref="formRef"
       :model="formModel"

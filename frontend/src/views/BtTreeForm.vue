@@ -5,6 +5,16 @@
       <el-button @click="goBack">返回列表</el-button>
     </div>
 
+    <el-alert
+      v-if="!isEdit"
+      type="info"
+      :closable="true"
+      show-icon
+      style="margin-bottom: 16px"
+      title="什么是行为树？"
+      description="行为树定义 NPC 在某个状态下的决策逻辑。从上到下执行：先检查条件，再做出行为。名称建议用「NPC类型/状态名」的格式，如 wolf/idle。"
+    />
+
     <el-form
       ref="formRef"
       :model="formModel"

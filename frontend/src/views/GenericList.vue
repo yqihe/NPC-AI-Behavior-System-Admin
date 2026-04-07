@@ -2,6 +2,7 @@
   <div class="generic-list">
     <div class="list-header">
       <h2>{{ title }}</h2>
+      <p v-if="pageHint" class="page-hint">{{ pageHint }}</p>
       <div class="list-actions">
         <el-input
           v-model="searchKeyword"
@@ -66,6 +67,7 @@ const route = useRoute()
 const title = route.meta?.title || '配置管理'
 const entityPath = route.meta?.entityPath || ''
 const api = route.meta?.api
+const pageHint = route.meta?.hint || ''
 
 const loading = ref(false)
 const items = ref([])
@@ -129,6 +131,11 @@ onMounted(loadList)
   margin: 0;
   color: #303133;
   font-size: 20px;
+}
+.page-hint {
+  color: #909399;
+  font-size: 13px;
+  margin: 4px 0 0;
 }
 .list-actions {
   display: flex;

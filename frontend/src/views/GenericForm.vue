@@ -4,6 +4,15 @@
       <h2>{{ isEdit ? `编辑 ${title}` : `新建 ${title}` }}</h2>
       <el-button @click="goBack">返回列表</el-button>
     </div>
+    <el-alert
+      v-if="!isEdit"
+      type="info"
+      :closable="true"
+      show-icon
+      style="margin-bottom: 16px"
+      title="填写提示"
+      description="带 * 号的为必填项。填写完成后点击底部「保存」按钮。名称一旦创建不可修改。"
+    />
 
     <el-form
       ref="formRef"
