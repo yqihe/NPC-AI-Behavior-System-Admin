@@ -17,3 +17,19 @@ export const npcPresetApi = {
   list: () => request.get('/npc-presets'),
   get: (name) => request.get(`/npc-presets/${encodeURIComponent(name)}`),
 }
+
+/**
+ * BT 节点类型 Schema 只读 API。
+ */
+export const nodeTypeSchemaApi = {
+  list: () => request.get('/node-type-schemas'),
+  get: (name) => request.get(`/node-type-schemas/${encodeURIComponent(name)}`),
+}
+
+/**
+ * FSM 条件类型 Schema 只读 API。
+ */
+export const conditionTypeSchemaApi = {
+  list: () => request.get('/condition-type-schemas'),
+  get: (name) => request.get(`/condition-type-schemas/${encodeURIComponent(name)}`),
+}
