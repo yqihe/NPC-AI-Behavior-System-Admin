@@ -1,6 +1,8 @@
 # 需求 0：任务拆解
 
-## T1: 清除后端旧 validator (R16)
+> **状态：全部完成** — 2026-04-07
+
+## [x] T1: 清除后端旧 validator (R16)
 
 **删除文件：**
 - `backend/internal/validator/event_type.go`
@@ -16,7 +18,7 @@
 
 ---
 
-## T2: 清除后端旧 handler 和 service (R5, R16)
+## [x] T2: 清除后端旧 handler 和 service (R5, R16)
 
 **删除文件：**
 - `backend/internal/handler/event_type.go`
@@ -37,7 +39,7 @@
 
 ---
 
-## T3: 更新 MongoStore 集合列表 (R1)
+## [x] T3: 更新 MongoStore 集合列表 (R1)
 
 **修改文件：**
 - `backend/internal/store/mongo.go` — 更新 `Collections` 变量为 V3 集合列表
@@ -59,7 +61,7 @@ var Collections = []string{
 
 ---
 
-## T4: 引入 JSON Schema 校验库 + 实现 SchemaValidator (R6, R8)
+## [x] T4: 引入 JSON Schema 校验库 + 实现 SchemaValidator (R6, R8)
 
 **修改文件：**
 - `backend/go.mod` — 新增 `github.com/santhosh-tekuri/jsonschema/v6`
@@ -77,7 +79,7 @@ var Collections = []string{
 
 ---
 
-## T5: 实现通用 GenericHandler + GenericService + 重写路由注册 (R1, R7)
+## [x] T5: 实现通用 GenericHandler + GenericService + 重写路由注册 (R1, R7)
 
 **新增文件：**
 - `backend/internal/handler/generic.go` — GenericHandler（List/Get/Create/Update/Delete）
@@ -102,7 +104,7 @@ entities := []handler.EntityConfig{
 
 ---
 
-## T6: 实现只读 Handler + Service（component-schemas / npc-presets）(R3, R4)
+## [x] T6: 实现只读 Handler + Service（component-schemas / npc-presets）(R3, R4)
 
 **新增文件：**
 - `backend/internal/handler/readonly.go` — ReadOnlyHandler（List + Get）
@@ -124,7 +126,7 @@ GET /api/v1/npc-presets/{name}      → ReadOnlyHandler.Get
 
 ---
 
-## T7: 适配配置导出接口 (R9)
+## [x] T7: 适配配置导出接口 (R9)
 
 **修改文件：**
 - `backend/internal/handler/config_export.go` — 更新导出路径映射
@@ -147,7 +149,7 @@ GET /api/v1/npc-presets/{name}      → ReadOnlyHandler.Get
 
 ---
 
-## T8: 后端测试 (R2)
+## [x] T8: 后端测试 (R2)
 
 **修改文件：**
 - `backend/internal/store/store_test.go` — 适配新集合名（如有引用旧名）
@@ -159,7 +161,7 @@ GET /api/v1/npc-presets/{name}      → ReadOnlyHandler.Get
 
 ---
 
-## T9: 清除前端旧页面和组件 (R13)
+## [x] T9: 清除前端旧页面和组件 (R13)
 
 **删除文件：**
 - `frontend/src/views/EventTypeList.vue`
@@ -189,7 +191,7 @@ GET /api/v1/npc-presets/{name}      → ReadOnlyHandler.Get
 
 ---
 
-## T10: 新增前端通用 API 层 + Schema API (R15)
+## [x] T10: 新增前端通用 API 层 + Schema API (R15)
 
 **新增文件：**
 - `frontend/src/api/generic.js` — 通用 CRUD 工厂函数 + 预定义实体 API
@@ -217,7 +219,7 @@ export const regionApi = createApi('regions')
 
 ---
 
-## T11: 重写侧边栏 + 路由 + 占位页 (R10, R11, R12)
+## [x] T11: 重写侧边栏 + 路由 + 占位页 (R10, R11, R12)
 
 **修改文件：**
 - `frontend/src/components/AppLayout.vue` — 新侧边栏分组
@@ -246,7 +248,7 @@ export const regionApi = createApi('regions')
 
 ---
 
-## T12: 重写 Dashboard + 引入前端 Schema 渲染库 (R10, R14)
+## [x] T12: 重写 Dashboard + 引入前端 Schema 渲染库 (R10, R14)
 
 **修改文件：**
 - `frontend/src/views/Dashboard.vue` — 适配新实体列表（NPC 模板、事件、FSM、BT、区域），移除旧的创建引导
@@ -256,7 +258,7 @@ export const regionApi = createApi('regions')
 
 ---
 
-## T13: 更新红线文档 + Roadmap 状态 (R17)
+## [x] T13: 更新红线文档 + Roadmap 状态 (R17)
 
 **修改文件：**
 - `docs/architecture/red-lines.md` — 新增 ADMIN 元数据集合格式说明；更新 BB Key 条目
