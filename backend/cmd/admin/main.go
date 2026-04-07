@@ -69,11 +69,26 @@ func main() {
 		handlers = append(handlers, h)
 	}
 
+	// 只读元数据 API（component-schemas / npc-presets）
+	readonlyConfigs := []struct {
+		apiPrefix  string
+		collection string
+	}{
+		{"/api/v1/component-schemas", "component_schemas"},
+		{"/api/v1/npc-presets", "npc_presets"},
+	}
+	readonlyHandlers := make([]*handler.ReadOnlyHandler, 0, len(readonlyConfigs))
+	for _, rc := range readonlyConfigs {
+		svc := service.NewReadOnlyService(mongoStore, rc.collection)
+		h := handler.NewReadOnlyHandler(svc, rc.apiPrefix)
+		readonlyHandlers = append(readonlyHandlers, h)
+	}
+
 	// 配置导出 handler
 	configExportH := handler.NewConfigExportHandler(mongoStore)
 
 	// 注册路由
-	router := handler.NewRouter(handlers, configExportH, exportCollections)
+	router := handler.NewRouter(handlers, readonlyHandlers, configExportH, exportCollections)
 
 	// 启动 HTTP server
 	server := &http.Server{

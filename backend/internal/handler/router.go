@@ -16,6 +16,7 @@ type EntityConfig struct {
 // handlers 是通过 EntityConfig 实例化的通用 CRUD handler 列表。
 func NewRouter(
 	handlers []*GenericHandler,
+	readonlyHandlers []*ReadOnlyHandler,
 	configExport *ConfigExportHandler,
 	exportCollections []EntityConfig,
 ) http.Handler {
@@ -26,6 +27,13 @@ func NewRouter(
 		prefix := h.apiPrefix
 		mux.HandleFunc(prefix, corsMiddleware(resourceHandler(h.List, h.Create)))
 		mux.HandleFunc(prefix+"/", corsMiddleware(resourceItemHandler(h.Get, h.Update, h.Delete)))
+	}
+
+	// 注册只读接口（ADMIN 元数据）
+	for _, h := range readonlyHandlers {
+		prefix := h.apiPrefix
+		mux.HandleFunc(prefix, corsMiddleware(readOnlyResourceHandler(h.List)))
+		mux.HandleFunc(prefix+"/", corsMiddleware(readOnlyResourceItemHandler(h.Get)))
 	}
 
 	// 注册配置导出接口（供游戏服务端拉取全量配置）
@@ -48,6 +56,34 @@ func resourceHandler(list, create http.HandlerFunc) http.HandlerFunc {
 			w.WriteHeader(http.StatusNoContent)
 		default:
 			writeError(w, http.StatusMethodNotAllowed, "不支持的请求方法")
+		}
+	}
+}
+
+// readOnlyResourceHandler 处理只读集合级别的请求（仅列表）。
+func readOnlyResourceHandler(list http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			list(w, r)
+		case http.MethodOptions:
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			writeError(w, http.StatusMethodNotAllowed, "该接口为只读，不支持写操作")
+		}
+	}
+}
+
+// readOnlyResourceItemHandler 处理只读单条资源的请求（仅详情）。
+func readOnlyResourceItemHandler(get http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			get(w, r)
+		case http.MethodOptions:
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			writeError(w, http.StatusMethodNotAllowed, "该接口为只读，不支持写操作")
 		}
 	}
 }
