@@ -64,7 +64,7 @@ const router = createRouter({
       component: () => import('@/views/NpcTemplateForm.vue'),
       meta: { title: 'NPC 模板' },
     },
-    ...entityRoutes('event-types', '事件类型', eventTypeApi),
+    ...entityRoutes('event-types', '事件类型', eventTypeApi, { schemaName: '_event_type' }),
     // FSM — 专用编辑器
     {
       path: '/fsm-configs',

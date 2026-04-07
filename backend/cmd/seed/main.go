@@ -80,15 +80,24 @@ func main() {
 		totalImported += count
 	}
 
-	// 导入 region.json（特殊处理：单个文件 → component_schemas，name 为 _region）
-	regionFile := filepath.Join(*schemasDir, "region.json")
-	if _, err := os.Stat(regionFile); err == nil {
-		if err := importFile(ctx, db, regionFile, "component_schemas", "_region"); err != nil {
-			slog.Error("seed.import_region_failed", "err", err)
-			os.Exit(1)
+	// 导入独立 schema 文件（单个文件 → component_schemas，name 带下划线前缀）
+	standaloneSchemas := []struct {
+		file string
+		name string
+	}{
+		{"region.json", "_region"},
+		{"event_type.json", "_event_type"},
+	}
+	for _, ss := range standaloneSchemas {
+		filePath := filepath.Join(*schemasDir, ss.file)
+		if _, err := os.Stat(filePath); err == nil {
+			if err := importFile(ctx, db, filePath, "component_schemas", ss.name); err != nil {
+				slog.Error("seed.import_standalone_failed", "file", ss.file, "err", err)
+				os.Exit(1)
+			}
+			totalImported++
+			slog.Info("seed.imported", "name", ss.name, "collection", "component_schemas")
 		}
-		totalImported++
-		slog.Info("seed.imported", "name", "_region", "collection", "component_schemas")
 	}
 
 	slog.Info("seed.done", "total", totalImported)

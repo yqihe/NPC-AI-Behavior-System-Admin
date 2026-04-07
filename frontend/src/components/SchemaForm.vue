@@ -11,31 +11,21 @@
       @submit="handleSubmit"
     />
 
-    <!-- 无 schema 时降级为 JSON 编辑器 -->
+    <!-- schema 加载中 -->
+    <div v-else-if="schemaLoading" style="padding: 20px; text-align: center">
+      <el-skeleton :rows="4" animated />
+    </div>
+
+    <!-- 无 schema 时提示 -->
     <div v-else class="json-editor-fallback">
       <el-alert
-        type="info"
+        type="warning"
         :closable="false"
         show-icon
-        title="自由编辑模式"
-        description="未找到对应的 Schema 定义，请直接编辑 JSON 配置"
+        title="该配置类型尚未定义表单模板"
+        description="请联系开发人员导入对应的 Schema 定义后再进行配置"
         style="margin-bottom: 16px"
       />
-      <el-input
-        v-model="jsonText"
-        type="textarea"
-        :rows="12"
-        placeholder="请输入 JSON 格式的配置内容"
-        @blur="parseJsonText"
-      />
-      <div v-if="jsonError" style="color: #f56c6c; margin-top: 4px; font-size: 12px">
-        {{ jsonError }}
-      </div>
-      <div style="margin-top: 16px">
-        <el-button type="primary" :disabled="!!jsonError" @click="handleJsonSubmit">
-          保存
-        </el-button>
-      </div>
     </div>
   </div>
 </template>
@@ -54,6 +44,10 @@ const props = defineProps({
     default: null,
   },
   readonly: {
+    type: Boolean,
+    default: false,
+  },
+  schemaLoading: {
     type: Boolean,
     default: false,
   },
@@ -204,31 +198,6 @@ function handleSubmit(data) {
   emit('submit', data)
 }
 
-// ========== JSON 编辑器模式 ==========
-
-const jsonText = ref(JSON.stringify(props.modelValue || {}, null, 2))
-const jsonError = ref('')
-
-watch(() => props.modelValue, (val) => {
-  jsonText.value = JSON.stringify(val || {}, null, 2)
-}, { deep: true })
-
-function parseJsonText() {
-  try {
-    const parsed = JSON.parse(jsonText.value)
-    jsonError.value = ''
-    emit('update:modelValue', parsed)
-  } catch (e) {
-    jsonError.value = 'JSON 格式错误：' + e.message
-  }
-}
-
-function handleJsonSubmit() {
-  parseJsonText()
-  if (!jsonError.value) {
-    emit('submit', JSON.parse(jsonText.value))
-  }
-}
 </script>
 
 <style scoped>

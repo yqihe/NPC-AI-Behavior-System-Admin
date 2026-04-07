@@ -26,15 +26,9 @@
         <schema-form
           v-model="formModel.config"
           :schema="configSchema"
+          :schema-loading="schemaLoading"
           @submit="handleSchemaSubmit"
         />
-      </el-form-item>
-
-      <!-- 无 schema 时的保存按钮（有 schema 时 SchemaForm 内部有保存按钮） -->
-      <el-form-item v-if="!configSchema">
-        <el-button type="primary" :loading="saving" @click="handleSave">
-          保存
-        </el-button>
       </el-form-item>
     </el-form>
   </div>
@@ -60,6 +54,7 @@ const allowSlash = route.meta?.allowSlash || false
 const staticSchema = route.meta?.configSchema || null
 const schemaName = route.meta?.schemaName || null
 const configSchema = ref(staticSchema)
+const schemaLoading = ref(!!schemaName && !staticSchema)
 
 // 编辑模式判断
 const routeName = route.params.name
@@ -86,7 +81,8 @@ onMounted(async () => {
     try {
       const res = await componentSchemaApi.get(schemaName)
       configSchema.value = res.data.config?.schema || null
-    } catch { /* schema 加载失败则降级为 JSON 编辑器 */ }
+    } catch { /* schema 加载失败则显示提示 */ }
+    finally { schemaLoading.value = false }
   }
 
   // 编辑模式：加载已有数据
