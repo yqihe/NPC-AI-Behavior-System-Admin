@@ -2,14 +2,22 @@
   <div class="generic-list">
     <div class="list-header">
       <h2>{{ title }}</h2>
-      <el-button type="primary" @click="$router.push(`/${entityPath}/new`)">
-        新建
-      </el-button>
+      <div class="list-actions">
+        <el-input
+          v-model="searchKeyword"
+          placeholder="搜索名称或配置内容"
+          clearable
+          style="width: 240px; margin-right: 12px"
+        />
+        <el-button type="primary" @click="$router.push(`/${entityPath}/new`)">
+          新建
+        </el-button>
+      </div>
     </div>
 
     <el-table
       v-loading="loading"
-      :data="items"
+      :data="filteredItems"
       stripe
       style="width: 100%"
     >
@@ -50,7 +58,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 
@@ -61,6 +69,17 @@ const api = route.meta?.api
 
 const loading = ref(false)
 const items = ref([])
+const searchKeyword = ref('')
+
+const filteredItems = computed(() => {
+  const kw = searchKeyword.value.trim().toLowerCase()
+  if (!kw) return items.value
+  return items.value.filter(item => {
+    const nameMatch = (item.name || '').toLowerCase().includes(kw)
+    const summaryMatch = configSummary(item.config).toLowerCase().includes(kw)
+    return nameMatch || summaryMatch
+  })
+})
 
 async function loadList() {
   if (!api) return
@@ -110,6 +129,10 @@ onMounted(loadList)
   margin: 0;
   color: #303133;
   font-size: 20px;
+}
+.list-actions {
+  display: flex;
+  align-items: center;
 }
 .config-summary {
   color: #909399;
