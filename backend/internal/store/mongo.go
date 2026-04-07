@@ -17,8 +17,16 @@ import (
 
 const dbTimeout = 5 * time.Second
 
-// Collections 是运营平台管理的 4 个 collection 名称。
-var Collections = []string{"event_types", "npc_types", "fsm_configs", "bt_trees"}
+// Collections 是运营平台管理的所有 collection 名称。
+// 游戏配置集合 + ADMIN 元数据集合，启动时为每个集合建 name unique index。
+var Collections = []string{
+	// 游戏配置（与游戏服务端共享，{name, config} 格式）
+	"npc_templates", "event_types", "fsm_configs", "bt_trees",
+	// 世界管理
+	"regions",
+	// ADMIN 元数据（只读，由种子脚本导入）
+	"component_schemas", "npc_presets",
+}
 
 // MongoStore 实现 Store 接口，操作 MongoDB。
 type MongoStore struct {
