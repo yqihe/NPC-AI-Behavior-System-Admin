@@ -66,11 +66,13 @@ func main() {
 
 	// Handler
 	fieldHandler := handler.NewFieldHandler(fieldService)
+	dictHandler := handler.NewDictionaryHandler(dictCache)
 
 	// Gin
 	r := gin.Default()
 	v1 := r.Group("/api/v1")
 	fieldHandler.RegisterRoutes(v1)
+	dictHandler.RegisterRoutes(v1)
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})

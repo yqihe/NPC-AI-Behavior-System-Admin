@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"log/slog"
+	"sort"
 	"sync"
 
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
@@ -63,7 +64,7 @@ func (c *DictCache) GetLabel(group, name string) string {
 	return name
 }
 
-// ListByGroup 获取某个 group 下所有选项（前端下拉用）
+// ListByGroup 获取某个 group 下所有选项（前端下拉用，按 sort_order 排序）
 func (c *DictCache) ListByGroup(group string) []model.DictionaryItem {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -73,13 +74,27 @@ func (c *DictCache) ListByGroup(group string) []model.DictionaryItem {
 		return make([]model.DictionaryItem, 0)
 	}
 
-	items := make([]model.DictionaryItem, 0, len(g))
+	// 先收集再排序（map 遍历顺序不确定）
+	type sortable struct {
+		item  model.DictionaryItem
+		order int
+	}
+	tmp := make([]sortable, 0, len(g))
 	for _, d := range g {
-		items = append(items, model.DictionaryItem{
-			Name:  d.Name,
-			Label: d.Label,
-			Extra: d.Extra,
+		tmp = append(tmp, sortable{
+			item: model.DictionaryItem{
+				Name:  d.Name,
+				Label: d.Label,
+				Extra: d.Extra,
+			},
+			order: d.SortOrder,
 		})
+	}
+	sort.Slice(tmp, func(i, j int) bool { return tmp[i].order < tmp[j].order })
+
+	items := make([]model.DictionaryItem, 0, len(tmp))
+	for _, s := range tmp {
+		items = append(items, s.item)
 	}
 	return items
 }
