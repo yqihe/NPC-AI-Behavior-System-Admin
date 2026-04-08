@@ -46,6 +46,7 @@ func main() {
 
 	// Store
 	fieldStore := mysql.NewFieldStore(db)
+	fieldRefStore := mysql.NewFieldRefStore(db)
 	dictStore := mysql.NewDictionaryStore(db)
 
 	// Cache
@@ -61,7 +62,7 @@ func main() {
 	fieldValidator := validator.NewFieldValidator(dictCache, &cfg.Validation)
 
 	// Service
-	fieldService := service.NewFieldService(fieldStore, dictCache, fieldValidator, &cfg.Pagination)
+	fieldService := service.NewFieldService(fieldStore, fieldRefStore, dictCache, fieldValidator, &cfg.Pagination)
 
 	// Handler
 	fieldHandler := handler.NewFieldHandler(fieldService)

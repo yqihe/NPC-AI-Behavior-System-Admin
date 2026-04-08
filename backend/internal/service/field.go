@@ -16,19 +16,21 @@ import (
 
 // FieldService 字段管理业务逻辑
 type FieldService struct {
-	fieldStore *storemysql.FieldStore
-	dictCache  *cache.DictCache
-	validator  *validator.FieldValidator
-	pagCfg     *config.PaginationConfig
+	fieldStore    *storemysql.FieldStore
+	fieldRefStore *storemysql.FieldRefStore
+	dictCache     *cache.DictCache
+	validator     *validator.FieldValidator
+	pagCfg        *config.PaginationConfig
 }
 
 // NewFieldService 创建 FieldService
-func NewFieldService(fieldStore *storemysql.FieldStore, dictCache *cache.DictCache, v *validator.FieldValidator, pagCfg *config.PaginationConfig) *FieldService {
+func NewFieldService(fieldStore *storemysql.FieldStore, fieldRefStore *storemysql.FieldRefStore, dictCache *cache.DictCache, v *validator.FieldValidator, pagCfg *config.PaginationConfig) *FieldService {
 	return &FieldService{
-		fieldStore: fieldStore,
-		dictCache:  dictCache,
-		validator:  v,
-		pagCfg:     pagCfg,
+		fieldStore:    fieldStore,
+		fieldRefStore: fieldRefStore,
+		dictCache:     dictCache,
+		validator:     v,
+		pagCfg:        pagCfg,
 	}
 }
 
@@ -135,4 +137,47 @@ func (s *FieldService) Update(ctx context.Context, name string, req *model.Updat
 
 	slog.Info("service.编辑字段成功", "name", name)
 	return nil
+}
+
+// DeleteResult 删除结果
+type DeleteResult struct {
+	Deleted    bool            `json:"deleted"`
+	References []model.FieldRef `json:"references,omitempty"`
+}
+
+// Delete 删除字段（硬约束：被引用时禁止删除）
+func (s *FieldService) Delete(ctx context.Context, name string) (*DeleteResult, error) {
+	// 1. 检查字段是否存在
+	field, err := s.fieldStore.GetByName(ctx, name)
+	if err != nil {
+		slog.Error("service.删除字段-查询失败", "error", err, "name", name)
+		return nil, fmt.Errorf("get field: %w", err)
+	}
+	if field == nil {
+		return nil, errcode.Newf(errcode.ErrFieldRefNotFound, "字段 '%s' 不存在", name)
+	}
+
+	// 2. 查引用关系
+	refs, err := s.fieldRefStore.GetByFieldName(ctx, name)
+	if err != nil {
+		slog.Error("service.删除字段-查引用失败", "error", err, "name", name)
+		return nil, fmt.Errorf("get refs: %w", err)
+	}
+
+	// 3. 有引用 → 禁止删除，返回引用列表
+	if len(refs) > 0 {
+		return &DeleteResult{Deleted: false, References: refs}, errcode.New(errcode.ErrFieldRefDelete)
+	}
+
+	// 4. 无引用 → 软删除
+	if err := s.fieldStore.SoftDelete(ctx, name); err != nil {
+		if errors.Is(err, storemysql.ErrNotFound) {
+			return nil, errcode.Newf(errcode.ErrFieldRefNotFound, "字段 '%s' 不存在", name)
+		}
+		slog.Error("service.删除字段失败", "error", err, "name", name)
+		return nil, fmt.Errorf("soft delete: %w", err)
+	}
+
+	slog.Info("service.删除字段成功", "name", name)
+	return &DeleteResult{Deleted: true}, nil
 }

@@ -30,6 +30,7 @@ func (h *FieldHandler) RegisterRoutes(r *gin.RouterGroup) {
 		fields.POST("", h.Create)
 		fields.GET("/:name", h.Get)
 		fields.PUT("/:name", h.Update)
+		fields.DELETE("/:name", h.Delete)
 	}
 }
 
@@ -176,5 +177,38 @@ func (h *FieldHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, model.Response{
 		Code:    errcode.Success,
 		Message: "保存成功",
+	})
+}
+
+// Delete 删除字段
+// DELETE /api/v1/fields/:name
+func (h *FieldHandler) Delete(c *gin.Context) {
+	name := c.Param("name")
+
+	slog.Debug("handler.删除字段", "name", name)
+
+	result, err := h.fieldService.Delete(c.Request.Context(), name)
+	if err != nil {
+		var ecErr *errcode.Error
+		if errors.As(err, &ecErr) {
+			// 被引用禁止删除 → 返回引用列表
+			c.JSON(http.StatusBadRequest, model.Response{
+				Code:    ecErr.Code,
+				Message: ecErr.Message,
+				Data:    result,
+			})
+			return
+		}
+		slog.Error("handler.删除字段失败", "error", err)
+		c.JSON(http.StatusInternalServerError, model.Response{
+			Code:    errcode.ErrInternal,
+			Message: errcode.Msg(errcode.ErrInternal),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, model.Response{
+		Code:    errcode.Success,
+		Message: "删除成功",
 	})
 }
