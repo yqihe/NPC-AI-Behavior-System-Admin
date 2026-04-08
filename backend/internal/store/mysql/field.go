@@ -49,8 +49,8 @@ func (s *FieldStore) SoftDeleteTx(ctx context.Context, tx *sqlx.Tx, name string)
 func (s *FieldStore) Create(ctx context.Context, req *model.CreateFieldRequest) (int64, error) {
 	now := time.Now()
 	result, err := s.db.ExecContext(ctx,
-		`INSERT INTO fields (name, label, type, category, properties, ref_count, version, deleted, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, 0, 1, 0, ?, ?)`,
+		`INSERT INTO fields (name, label, type, category, properties, ref_count, enabled, version, deleted, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, 0, 0, 1, 0, ?, ?)`,
 		req.Name, req.Label, req.Type, req.Category, string(req.Properties), now, now,
 	)
 	if err != nil {
@@ -67,7 +67,7 @@ func (s *FieldStore) Create(ctx context.Context, req *model.CreateFieldRequest) 
 func (s *FieldStore) GetByName(ctx context.Context, name string) (*model.Field, error) {
 	var f model.Field
 	err := s.db.GetContext(ctx, &f,
-		`SELECT id, name, label, type, category, properties, ref_count, version, deleted, created_at, updated_at
+		`SELECT id, name, label, type, category, properties, ref_count, enabled, version, deleted, created_at, updated_at
 		 FROM fields WHERE name = ? AND deleted = 0`, name)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -106,6 +106,10 @@ func (s *FieldStore) List(ctx context.Context, q *model.FieldListQuery) ([]model
 		where = append(where, "category = ?")
 		args = append(args, q.Category)
 	}
+	if q.Enabled != nil {
+		where = append(where, "enabled = ?")
+		args = append(args, *q.Enabled)
+	}
 
 	whereClause := strings.Join(where, " AND ")
 
@@ -123,7 +127,7 @@ func (s *FieldStore) List(ctx context.Context, q *model.FieldListQuery) ([]model
 	// 分页查询
 	offset := (q.Page - 1) * q.PageSize
 	listSQL := fmt.Sprintf(
-		`SELECT id, name, label, type, category, ref_count, created_at
+		`SELECT id, name, label, type, category, ref_count, enabled, created_at
 		 FROM fields WHERE %s ORDER BY id DESC LIMIT ? OFFSET ?`,
 		whereClause,
 	)
@@ -198,6 +202,26 @@ func (s *FieldStore) BatchUpdateCategory(ctx context.Context, names []string, ca
 	return result.RowsAffected()
 }
 
+// ToggleEnabled 切换启用/停用（乐观锁）
+func (s *FieldStore) ToggleEnabled(ctx context.Context, name string, enabled bool, version int) error {
+	result, err := s.db.ExecContext(ctx,
+		`UPDATE fields SET enabled = ?, version = version + 1, updated_at = ?
+		 WHERE name = ? AND version = ? AND deleted = 0`,
+		enabled, time.Now(), name, version,
+	)
+	if err != nil {
+		return fmt.Errorf("toggle enabled: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if rows == 0 {
+		return ErrVersionConflict
+	}
+	return nil
+}
+
 // GetRefCount 获取引用计数
 func (s *FieldStore) GetRefCount(ctx context.Context, name string) (int, error) {
 	var count int
@@ -238,7 +262,7 @@ func (s *FieldStore) GetByNames(ctx context.Context, names []string) ([]model.Fi
 		return make([]model.Field, 0), nil
 	}
 	query, args, err := sqlx.In(
-		`SELECT id, name, label, type, category, properties, ref_count, version, deleted, created_at, updated_at
+		`SELECT id, name, label, type, category, properties, ref_count, enabled, version, deleted, created_at, updated_at
 		 FROM fields WHERE name IN (?) AND deleted = 0`, names)
 	if err != nil {
 		return nil, fmt.Errorf("build in query: %w", err)

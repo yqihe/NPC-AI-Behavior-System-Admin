@@ -25,7 +25,10 @@ const (
 	ErrFieldBBKeyInUse       = 40008 // BB Key 被行为树引用无法关闭
 	ErrFieldCyclicRef        = 40009 // 循环引用
 	ErrFieldVersionConflict  = 40010 // 版本冲突（乐观锁）
-	ErrFieldRefNotFound      = 40011 // 引用的字段不存在
+	ErrFieldNotFound         = 40011 // 字段不存在
+	ErrFieldRefNotFound      = 40014 // 引用的字段不存在
+	ErrFieldDeleteNotDisabled = 40012 // 删除前必须先停用
+	ErrFieldRefDisabled      = 40013 // 不能引用已停用的字段
 )
 
 // --- 错误消息 ---
@@ -45,7 +48,10 @@ var messages = map[int]string{
 	ErrFieldBBKeyInUse:       "该 Key 正被行为树使用，无法关闭",
 	ErrFieldCyclicRef:        "检测到循环引用",
 	ErrFieldVersionConflict:  "该字段已被其他人修改，请刷新后重试",
+	ErrFieldNotFound:         "字段不存在",
 	ErrFieldRefNotFound:      "引用的字段不存在",
+	ErrFieldDeleteNotDisabled: "请先停用该字段再删除",
+	ErrFieldRefDisabled:      "不能引用已停用的字段",
 }
 
 // Msg 获取错误码对应的默认消息

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"regexp"
+	"unicode/utf8"
 
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
@@ -43,7 +44,7 @@ func (h *FieldHandler) checkLabel(label string) *errcode.Error {
 	if label == "" {
 		return errcode.Newf(errcode.ErrBadRequest, "中文标签不能为空")
 	}
-	if len(label) > h.valCfg.FieldLabelMaxLength {
+	if utf8.RuneCountInString(label) > h.valCfg.FieldLabelMaxLength {
 		return errcode.Newf(errcode.ErrBadRequest, "中文标签长度不能超过 %d 个字符", h.valCfg.FieldLabelMaxLength)
 	}
 	return nil
@@ -54,6 +55,17 @@ func checkRequired(value, fieldName string) *errcode.Error {
 		return errcode.Newf(errcode.ErrBadRequest, "%s 不能为空", fieldName)
 	}
 	return nil
+}
+
+func checkVersion(version int) *errcode.Error {
+	if version <= 0 {
+		return errcode.Newf(errcode.ErrBadRequest, "版本号不合法")
+	}
+	return nil
+}
+
+func successMsg(msg string) *string {
+	return &msg
 }
 
 // ---- 业务处理 ----
@@ -123,8 +135,8 @@ func (h *FieldHandler) Update(ctx context.Context, req *model.UpdateFieldRequest
 	if req.Properties == nil {
 		return nil, errcode.Newf(errcode.ErrBadRequest, "properties 不能为空")
 	}
-	if req.Version <= 0 {
-		return nil, errcode.Newf(errcode.ErrBadRequest, "版本号不合法")
+	if err := checkVersion(req.Version); err != nil {
+		return nil, err
 	}
 
 	slog.Debug("handler.编辑字段", "name", req.Name, "type", req.Type, "version", req.Version)
@@ -134,8 +146,7 @@ func (h *FieldHandler) Update(ctx context.Context, req *model.UpdateFieldRequest
 		return nil, err
 	}
 
-	msg := "保存成功"
-	return &msg, nil
+	return successMsg("保存成功"), nil
 }
 
 // Delete 删除字段
@@ -180,6 +191,25 @@ func (h *FieldHandler) BatchDelete(ctx context.Context, req *model.BatchDeleteRe
 	slog.Debug("handler.批量删除", "names", req.Names, "count", len(req.Names))
 
 	return h.fieldService.BatchDelete(ctx, req.Names)
+}
+
+// ToggleEnabled 切换启用/停用
+func (h *FieldHandler) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) (*string, error) {
+	if err := checkRequired(req.Name, "字段标识"); err != nil {
+		return nil, err
+	}
+	if err := checkVersion(req.Version); err != nil {
+		return nil, err
+	}
+
+	slog.Debug("handler.切换启用", "name", req.Name, "enabled", req.Enabled)
+
+	err := h.fieldService.ToggleEnabled(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return successMsg("操作成功"), nil
 }
 
 // BatchUpdateCategory 批量修改分类

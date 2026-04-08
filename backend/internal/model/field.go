@@ -15,6 +15,7 @@ type Field struct {
 	Properties json.RawMessage `json:"properties" db:"properties"`
 
 	RefCount  int       `json:"ref_count" db:"ref_count"`
+	Enabled   bool      `json:"enabled" db:"enabled"`
 	Version   int       `json:"version" db:"version"`
 	Deleted   bool      `json:"-" db:"deleted"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
@@ -29,6 +30,7 @@ type FieldListItem struct {
 	Type      string    `json:"type" db:"type"`
 	Category  string    `json:"category" db:"category"`
 	RefCount  int       `json:"ref_count" db:"ref_count"`
+	Enabled   bool      `json:"enabled" db:"enabled"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 
 	// 以下字段由代码层翻译填充，不从 DB 读取
@@ -43,6 +45,11 @@ type FieldProperties struct {
 	DefaultValue json.RawMessage `json:"default_value,omitempty"`
 	Constraints  json.RawMessage `json:"constraints,omitempty"`
 }
+
+// 字段类型常量
+const (
+	FieldTypeReference = "reference" // 引用类型字段
+)
 
 // 引用来源类型常量
 const (
@@ -62,6 +69,7 @@ type FieldListQuery struct {
 	Label    string `json:"label"`
 	Type     string `json:"type"`
 	Category string `json:"category"`
+	Enabled  *bool  `json:"enabled,omitempty"` // nil=不筛选（字段管理页），true=仅启用（其他模块选字段）
 	Page     int    `json:"page"`
 	PageSize int    `json:"page_size"`
 }
@@ -133,6 +141,31 @@ type BatchCategoryRequest struct {
 // BatchCategoryResponse 批量修改分类响应
 type BatchCategoryResponse struct {
 	Affected int64 `json:"affected"`
+}
+
+// ToggleEnabledRequest 启用/停用请求
+type ToggleEnabledRequest struct {
+	Name    string `json:"name"`
+	Enabled bool   `json:"enabled"`
+	Version int    `json:"version"`
+}
+
+// FieldListData 字段列表数据（类型安全，用于缓存序列化/反序列化）
+type FieldListData struct {
+	Items    []FieldListItem `json:"items"`
+	Total    int64           `json:"total"`
+	Page     int             `json:"page"`
+	PageSize int             `json:"page_size"`
+}
+
+// ToListData 转换为通用 ListData（HTTP 响应用）
+func (d *FieldListData) ToListData() *ListData {
+	return &ListData{
+		Items:    d.Items,
+		Total:    d.Total,
+		Page:     d.Page,
+		PageSize: d.PageSize,
+	}
 }
 
 // CreateFieldResponse 创建字段响应
