@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -99,6 +100,9 @@ func (s *DictionaryStore) GetByGroupAndName(ctx context.Context, groupName, name
 		 FROM dictionaries WHERE group_name = ? AND name = ?`,
 		groupName, name,
 	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("get dictionary: %w", err)
 	}

@@ -205,6 +205,7 @@ type DeleteResult struct {
 
 // Delete 删除字段（硬约束：被引用时禁止删除）
 func (s *FieldService) Delete(ctx context.Context, name string) (*DeleteResult, error) {
+	// 先查字段是否存在（事务外，快速失败）
 	field, err := s.fieldStore.GetByName(ctx, name)
 	if err != nil {
 		slog.Error("service.删除字段-查询失败", "error", err, "name", name)
@@ -214,25 +215,43 @@ func (s *FieldService) Delete(ctx context.Context, name string) (*DeleteResult, 
 		return nil, errcode.Newf(errcode.ErrFieldRefNotFound, "字段 '%s' 不存在", name)
 	}
 
+	// 先查引用详情（事务外，给前端展示用）
 	refs, err := s.fieldRefStore.GetByFieldName(ctx, name)
 	if err != nil {
 		slog.Error("service.删除字段-查引用失败", "error", err, "name", name)
 		return nil, fmt.Errorf("get refs: %w", err)
 	}
-
 	if len(refs) > 0 {
 		return &DeleteResult{Deleted: false, References: refs}, errcode.New(errcode.ErrFieldRefDelete)
 	}
 
-	if err := s.fieldStore.SoftDelete(ctx, name); err != nil {
+	// 事务内原子操作：再次检查引用 + 软删除（防 TOCTOU）
+	tx, err := s.fieldStore.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	hasRefs, err := s.fieldRefStore.HasRefsTx(ctx, tx, name)
+	if err != nil {
+		return nil, fmt.Errorf("check refs in tx: %w", err)
+	}
+	if hasRefs {
+		return &DeleteResult{Deleted: false}, errcode.New(errcode.ErrFieldRefDelete)
+	}
+
+	if err := s.fieldStore.SoftDeleteTx(ctx, tx, name); err != nil {
 		if errors.Is(err, storemysql.ErrNotFound) {
 			return nil, errcode.Newf(errcode.ErrFieldRefNotFound, "字段 '%s' 不存在", name)
 		}
-		slog.Error("service.删除字段失败", "error", err, "name", name)
 		return nil, fmt.Errorf("soft delete: %w", err)
 	}
 
-	// 清缓存
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+
+	// 清缓存（事务提交后）
 	s.fieldCache.DelDetail(ctx, name)
 	s.fieldCache.InvalidateList(ctx)
 

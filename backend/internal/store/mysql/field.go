@@ -21,6 +21,30 @@ func NewFieldStore(db *sqlx.DB) *FieldStore {
 	return &FieldStore{db: db}
 }
 
+// DB 暴露数据库连接（service 层开事务用）
+func (s *FieldStore) DB() *sqlx.DB {
+	return s.db
+}
+
+// SoftDeleteTx 事务内软删除字段
+func (s *FieldStore) SoftDeleteTx(ctx context.Context, tx *sqlx.Tx, name string) error {
+	result, err := tx.ExecContext(ctx,
+		`UPDATE fields SET deleted = 1, updated_at = ? WHERE name = ? AND deleted = 0`,
+		time.Now(), name,
+	)
+	if err != nil {
+		return fmt.Errorf("soft delete: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // Create 创建字段
 func (s *FieldStore) Create(ctx context.Context, req *model.CreateFieldRequest) (int64, error) {
 	now := time.Now()

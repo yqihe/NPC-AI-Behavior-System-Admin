@@ -108,3 +108,15 @@ func (s *FieldRefStore) HasRefs(ctx context.Context, fieldName string) (bool, er
 	}
 	return count > 0, nil
 }
+
+// HasRefsTx 事务内检查引用（原子删除用，防 TOCTOU）
+func (s *FieldRefStore) HasRefsTx(ctx context.Context, tx *sqlx.Tx, fieldName string) (bool, error) {
+	var count int
+	err := tx.GetContext(ctx, &count,
+		`SELECT COUNT(*) FROM field_refs WHERE field_name = ?`, fieldName,
+	)
+	if err != nil {
+		return false, fmt.Errorf("check has refs tx: %w", err)
+	}
+	return count > 0, nil
+}
