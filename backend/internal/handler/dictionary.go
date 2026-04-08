@@ -20,17 +20,12 @@ func NewDictionaryHandler(dictCache *cache.DictCache) *DictionaryHandler {
 	return &DictionaryHandler{dictCache: dictCache}
 }
 
-// RegisterRoutes 注册路由
-func (h *DictionaryHandler) RegisterRoutes(r *gin.RouterGroup) {
-	r.GET("/dictionaries", h.List)
-}
-
 // List 查询指定 group 的字典选项
 // GET /api/v1/dictionaries?group=field_type
 func (h *DictionaryHandler) List(c *gin.Context) {
 	group := c.Query("group")
 	if group == "" {
-		c.JSON(http.StatusBadRequest, model.Response{
+		c.JSON(http.StatusOK, model.Response{
 			Code:    errcode.ErrBadRequest,
 			Message: "参数 group 不能为空",
 		})
@@ -41,9 +36,5 @@ func (h *DictionaryHandler) List(c *gin.Context) {
 
 	items := h.dictCache.ListByGroup(group)
 
-	c.JSON(http.StatusOK, model.Response{
-		Code:    errcode.Success,
-		Data:    items,
-		Message: errcode.Msg(errcode.Success),
-	})
+	respondOK(c, items, errcode.Msg(errcode.Success))
 }

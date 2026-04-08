@@ -15,8 +15,9 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/cache"
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/handler"
+	"github.com/yqihe/npc-ai-admin/backend/internal/router"
 	"github.com/yqihe/npc-ai-admin/backend/internal/service"
-	"github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
+	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
 	"github.com/yqihe/npc-ai-admin/backend/internal/validator"
 )
 
@@ -45,9 +46,9 @@ func main() {
 	db.SetConnMaxLifetime(cfg.MySQL.ConnMaxLifetime)
 
 	// Store
-	fieldStore := mysql.NewFieldStore(db)
-	fieldRefStore := mysql.NewFieldRefStore(db)
-	dictStore := mysql.NewDictionaryStore(db)
+	fieldStore := storemysql.NewFieldStore(db)
+	fieldRefStore := storemysql.NewFieldRefStore(db)
+	dictStore := storemysql.NewDictionaryStore(db)
 
 	// Cache
 	dictCache := cache.NewDictCache(dictStore)
@@ -68,15 +69,9 @@ func main() {
 	fieldHandler := handler.NewFieldHandler(fieldService)
 	dictHandler := handler.NewDictionaryHandler(dictCache)
 
-	// Gin
+	// Router
 	r := gin.Default()
-	v1 := r.Group("/api/v1")
-	fieldHandler.RegisterRoutes(v1)
-	dictHandler.RegisterRoutes(v1)
-
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
-	})
+	router.Setup(r, fieldHandler, dictHandler)
 
 	// Server
 	srv := &http.Server{

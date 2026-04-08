@@ -71,11 +71,17 @@ type CreateFieldRequest struct {
 
 // UpdateFieldRequest 编辑字段请求
 type UpdateFieldRequest struct {
+	Name       string          `json:"name"`
 	Label      string          `json:"label"`
 	Type       string          `json:"type"`
 	Category   string          `json:"category"`
 	Properties json.RawMessage `json:"properties"`
 	Version    int             `json:"version"`
+}
+
+// NameRequest 通用的按 name 查询请求
+type NameRequest struct {
+	Name string `json:"name"`
 }
 
 // ReferenceItem 引用详情中的单条引用方
