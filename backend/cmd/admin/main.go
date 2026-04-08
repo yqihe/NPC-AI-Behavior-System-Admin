@@ -18,7 +18,7 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/router"
 	"github.com/yqihe/npc-ai-admin/backend/internal/service"
 	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
-	"github.com/yqihe/npc-ai-admin/backend/internal/validator"
+	"github.com/yqihe/npc-ai-admin/backend/internal/service/validator"
 )
 
 func main() {

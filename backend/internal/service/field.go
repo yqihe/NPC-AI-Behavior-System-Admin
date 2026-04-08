@@ -11,7 +11,7 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
-	"github.com/yqihe/npc-ai-admin/backend/internal/validator"
+	"github.com/yqihe/npc-ai-admin/backend/internal/service/validator"
 )
 
 // FieldService 字段管理业务逻辑
