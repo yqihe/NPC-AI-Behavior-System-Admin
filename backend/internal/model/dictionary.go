@@ -24,3 +24,13 @@ type DictionaryItem struct {
 	Label string          `json:"label"`
 	Extra json.RawMessage `json:"extra,omitempty"`
 }
+
+// DictListRequest 字典列表请求
+type DictListRequest struct {
+	Group string `json:"group"`
+}
+
+// DictListResponse 字典列表响应
+type DictListResponse struct {
+	Items []DictionaryItem `json:"items"`
+}

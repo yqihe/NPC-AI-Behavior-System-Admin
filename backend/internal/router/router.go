@@ -18,8 +18,8 @@ func Setup(r *gin.Engine, fh *handler.FieldHandler, dh *handler.DictionaryHandle
 	// 字段管理
 	fields := v1.Group("/fields")
 	{
-		fields.GET("/list", handler.WrapGet(fh.List))
-		fields.POST("/create", handler.WrapPost(fh.Create))
+		fields.POST("/list", handler.WrapCtx(fh.List))
+		fields.POST("/create", handler.WrapCtx(fh.Create))
 		fields.POST("/detail", handler.WrapCtx(fh.Get))
 		fields.POST("/update", handler.WrapCtx(fh.Update))
 		fields.POST("/delete", handler.WrapCtx(fh.Delete))
@@ -30,5 +30,5 @@ func Setup(r *gin.Engine, fh *handler.FieldHandler, dh *handler.DictionaryHandle
 	}
 
 	// 字典选项
-	v1.GET("/dictionaries", handler.WrapGet(dh.List))
+	v1.POST("/dictionaries", handler.WrapCtx(dh.List))
 }

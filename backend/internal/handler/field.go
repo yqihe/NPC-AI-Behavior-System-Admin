@@ -2,10 +2,8 @@ package handler
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
-	"github.com/gin-gonic/gin"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	"github.com/yqihe/npc-ai-admin/backend/internal/service"
 )
@@ -21,25 +19,17 @@ func NewFieldHandler(fieldService *service.FieldService) *FieldHandler {
 }
 
 // List 字段列表
-func (h *FieldHandler) List(c *gin.Context) (any, error) {
-	q := &model.FieldListQuery{
-		Label:    c.Query("label"),
-		Type:     c.Query("type"),
-		Category: c.Query("category"),
-	}
-	fmt.Sscanf(c.DefaultQuery("page", "1"), "%d", &q.Page)
-	fmt.Sscanf(c.DefaultQuery("page_size", "20"), "%d", &q.PageSize)
+func (h *FieldHandler) List(ctx context.Context, req *model.FieldListQuery) (*model.ListData, error) {
+	slog.Debug("handler.字段列表", "label", req.Label, "type", req.Type, "category", req.Category, "page", req.Page)
 
-	slog.Debug("handler.字段列表", "label", q.Label, "type", q.Type, "category", q.Category, "page", q.Page)
-
-	return h.fieldService.List(c.Request.Context(), q)
+	return h.fieldService.List(ctx, req)
 }
 
 // Create 创建字段
-func (h *FieldHandler) Create(c *gin.Context, req *model.CreateFieldRequest) (*model.CreateFieldResponse, error) {
+func (h *FieldHandler) Create(ctx context.Context, req *model.CreateFieldRequest) (*model.CreateFieldResponse, error) {
 	slog.Debug("handler.创建字段", "name", req.Name, "type", req.Type, "category", req.Category)
 
-	id, err := h.fieldService.Create(c.Request.Context(), req)
+	id, err := h.fieldService.Create(ctx, req)
 	if err != nil {
 		return nil, err
 	}
