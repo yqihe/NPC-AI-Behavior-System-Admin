@@ -264,3 +264,94 @@ func (s *FieldService) GetReferences(ctx context.Context, name string) (*model.R
 
 	return result, nil
 }
+
+// BatchDelete 批量删除（逐条检查引用，可删的删，不可删的跳过）
+func (s *FieldService) BatchDelete(ctx context.Context, names []string) (*model.BatchDeleteResult, error) {
+	if len(names) == 0 {
+		return &model.BatchDeleteResult{
+			Deleted: make([]string, 0),
+			Skipped: make([]model.BatchDeleteSkipped, 0),
+			Message: "未选择任何字段",
+		}, nil
+	}
+
+	// 查所有字段信息（拿 label 用于跳过报告）
+	fields, err := s.fieldStore.GetByNames(ctx, names)
+	if err != nil {
+		slog.Error("service.批量删除-查字段失败", "error", err)
+		return nil, fmt.Errorf("get fields: %w", err)
+	}
+	labelMap := make(map[string]string, len(fields))
+	for _, f := range fields {
+		labelMap[f.Name] = f.Label
+	}
+
+	deleted := make([]string, 0)
+	skipped := make([]model.BatchDeleteSkipped, 0)
+
+	// 逐条处理（独立事务，不锁全表）
+	for _, name := range names {
+		// 检查引用
+		hasRefs, err := s.fieldRefStore.HasRefs(ctx, name)
+		if err != nil {
+			slog.Error("service.批量删除-查引用失败", "error", err, "name", name)
+			skipped = append(skipped, model.BatchDeleteSkipped{
+				Name:   name,
+				Label:  labelMap[name],
+				Reason: "查询引用失败",
+			})
+			continue
+		}
+		if hasRefs {
+			skipped = append(skipped, model.BatchDeleteSkipped{
+				Name:   name,
+				Label:  labelMap[name],
+				Reason: "被引用无法删除",
+			})
+			continue
+		}
+
+		// 软删除
+		if err := s.fieldStore.SoftDelete(ctx, name); err != nil {
+			slog.Error("service.批量删除-删除失败", "error", err, "name", name)
+			skipped = append(skipped, model.BatchDeleteSkipped{
+				Name:   name,
+				Label:  labelMap[name],
+				Reason: "删除失败",
+			})
+			continue
+		}
+		deleted = append(deleted, name)
+	}
+
+	msg := fmt.Sprintf("%d 项已删除", len(deleted))
+	if len(skipped) > 0 {
+		msg += fmt.Sprintf("，%d 项因被引用无法删除", len(skipped))
+	}
+
+	slog.Info("service.批量删除完成", "deleted", len(deleted), "skipped", len(skipped))
+	return &model.BatchDeleteResult{
+		Deleted: deleted,
+		Skipped: skipped,
+		Message: msg,
+	}, nil
+}
+
+// BatchUpdateCategory 批量修改分类
+func (s *FieldService) BatchUpdateCategory(ctx context.Context, req *model.BatchCategoryRequest) (int64, error) {
+	if len(req.Names) == 0 {
+		return 0, errcode.Newf(errcode.ErrBadRequest, "未选择任何字段")
+	}
+	if !s.dictCache.Exists("field_category", req.Category) {
+		return 0, errcode.Newf(errcode.ErrFieldCategoryNotFound, "标签分类 '%s' 不存在", req.Category)
+	}
+
+	affected, err := s.fieldStore.BatchUpdateCategory(ctx, req.Names, req.Category)
+	if err != nil {
+		slog.Error("service.批量修改分类失败", "error", err)
+		return 0, fmt.Errorf("batch update category: %w", err)
+	}
+
+	slog.Info("service.批量修改分类成功", "affected", affected, "category", req.Category)
+	return affected, nil
+}

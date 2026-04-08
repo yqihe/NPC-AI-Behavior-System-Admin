@@ -93,6 +93,31 @@ type ReferenceDetail struct {
 	Fields     []ReferenceItem `json:"fields"`
 }
 
+// BatchDeleteRequest 批量删除请求
+type BatchDeleteRequest struct {
+	Names []string `json:"names"`
+}
+
+// BatchDeleteSkipped 批量删除中跳过的项
+type BatchDeleteSkipped struct {
+	Name   string `json:"name"`
+	Label  string `json:"label"`
+	Reason string `json:"reason"`
+}
+
+// BatchDeleteResult 批量删除结果
+type BatchDeleteResult struct {
+	Deleted []string              `json:"deleted"`
+	Skipped []BatchDeleteSkipped  `json:"skipped"`
+	Message string                `json:"message"`
+}
+
+// BatchCategoryRequest 批量修改分类请求
+type BatchCategoryRequest struct {
+	Names    []string `json:"names"`
+	Category string   `json:"category"`
+}
+
 // CheckNameRequest 唯一性校验请求
 type CheckNameRequest struct {
 	Name string `json:"name"`

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -33,6 +34,8 @@ func (h *FieldHandler) RegisterRoutes(r *gin.RouterGroup) {
 		fields.DELETE("/:name", h.Delete)
 		fields.GET("/:name/references", h.GetReferences)
 		fields.POST("/check-name", h.CheckName)
+		fields.POST("/batch-delete", h.BatchDelete)
+		fields.PUT("/batch-category", h.BatchUpdateCategory)
 	}
 }
 
@@ -275,5 +278,75 @@ func (h *FieldHandler) GetReferences(c *gin.Context) {
 		Code:    errcode.Success,
 		Data:    detail,
 		Message: errcode.Msg(errcode.Success),
+	})
+}
+
+// BatchDelete 批量删除字段
+// POST /api/v1/fields/batch-delete
+func (h *FieldHandler) BatchDelete(c *gin.Context) {
+	var req model.BatchDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, model.Response{
+			Code:    errcode.ErrBadRequest,
+			Message: "请求参数格式错误",
+		})
+		return
+	}
+
+	slog.Debug("handler.批量删除", "names", req.Names, "count", len(req.Names))
+
+	result, err := h.fieldService.BatchDelete(c.Request.Context(), req.Names)
+	if err != nil {
+		slog.Error("handler.批量删除失败", "error", err)
+		c.JSON(http.StatusInternalServerError, model.Response{
+			Code:    errcode.ErrInternal,
+			Message: errcode.Msg(errcode.ErrInternal),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, model.Response{
+		Code:    errcode.Success,
+		Data:    result,
+		Message: result.Message,
+	})
+}
+
+// BatchUpdateCategory 批量修改分类
+// PUT /api/v1/fields/batch-category
+func (h *FieldHandler) BatchUpdateCategory(c *gin.Context) {
+	var req model.BatchCategoryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, model.Response{
+			Code:    errcode.ErrBadRequest,
+			Message: "请求参数格式错误",
+		})
+		return
+	}
+
+	slog.Debug("handler.批量修改分类", "names", req.Names, "category", req.Category)
+
+	affected, err := h.fieldService.BatchUpdateCategory(c.Request.Context(), &req)
+	if err != nil {
+		var ecErr *errcode.Error
+		if errors.As(err, &ecErr) {
+			c.JSON(http.StatusBadRequest, model.Response{
+				Code:    ecErr.Code,
+				Message: ecErr.Message,
+			})
+			return
+		}
+		slog.Error("handler.批量修改分类失败", "error", err)
+		c.JSON(http.StatusInternalServerError, model.Response{
+			Code:    errcode.ErrInternal,
+			Message: errcode.Msg(errcode.ErrInternal),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, model.Response{
+		Code:    errcode.Success,
+		Data:    gin.H{"affected": affected},
+		Message: fmt.Sprintf("%d 项已更新", affected),
 	})
 }
