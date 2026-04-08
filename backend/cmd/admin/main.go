@@ -12,12 +12,14 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
+	goredis "github.com/redis/go-redis/v9"
 	"github.com/yqihe/npc-ai-admin/backend/internal/cache"
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/handler"
 	"github.com/yqihe/npc-ai-admin/backend/internal/router"
 	"github.com/yqihe/npc-ai-admin/backend/internal/service"
 	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
+	storeredis "github.com/yqihe/npc-ai-admin/backend/internal/store/redis"
 )
 
 func main() {
@@ -44,22 +46,37 @@ func main() {
 	db.SetMaxIdleConns(cfg.MySQL.MaxIdleConns)
 	db.SetConnMaxLifetime(cfg.MySQL.ConnMaxLifetime)
 
+	// Redis
+	rdb := goredis.NewClient(&goredis.Options{
+		Addr:     cfg.Redis.Addr,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		slog.Warn("启动.Redis连接失败，缓存将降级", "error", err)
+	} else {
+		slog.Info("启动.Redis连接成功", "addr", cfg.Redis.Addr)
+	}
+	cancel()
+
 	// Store
 	fieldStore := storemysql.NewFieldStore(db)
 	fieldRefStore := storemysql.NewFieldRefStore(db)
 	dictStore := storemysql.NewDictionaryStore(db)
+	fieldCache := storeredis.NewFieldCache(rdb)
 
-	// Cache
+	// DictCache（内存缓存，启动时从 MySQL 加载）
 	dictCache := cache.NewDictCache(dictStore)
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
-	if err := dictCache.Load(ctx); err != nil {
+	ctx2, cancel2 := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
+	if err := dictCache.Load(ctx2); err != nil {
 		slog.Error("启动.加载字典缓存失败", "error", err)
 		os.Exit(1)
 	}
-	cancel()
+	cancel2()
 
 	// Service
-	fieldService := service.NewFieldService(fieldStore, fieldRefStore, dictCache, &cfg.Pagination)
+	fieldService := service.NewFieldService(fieldStore, fieldRefStore, fieldCache, dictCache, &cfg.Pagination)
 
 	// Handler
 	fieldHandler := handler.NewFieldHandler(fieldService, &cfg.Validation)
@@ -94,6 +111,9 @@ func main() {
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("关闭.HTTP服务失败", "error", err)
+	}
+	if err := rdb.Close(); err != nil {
+		slog.Error("关闭.Redis连接失败", "error", err)
 	}
 	if err := db.Close(); err != nil {
 		slog.Error("关闭.MySQL连接失败", "error", err)
