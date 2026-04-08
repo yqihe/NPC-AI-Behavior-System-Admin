@@ -31,6 +31,7 @@ func (h *FieldHandler) RegisterRoutes(r *gin.RouterGroup) {
 		fields.GET("/:name", h.Get)
 		fields.PUT("/:name", h.Update)
 		fields.DELETE("/:name", h.Delete)
+		fields.GET("/:name/references", h.GetReferences)
 		fields.POST("/check-name", h.CheckName)
 	}
 }
@@ -241,6 +242,38 @@ func (h *FieldHandler) CheckName(c *gin.Context) {
 	c.JSON(http.StatusOK, model.Response{
 		Code:    errcode.Success,
 		Data:    result,
+		Message: errcode.Msg(errcode.Success),
+	})
+}
+
+// GetReferences 字段引用详情
+// GET /api/v1/fields/:name/references
+func (h *FieldHandler) GetReferences(c *gin.Context) {
+	name := c.Param("name")
+
+	slog.Debug("handler.引用详情", "name", name)
+
+	detail, err := h.fieldService.GetReferences(c.Request.Context(), name)
+	if err != nil {
+		var ecErr *errcode.Error
+		if errors.As(err, &ecErr) {
+			c.JSON(http.StatusNotFound, model.Response{
+				Code:    ecErr.Code,
+				Message: ecErr.Message,
+			})
+			return
+		}
+		slog.Error("handler.引用详情失败", "error", err)
+		c.JSON(http.StatusInternalServerError, model.Response{
+			Code:    errcode.ErrInternal,
+			Message: errcode.Msg(errcode.ErrInternal),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, model.Response{
+		Code:    errcode.Success,
+		Data:    detail,
 		Message: errcode.Msg(errcode.Success),
 	})
 }

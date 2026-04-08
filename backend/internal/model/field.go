@@ -78,6 +78,21 @@ type UpdateFieldRequest struct {
 	Version    int             `json:"version"`
 }
 
+// ReferenceItem 引用详情中的单条引用方
+type ReferenceItem struct {
+	RefType string `json:"ref_type"` // "template" / "field"
+	RefName string `json:"ref_name"` // 引用方标识
+	Label   string `json:"label"`    // 引用方中文名
+}
+
+// ReferenceDetail 字段引用详情
+type ReferenceDetail struct {
+	FieldName  string          `json:"field_name"`
+	FieldLabel string          `json:"field_label"`
+	Templates  []ReferenceItem `json:"templates"`
+	Fields     []ReferenceItem `json:"fields"`
+}
+
 // CheckNameRequest 唯一性校验请求
 type CheckNameRequest struct {
 	Name string `json:"name"`

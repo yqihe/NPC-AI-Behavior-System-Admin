@@ -194,3 +194,73 @@ func (s *FieldService) CheckName(ctx context.Context, name string) (*model.Check
 	}
 	return &model.CheckNameResult{Available: true, Message: "该标识可用"}, nil
 }
+
+// GetReferences 查询字段引用详情（不 JOIN，两次独立查询）
+func (s *FieldService) GetReferences(ctx context.Context, name string) (*model.ReferenceDetail, error) {
+	// 1. 检查字段存在
+	field, err := s.fieldStore.GetByName(ctx, name)
+	if err != nil {
+		slog.Error("service.引用详情-查字段失败", "error", err, "name", name)
+		return nil, fmt.Errorf("get field: %w", err)
+	}
+	if field == nil {
+		return nil, errcode.Newf(errcode.ErrFieldRefNotFound, "字段 '%s' 不存在", name)
+	}
+
+	// 2. 查引用关系（主键索引前缀）
+	refs, err := s.fieldRefStore.GetByFieldName(ctx, name)
+	if err != nil {
+		slog.Error("service.引用详情-查引用失败", "error", err, "name", name)
+		return nil, fmt.Errorf("get refs: %w", err)
+	}
+
+	// 3. 按 ref_type 分组，收集 ref_name
+	templateNames := make([]string, 0)
+	fieldNames := make([]string, 0)
+	for _, r := range refs {
+		switch r.RefType {
+		case "template":
+			templateNames = append(templateNames, r.RefName)
+		case "field":
+			fieldNames = append(fieldNames, r.RefName)
+		}
+	}
+
+	result := &model.ReferenceDetail{
+		FieldName:  name,
+		FieldLabel: field.Label,
+		Templates:  make([]model.ReferenceItem, 0, len(templateNames)),
+		Fields:     make([]model.ReferenceItem, 0, len(fieldNames)),
+	}
+
+	// 4. IN 查 fields 拿 label（走 uk_name）
+	if len(fieldNames) > 0 {
+		fieldList, err := s.fieldStore.GetByNames(ctx, fieldNames)
+		if err != nil {
+			slog.Error("service.引用详情-查字段label失败", "error", err)
+			return nil, fmt.Errorf("get field labels: %w", err)
+		}
+		labelMap := make(map[string]string, len(fieldList))
+		for _, f := range fieldList {
+			labelMap[f.Name] = f.Label
+		}
+		for _, n := range fieldNames {
+			result.Fields = append(result.Fields, model.ReferenceItem{
+				RefType: "field",
+				RefName: n,
+				Label:   labelMap[n],
+			})
+		}
+	}
+
+	// 5. 模板引用 — 模板表未建，暂时只返回 ref_name
+	for _, n := range templateNames {
+		result.Templates = append(result.Templates, model.ReferenceItem{
+			RefType: "template",
+			RefName: n,
+			Label:   n, // TODO: 模板管理完成后 IN 查 templates 拿 label
+		})
+	}
+
+	return result, nil
+}
