@@ -28,6 +28,8 @@ func (h *FieldHandler) RegisterRoutes(r *gin.RouterGroup) {
 	{
 		fields.GET("", h.List)
 		fields.POST("", h.Create)
+		fields.GET("/:name", h.Get)
+		fields.PUT("/:name", h.Update)
 	}
 }
 
@@ -101,5 +103,78 @@ func (h *FieldHandler) Create(c *gin.Context) {
 		Code:    errcode.Success,
 		Data:    gin.H{"id": id, "name": req.Name},
 		Message: "创建成功",
+	})
+}
+
+// Get 字段详情
+// GET /api/v1/fields/:name
+func (h *FieldHandler) Get(c *gin.Context) {
+	name := c.Param("name")
+
+	slog.Debug("handler.字段详情", "name", name)
+
+	field, err := h.fieldService.GetByName(c.Request.Context(), name)
+	if err != nil {
+		var ecErr *errcode.Error
+		if errors.As(err, &ecErr) {
+			c.JSON(http.StatusNotFound, model.Response{
+				Code:    ecErr.Code,
+				Message: ecErr.Message,
+			})
+			return
+		}
+		slog.Error("handler.字段详情失败", "error", err)
+		c.JSON(http.StatusInternalServerError, model.Response{
+			Code:    errcode.ErrInternal,
+			Message: errcode.Msg(errcode.ErrInternal),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, model.Response{
+		Code:    errcode.Success,
+		Data:    field,
+		Message: errcode.Msg(errcode.Success),
+	})
+}
+
+// Update 编辑字段
+// PUT /api/v1/fields/:name
+func (h *FieldHandler) Update(c *gin.Context) {
+	name := c.Param("name")
+
+	var req model.UpdateFieldRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		slog.Debug("handler.编辑字段-参数解析失败", "error", err)
+		c.JSON(http.StatusBadRequest, model.Response{
+			Code:    errcode.ErrBadRequest,
+			Message: "请求参数格式错误",
+		})
+		return
+	}
+
+	slog.Debug("handler.编辑字段", "name", name, "type", req.Type, "version", req.Version)
+
+	err := h.fieldService.Update(c.Request.Context(), name, &req)
+	if err != nil {
+		var ecErr *errcode.Error
+		if errors.As(err, &ecErr) {
+			c.JSON(http.StatusBadRequest, model.Response{
+				Code:    ecErr.Code,
+				Message: ecErr.Message,
+			})
+			return
+		}
+		slog.Error("handler.编辑字段失败", "error", err)
+		c.JSON(http.StatusInternalServerError, model.Response{
+			Code:    errcode.ErrInternal,
+			Message: errcode.Msg(errcode.ErrInternal),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, model.Response{
+		Code:    errcode.Success,
+		Message: "保存成功",
 	})
 }

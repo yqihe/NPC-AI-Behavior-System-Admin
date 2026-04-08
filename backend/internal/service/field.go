@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -9,20 +10,20 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
-	"github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
+	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
 	"github.com/yqihe/npc-ai-admin/backend/internal/validator"
 )
 
 // FieldService 字段管理业务逻辑
 type FieldService struct {
-	fieldStore *mysql.FieldStore
+	fieldStore *storemysql.FieldStore
 	dictCache  *cache.DictCache
 	validator  *validator.FieldValidator
 	pagCfg     *config.PaginationConfig
 }
 
 // NewFieldService 创建 FieldService
-func NewFieldService(fieldStore *mysql.FieldStore, dictCache *cache.DictCache, v *validator.FieldValidator, pagCfg *config.PaginationConfig) *FieldService {
+func NewFieldService(fieldStore *storemysql.FieldStore, dictCache *cache.DictCache, v *validator.FieldValidator, pagCfg *config.PaginationConfig) *FieldService {
 	return &FieldService{
 		fieldStore: fieldStore,
 		dictCache:  dictCache,
@@ -85,4 +86,53 @@ func (s *FieldService) Create(ctx context.Context, req *model.CreateFieldRequest
 
 	slog.Info("service.创建字段成功", "name", req.Name, "id", id)
 	return id, nil
+}
+
+// GetByName 查询字段详情
+func (s *FieldService) GetByName(ctx context.Context, name string) (*model.Field, error) {
+	field, err := s.fieldStore.GetByName(ctx, name)
+	if err != nil {
+		slog.Error("service.查询字段详情失败", "error", err, "name", name)
+		return nil, fmt.Errorf("get field: %w", err)
+	}
+	if field == nil {
+		return nil, errcode.Newf(errcode.ErrFieldRefNotFound, "字段 '%s' 不存在", name)
+	}
+	return field, nil
+}
+
+// Update 编辑字段（含硬约束检查）
+func (s *FieldService) Update(ctx context.Context, name string, req *model.UpdateFieldRequest) error {
+	// 1. 参数校验
+	if err := s.validator.ValidateUpdate(req); err != nil {
+		return err
+	}
+
+	// 2. 查旧数据
+	old, err := s.fieldStore.GetByName(ctx, name)
+	if err != nil {
+		slog.Error("service.编辑字段-查旧数据失败", "error", err, "name", name)
+		return fmt.Errorf("get old field: %w", err)
+	}
+	if old == nil {
+		return errcode.Newf(errcode.ErrFieldRefNotFound, "字段 '%s' 不存在", name)
+	}
+
+	// 3. 硬约束检查
+	if old.Type != req.Type && old.RefCount > 0 {
+		return errcode.Newf(errcode.ErrFieldRefChangeType, "该字段已被 %d 个模板/字段引用，无法修改类型", old.RefCount)
+	}
+
+	// 4. 乐观锁写入
+	err = s.fieldStore.Update(ctx, name, req)
+	if err != nil {
+		if errors.Is(err, storemysql.ErrVersionConflict) {
+			return errcode.New(errcode.ErrFieldVersionConflict)
+		}
+		slog.Error("service.编辑字段失败", "error", err, "name", name)
+		return fmt.Errorf("update field: %w", err)
+	}
+
+	slog.Info("service.编辑字段成功", "name", name)
+	return nil
 }
