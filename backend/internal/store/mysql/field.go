@@ -104,7 +104,9 @@ func (s *FieldStore) List(ctx context.Context, q *model.FieldListQuery) ([]model
 		 FROM fields WHERE %s ORDER BY id DESC LIMIT ? OFFSET ?`,
 		whereClause,
 	)
-	listArgs := append(args, q.PageSize, offset)
+	listArgs := make([]any, len(args), len(args)+2)
+	copy(listArgs, args)
+	listArgs = append(listArgs, q.PageSize, offset)
 
 	items := make([]model.FieldListItem, 0)
 	if err := s.db.SelectContext(ctx, &items, listSQL, listArgs...); err != nil {
