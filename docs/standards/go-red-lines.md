@@ -22,6 +22,13 @@
 - **禁止**返回 typed nil 指针作为 error。`var e *MyError = nil; return e` 导致 `err != nil` 为 true。直接 `return nil`
 - **禁止** 500 响应暴露 Go error 原文。对外返回预定义中文提示，原始 error 写 slog
 
+## 禁止缓存操作陷阱
+
+- **禁止**用 `SCAN` + 批量 `DEL` 清除缓存。SCAN 非原子、key 量大时阻塞。用版本号方案：缓存 key 带版本号，失效时 INCR 版本号，旧 key 自然过期
+- **禁止** Redis `DEL`/`Unlock` 不检查 error。锁泄漏和缓存脏数据的根源
+- **禁止**在高频调用路径中做 `sort.Slice`。预排序缓存结果，调用时零分配返回
+- **禁止** `LIKE` 查询不转义通配符 `%` 和 `_`。用户输入 `%` 会匹配所有记录
+
 ## 禁止 graceful shutdown 顺序错误
 
 - **禁止**在清理资源前不先停止事件循环。正确顺序：停止接受新请求 → 等待进行中请求完成 → 关闭数据库/缓存连接

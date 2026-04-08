@@ -51,6 +51,8 @@
 - **禁止**在代码中硬编码数据库连接字符串、端口号、连接池参数。全部写入 `config.yaml`，环境变量可覆盖
 - **禁止**在业务代码中直接拼 Redis key 字符串。key 前缀和生成规则统一定义在 `cache/keys.go`
 - **禁止**在代码中硬编码分页默认值、字段长度限制等可配置参数。统一在 `config.yaml` 中管理
+- **禁止**在代码中硬编码引用类型字符串（如 `"template"`、`"field"`）。使用 `model.RefTypeTemplate` / `model.RefTypeField` 常量
+- **禁止** handler 层校验使用错误的错误码。name 校验用 `ErrFieldNameInvalid`，label/其他用 `ErrBadRequest`，不混用
 
 ## 禁止 ADMIN 过度设计
 
