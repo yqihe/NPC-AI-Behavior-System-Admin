@@ -8,28 +8,27 @@ import (
 )
 
 // Setup 注册所有路由
-func Setup(r *gin.Engine, fieldHandler *handler.FieldHandler, dictHandler *handler.DictionaryHandler) {
-	// 健康检查
+func Setup(r *gin.Engine, fh *handler.FieldHandler, dh *handler.DictionaryHandler) {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
 	v1 := r.Group("/api/v1")
 
-	// 字段管理 — 全部 GET/POST
+	// 字段管理
 	fields := v1.Group("/fields")
 	{
-		fields.GET("/list", fieldHandler.List)               // 列表
-		fields.POST("/create", fieldHandler.Create)          // 新建
-		fields.POST("/detail", fieldHandler.Get)             // 详情
-		fields.POST("/update", fieldHandler.Update)          // 编辑
-		fields.POST("/delete", fieldHandler.Delete)          // 删除
-		fields.POST("/references", fieldHandler.GetReferences) // 引用详情
-		fields.POST("/check-name", fieldHandler.CheckName)   // 唯一性校验
-		fields.POST("/batch-delete", fieldHandler.BatchDelete) // 批量删除
-		fields.POST("/batch-category", fieldHandler.BatchUpdateCategory) // 批量修改分类
+		fields.GET("/list", handler.WrapGet(fh.List))
+		fields.POST("/create", handler.WrapPost(fh.Create))
+		fields.POST("/detail", handler.WrapCtx(fh.Get))
+		fields.POST("/update", handler.WrapCtx(fh.Update))
+		fields.POST("/delete", handler.WrapCtx(fh.Delete))
+		fields.POST("/references", handler.WrapCtx(fh.GetReferences))
+		fields.POST("/check-name", handler.WrapCtx(fh.CheckName))
+		fields.POST("/batch-delete", handler.WrapCtx(fh.BatchDelete))
+		fields.POST("/batch-category", handler.WrapCtx(fh.BatchUpdateCategory))
 	}
 
 	// 字典选项
-	v1.GET("/dictionaries", dictHandler.List)
+	v1.GET("/dictionaries", handler.WrapGet(dh.List))
 }

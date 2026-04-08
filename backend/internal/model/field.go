@@ -124,6 +124,17 @@ type BatchCategoryRequest struct {
 	Category string   `json:"category"`
 }
 
+// BatchCategoryResponse 批量修改分类响应
+type BatchCategoryResponse struct {
+	Affected int64 `json:"affected"`
+}
+
+// CreateFieldResponse 创建字段响应
+type CreateFieldResponse struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
 // CheckNameRequest 唯一性校验请求
 type CheckNameRequest struct {
 	Name string `json:"name"`

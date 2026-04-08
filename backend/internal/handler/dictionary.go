@@ -2,15 +2,13 @@ package handler
 
 import (
 	"log/slog"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yqihe/npc-ai-admin/backend/internal/cache"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
-	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 )
 
-// DictionaryHandler dictionaries HTTP handler
+// DictionaryHandler 字典业务处理
 type DictionaryHandler struct {
 	dictCache *cache.DictCache
 }
@@ -21,20 +19,13 @@ func NewDictionaryHandler(dictCache *cache.DictCache) *DictionaryHandler {
 }
 
 // List 查询指定 group 的字典选项
-// GET /api/v1/dictionaries?group=field_type
-func (h *DictionaryHandler) List(c *gin.Context) {
+func (h *DictionaryHandler) List(c *gin.Context) (any, error) {
 	group := c.Query("group")
 	if group == "" {
-		c.JSON(http.StatusOK, model.Response{
-			Code:    errcode.ErrBadRequest,
-			Message: "参数 group 不能为空",
-		})
-		return
+		return nil, errcode.Newf(errcode.ErrBadRequest, "参数 group 不能为空")
 	}
 
 	slog.Debug("handler.字典列表", "group", group)
 
-	items := h.dictCache.ListByGroup(group)
-
-	respondOK(c, items, errcode.Msg(errcode.Success))
+	return h.dictCache.ListByGroup(group), nil
 }
