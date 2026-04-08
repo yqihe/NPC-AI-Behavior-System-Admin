@@ -31,6 +31,7 @@ func (h *FieldHandler) RegisterRoutes(r *gin.RouterGroup) {
 		fields.GET("/:name", h.Get)
 		fields.PUT("/:name", h.Update)
 		fields.DELETE("/:name", h.Delete)
+		fields.POST("/check-name", h.CheckName)
 	}
 }
 
@@ -210,5 +211,36 @@ func (h *FieldHandler) Delete(c *gin.Context) {
 	c.JSON(http.StatusOK, model.Response{
 		Code:    errcode.Success,
 		Message: "删除成功",
+	})
+}
+
+// CheckName 字段标识唯一性校验
+// POST /api/v1/fields/check-name
+func (h *FieldHandler) CheckName(c *gin.Context) {
+	var req model.CheckNameRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, model.Response{
+			Code:    errcode.ErrBadRequest,
+			Message: "请求参数格式错误",
+		})
+		return
+	}
+
+	slog.Debug("handler.校验字段名", "name", req.Name)
+
+	result, err := h.fieldService.CheckName(c.Request.Context(), req.Name)
+	if err != nil {
+		slog.Error("handler.校验字段名失败", "error", err)
+		c.JSON(http.StatusInternalServerError, model.Response{
+			Code:    errcode.ErrInternal,
+			Message: errcode.Msg(errcode.ErrInternal),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, model.Response{
+		Code:    errcode.Success,
+		Data:    result,
+		Message: errcode.Msg(errcode.Success),
 	})
 }

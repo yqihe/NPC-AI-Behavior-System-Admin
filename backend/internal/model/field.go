@@ -77,3 +77,14 @@ type UpdateFieldRequest struct {
 	Properties json.RawMessage `json:"properties"`
 	Version    int             `json:"version"`
 }
+
+// CheckNameRequest 唯一性校验请求
+type CheckNameRequest struct {
+	Name string `json:"name"`
+}
+
+// CheckNameResult 唯一性校验结果
+type CheckNameResult struct {
+	Available bool   `json:"available"`
+	Message   string `json:"message"`
+}

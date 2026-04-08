@@ -181,3 +181,16 @@ func (s *FieldService) Delete(ctx context.Context, name string) (*DeleteResult, 
 	slog.Info("service.删除字段成功", "name", name)
 	return &DeleteResult{Deleted: true}, nil
 }
+
+// CheckName 校验字段标识是否可用
+func (s *FieldService) CheckName(ctx context.Context, name string) (*model.CheckNameResult, error) {
+	exists, err := s.fieldStore.ExistsByName(ctx, name)
+	if err != nil {
+		slog.Error("service.校验字段名失败", "error", err, "name", name)
+		return nil, fmt.Errorf("check name: %w", err)
+	}
+	if exists {
+		return &model.CheckNameResult{Available: false, Message: "该字段标识已存在"}, nil
+	}
+	return &model.CheckNameResult{Available: true, Message: "该标识可用"}, nil
+}
