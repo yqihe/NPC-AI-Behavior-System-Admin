@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	"github.com/yqihe/npc-ai-admin/backend/internal/service"
 )
@@ -50,16 +51,16 @@ func (h *FieldHandler) List(c *gin.Context) {
 	if err != nil {
 		slog.Error("handler.字段列表失败", "error", err)
 		c.JSON(http.StatusInternalServerError, model.Response{
-			Code:    50000,
-			Message: "查询字段列表失败，请稍后重试",
+			Code:    errcode.ErrInternal,
+			Message: errcode.Msg(errcode.ErrInternal),
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, model.Response{
-		Code:    0,
+		Code:    errcode.Success,
 		Data:    data,
-		Message: "success",
+		Message: errcode.Msg(errcode.Success),
 	})
 }
 
@@ -70,7 +71,7 @@ func (h *FieldHandler) Create(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		slog.Debug("handler.创建字段-参数解析失败", "error", err)
 		c.JSON(http.StatusBadRequest, model.Response{
-			Code:    40002,
+			Code:    errcode.ErrBadRequest,
 			Message: "请求参数格式错误",
 		})
 		return
@@ -80,24 +81,24 @@ func (h *FieldHandler) Create(c *gin.Context) {
 
 	id, err := h.fieldService.Create(c.Request.Context(), &req)
 	if err != nil {
-		var svcErr *service.ServiceError
-		if errors.As(err, &svcErr) {
+		var ecErr *errcode.Error
+		if errors.As(err, &ecErr) {
 			c.JSON(http.StatusBadRequest, model.Response{
-				Code:    svcErr.Code,
-				Message: svcErr.Message,
+				Code:    ecErr.Code,
+				Message: ecErr.Message,
 			})
 			return
 		}
 		slog.Error("handler.创建字段失败", "error", err)
 		c.JSON(http.StatusInternalServerError, model.Response{
-			Code:    50000,
-			Message: "创建字段失败，请稍后重试",
+			Code:    errcode.ErrInternal,
+			Message: errcode.Msg(errcode.ErrInternal),
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, model.Response{
-		Code:    0,
+		Code:    errcode.Success,
 		Data:    gin.H{"id": id, "name": req.Name},
 		Message: "创建成功",
 	})

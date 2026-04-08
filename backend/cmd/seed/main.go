@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
@@ -10,17 +11,22 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
+	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	"github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
 )
 
 func main() {
-	dsn := os.Getenv("MYSQL_DSN")
-	if dsn == "" {
-		dsn = "root:root@tcp(127.0.0.1:3306)/npc_ai_admin?charset=utf8mb4&parseTime=true&loc=Local"
+	configPath := flag.String("config", "config.yaml", "配置文件路径")
+	flag.Parse()
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		slog.Error("seed.加载配置失败", "error", err)
+		os.Exit(1)
 	}
 
-	db, err := sqlx.Connect("mysql", dsn)
+	db, err := sqlx.Connect("mysql", cfg.MySQL.DSN)
 	if err != nil {
 		slog.Error("seed.连接MySQL失败", "error", err)
 		os.Exit(1)
