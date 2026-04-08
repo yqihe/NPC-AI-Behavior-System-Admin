@@ -16,19 +16,22 @@ type DictCache struct {
 	mu    sync.RWMutex
 	store *mysql.DictionaryStore
 
-	// group → name → Dictionary
+	// group → name → Dictionary（查找用）
 	data map[string]map[string]model.Dictionary
+	// group → []DictionaryItem（已排序，ListByGroup 直接返回，不再每次排序）
+	sorted map[string][]model.DictionaryItem
 }
 
 // NewDictCache 创建 DictCache
 func NewDictCache(store *mysql.DictionaryStore) *DictCache {
 	return &DictCache{
-		store: store,
-		data:  make(map[string]map[string]model.Dictionary),
+		store:  store,
+		data:   make(map[string]map[string]model.Dictionary),
+		sorted: make(map[string][]model.DictionaryItem),
 	}
 }
 
-// Load 从 MySQL 全量加载到内存
+// Load 从 MySQL 全量加载到内存（启动时调用）
 func (c *DictCache) Load(ctx context.Context) error {
 	items, err := c.store.ListAll(ctx)
 	if err != nil {
@@ -36,15 +39,34 @@ func (c *DictCache) Load(ctx context.Context) error {
 	}
 
 	data := make(map[string]map[string]model.Dictionary)
+	grouped := make(map[string][]model.Dictionary)
+
 	for _, item := range items {
 		if _, ok := data[item.GroupName]; !ok {
 			data[item.GroupName] = make(map[string]model.Dictionary)
 		}
 		data[item.GroupName][item.Name] = item
+		grouped[item.GroupName] = append(grouped[item.GroupName], item)
+	}
+
+	// 预排序
+	sorted := make(map[string][]model.DictionaryItem, len(grouped))
+	for group, dicts := range grouped {
+		sort.Slice(dicts, func(i, j int) bool { return dicts[i].SortOrder < dicts[j].SortOrder })
+		list := make([]model.DictionaryItem, 0, len(dicts))
+		for _, d := range dicts {
+			list = append(list, model.DictionaryItem{
+				Name:  d.Name,
+				Label: d.Label,
+				Extra: d.Extra,
+			})
+		}
+		sorted[group] = list
 	}
 
 	c.mu.Lock()
 	c.data = data
+	c.sorted = sorted
 	c.mu.Unlock()
 
 	slog.Info("cache.字典加载完成", "groups", len(data), "total", len(items))
@@ -64,39 +86,15 @@ func (c *DictCache) GetLabel(group, name string) string {
 	return name
 }
 
-// ListByGroup 获取某个 group 下所有选项（前端下拉用，按 sort_order 排序）
+// ListByGroup 获取某个 group 下所有选项（已排序，直接返回，零分配）
 func (c *DictCache) ListByGroup(group string) []model.DictionaryItem {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	g, ok := c.data[group]
-	if !ok {
-		return make([]model.DictionaryItem, 0)
+	if items, ok := c.sorted[group]; ok {
+		return items
 	}
-
-	// 先收集再排序（map 遍历顺序不确定）
-	type sortable struct {
-		item  model.DictionaryItem
-		order int
-	}
-	tmp := make([]sortable, 0, len(g))
-	for _, d := range g {
-		tmp = append(tmp, sortable{
-			item: model.DictionaryItem{
-				Name:  d.Name,
-				Label: d.Label,
-				Extra: d.Extra,
-			},
-			order: d.SortOrder,
-		})
-	}
-	sort.Slice(tmp, func(i, j int) bool { return tmp[i].order < tmp[j].order })
-
-	items := make([]model.DictionaryItem, 0, len(tmp))
-	for _, s := range tmp {
-		items = append(items, s.item)
-	}
-	return items
+	return make([]model.DictionaryItem, 0)
 }
 
 // Exists 检查某个 group + name 是否存在

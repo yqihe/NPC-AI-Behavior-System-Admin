@@ -274,9 +274,9 @@ func (s *FieldService) GetReferences(ctx context.Context, name string) (*model.R
 	fieldNames := make([]string, 0)
 	for _, r := range refs {
 		switch r.RefType {
-		case "template":
+		case model.RefTypeTemplate:
 			templateNames = append(templateNames, r.RefName)
-		case "field":
+		case model.RefTypeField:
 			fieldNames = append(fieldNames, r.RefName)
 		}
 	}
@@ -300,7 +300,7 @@ func (s *FieldService) GetReferences(ctx context.Context, name string) (*model.R
 		}
 		for _, n := range fieldNames {
 			result.Fields = append(result.Fields, model.ReferenceItem{
-				RefType: "field",
+				RefType: model.RefTypeField,
 				RefName: n,
 				Label:   labelMap[n],
 			})
@@ -309,7 +309,7 @@ func (s *FieldService) GetReferences(ctx context.Context, name string) (*model.R
 
 	for _, n := range templateNames {
 		result.Templates = append(result.Templates, model.ReferenceItem{
-			RefType: "template",
+			RefType: model.RefTypeTemplate,
 			RefName: n,
 			Label:   n, // TODO: 模板管理完成后 IN 查 templates 拿 label
 		})

@@ -41,10 +41,10 @@ func (h *FieldHandler) checkName(name string) *errcode.Error {
 
 func (h *FieldHandler) checkLabel(label string) *errcode.Error {
 	if label == "" {
-		return errcode.Newf(errcode.ErrFieldNameInvalid, "中文标签不能为空")
+		return errcode.Newf(errcode.ErrBadRequest, "中文标签不能为空")
 	}
 	if len(label) > h.valCfg.FieldLabelMaxLength {
-		return errcode.Newf(errcode.ErrFieldNameInvalid, "中文标签长度不能超过 %d 个字符", h.valCfg.FieldLabelMaxLength)
+		return errcode.Newf(errcode.ErrBadRequest, "中文标签长度不能超过 %d 个字符", h.valCfg.FieldLabelMaxLength)
 	}
 	return nil
 }

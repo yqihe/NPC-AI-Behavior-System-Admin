@@ -44,6 +44,12 @@ type FieldProperties struct {
 	Constraints  json.RawMessage `json:"constraints,omitempty"`
 }
 
+// 引用来源类型常量
+const (
+	RefTypeTemplate = "template" // 模板引用
+	RefTypeField    = "field"    // reference 字段引用
+)
+
 // FieldRef 字段引用关系
 type FieldRef struct {
 	FieldName string `json:"field_name" db:"field_name"`

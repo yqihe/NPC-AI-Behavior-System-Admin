@@ -92,9 +92,19 @@ func (c *FieldCache) DelDetail(ctx context.Context, name string) {
 
 // ---- 列表缓存 ----
 
-// GetList 查列表缓存
+// getListVersion 获取当前列表缓存版本号
+func (c *FieldCache) getListVersion(ctx context.Context) int64 {
+	v, err := c.rdb.Get(ctx, cache.FieldListVersionKey).Int64()
+	if err != nil {
+		return 0
+	}
+	return v
+}
+
+// GetList 查列表缓存（带版本号）
 func (c *FieldCache) GetList(ctx context.Context, q *model.FieldListQuery) (*model.ListData, bool, error) {
-	key := cache.FieldListKey(0, q.Type, q.Category, q.Label, q.Page, q.PageSize)
+	version := c.getListVersion(ctx)
+	key := cache.FieldListKey(version, q.Type, q.Category, q.Label, q.Page, q.PageSize)
 	data, err := c.rdb.Get(ctx, key).Bytes()
 	if err == redis.Nil {
 		slog.Debug("cache.字段列表未命中", "key", key)
@@ -115,9 +125,10 @@ func (c *FieldCache) GetList(ctx context.Context, q *model.FieldListQuery) (*mod
 	return &list, true, nil
 }
 
-// SetList 写列表缓存
+// SetList 写列表缓存（带当前版本号）
 func (c *FieldCache) SetList(ctx context.Context, q *model.FieldListQuery, list *model.ListData) {
-	key := cache.FieldListKey(0, q.Type, q.Category, q.Label, q.Page, q.PageSize)
+	version := c.getListVersion(ctx)
+	key := cache.FieldListKey(version, q.Type, q.Category, q.Label, q.Page, q.PageSize)
 	data, err := json.Marshal(list)
 	if err != nil {
 		slog.Error("cache.字段列表序列化失败", "error", err)
@@ -129,24 +140,11 @@ func (c *FieldCache) SetList(ctx context.Context, q *model.FieldListQuery, list 
 	}
 }
 
-// InvalidateList 清除所有列表缓存（字段 CRUD 后调用）
+// InvalidateList 使所有列表缓存失效
+// 只需 INCR 版本号，旧版本的 key 自然过期，无需 SCAN
 func (c *FieldCache) InvalidateList(ctx context.Context) {
-	pattern := cache.FieldListPattern()
-	iter := c.rdb.Scan(ctx, 0, pattern, 100).Iterator()
-	keys := make([]string, 0)
-	for iter.Next(ctx) {
-		keys = append(keys, iter.Val())
-	}
-	if err := iter.Err(); err != nil {
-		slog.Error("cache.字段列表扫描失败", "error", err)
-		return
-	}
-	if len(keys) > 0 {
-		if err := c.rdb.Del(ctx, keys...).Err(); err != nil {
-			slog.Error("cache.字段列表批量删除失败", "error", err, "count", len(keys))
-		} else {
-			slog.Debug("cache.字段列表缓存已清除", "count", len(keys))
-		}
+	if err := c.rdb.Incr(ctx, cache.FieldListVersionKey).Err(); err != nil {
+		slog.Error("cache.列表版本号递增失败", "error", err)
 	}
 }
 
@@ -183,5 +181,7 @@ func (c *FieldCache) TryLock(ctx context.Context, name string, expire time.Durat
 // Unlock 释放分布式锁
 func (c *FieldCache) Unlock(ctx context.Context, name string) {
 	key := cache.FieldLockKey(name)
-	c.rdb.Del(ctx, key)
+	if err := c.rdb.Del(ctx, key).Err(); err != nil {
+		slog.Error("cache.释放锁失败", "error", err, "key", key)
+	}
 }

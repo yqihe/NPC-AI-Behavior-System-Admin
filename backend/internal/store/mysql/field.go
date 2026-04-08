@@ -3,7 +3,6 @@ package mysql
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -73,7 +72,7 @@ func (s *FieldStore) List(ctx context.Context, q *model.FieldListQuery) ([]model
 
 	if q.Label != "" {
 		where = append(where, "label LIKE ?")
-		args = append(args, "%"+q.Label+"%")
+		args = append(args, "%"+escapeLike(q.Label)+"%")
 	}
 	if q.Type != "" {
 		where = append(where, "type = ?")
@@ -229,23 +228,10 @@ func (s *FieldStore) GetByNames(ctx context.Context, names []string) ([]model.Fi
 	return fields, nil
 }
 
-// GetReferenceFields 查询所有引用了指定字段的 reference 字段
-func (s *FieldStore) GetReferenceFields(ctx context.Context, fieldName string) ([]model.Field, error) {
-	fields := make([]model.Field, 0)
-	err := s.db.SelectContext(ctx, &fields,
-		`SELECT f.id, f.name, f.label, f.type, f.category, f.properties, f.ref_count, f.version, f.deleted, f.created_at, f.updated_at
-		 FROM fields f
-		 WHERE f.deleted = 0 AND f.type = 'reference'
-		 AND JSON_CONTAINS(f.properties->'$.constraints.refs', ?)`,
-		mustJSON(fieldName),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("get reference fields: %w", err)
-	}
-	return fields, nil
-}
-
-func mustJSON(v any) string {
-	b, _ := json.Marshal(v)
-	return string(b)
+// escapeLike 转义 LIKE 通配符，防止用户输入 % 或 _ 匹配所有记录
+func escapeLike(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `%`, `\%`)
+	s = strings.ReplaceAll(s, `_`, `\_`)
+	return s
 }
