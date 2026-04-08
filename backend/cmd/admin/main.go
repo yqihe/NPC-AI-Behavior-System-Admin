@@ -16,6 +16,7 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/handler"
 	"github.com/yqihe/npc-ai-admin/backend/internal/service"
 	"github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
+	"github.com/yqihe/npc-ai-admin/backend/internal/validator"
 )
 
 func main() {
@@ -50,8 +51,11 @@ func main() {
 	}
 	cancel()
 
+	// Validator
+	fieldValidator := validator.NewFieldValidator(dictCache)
+
 	// Service
-	fieldService := service.NewFieldService(fieldStore, dictCache)
+	fieldService := service.NewFieldService(fieldStore, dictCache, fieldValidator)
 
 	// Handler
 	fieldHandler := handler.NewFieldHandler(fieldService)
