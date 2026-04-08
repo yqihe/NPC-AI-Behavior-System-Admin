@@ -11,7 +11,6 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
-	"github.com/yqihe/npc-ai-admin/backend/internal/service/validator"
 )
 
 // FieldService 字段管理业务逻辑
@@ -19,20 +18,36 @@ type FieldService struct {
 	fieldStore    *storemysql.FieldStore
 	fieldRefStore *storemysql.FieldRefStore
 	dictCache     *cache.DictCache
-	validator     *validator.FieldValidator
 	pagCfg        *config.PaginationConfig
 }
 
 // NewFieldService 创建 FieldService
-func NewFieldService(fieldStore *storemysql.FieldStore, fieldRefStore *storemysql.FieldRefStore, dictCache *cache.DictCache, v *validator.FieldValidator, pagCfg *config.PaginationConfig) *FieldService {
+func NewFieldService(fieldStore *storemysql.FieldStore, fieldRefStore *storemysql.FieldRefStore, dictCache *cache.DictCache, pagCfg *config.PaginationConfig) *FieldService {
 	return &FieldService{
 		fieldStore:    fieldStore,
 		fieldRefStore: fieldRefStore,
 		dictCache:     dictCache,
-		validator:     v,
 		pagCfg:        pagCfg,
 	}
 }
+
+// ---- 业务校验（需查缓存/DB） ----
+
+func (s *FieldService) checkTypeExists(typ string) *errcode.Error {
+	if !s.dictCache.Exists("field_type", typ) {
+		return errcode.Newf(errcode.ErrFieldTypeNotFound, "字段类型 '%s' 不存在", typ)
+	}
+	return nil
+}
+
+func (s *FieldService) checkCategoryExists(category string) *errcode.Error {
+	if !s.dictCache.Exists("field_category", category) {
+		return errcode.Newf(errcode.ErrFieldCategoryNotFound, "标签分类 '%s' 不存在", category)
+	}
+	return nil
+}
+
+// ---- 业务方法 ----
 
 // List 字段列表（分页 + 筛选 + label 翻译）
 func (s *FieldService) List(ctx context.Context, q *model.FieldListQuery) (*model.ListData, error) {
@@ -67,10 +82,15 @@ func (s *FieldService) List(ctx context.Context, q *model.FieldListQuery) (*mode
 
 // Create 创建字段
 func (s *FieldService) Create(ctx context.Context, req *model.CreateFieldRequest) (int64, error) {
-	if err := s.validator.ValidateCreate(req); err != nil {
+	// 业务校验：type/category 存在性
+	if err := s.checkTypeExists(req.Type); err != nil {
+		return 0, err
+	}
+	if err := s.checkCategoryExists(req.Category); err != nil {
 		return 0, err
 	}
 
+	// 业务校验：name 唯一性（含软删除）
 	exists, err := s.fieldStore.ExistsByName(ctx, req.Name)
 	if err != nil {
 		slog.Error("service.创建字段-检查唯一性失败", "error", err, "name", req.Name)
@@ -80,6 +100,7 @@ func (s *FieldService) Create(ctx context.Context, req *model.CreateFieldRequest
 		return 0, errcode.Newf(errcode.ErrFieldNameExists, "字段标识 '%s' 已存在", req.Name)
 	}
 
+	// 写入
 	id, err := s.fieldStore.Create(ctx, req)
 	if err != nil {
 		slog.Error("service.创建字段失败", "error", err, "name", req.Name)
@@ -103,14 +124,17 @@ func (s *FieldService) GetByName(ctx context.Context, name string) (*model.Field
 	return field, nil
 }
 
-// Update 编辑字段（含硬约束检查）
+// Update 编辑字段
 func (s *FieldService) Update(ctx context.Context, name string, req *model.UpdateFieldRequest) error {
-	// 1. 参数校验
-	if err := s.validator.ValidateUpdate(req); err != nil {
+	// 业务校验：type/category 存在性
+	if err := s.checkTypeExists(req.Type); err != nil {
+		return err
+	}
+	if err := s.checkCategoryExists(req.Category); err != nil {
 		return err
 	}
 
-	// 2. 查旧数据
+	// 查旧数据
 	old, err := s.fieldStore.GetByName(ctx, name)
 	if err != nil {
 		slog.Error("service.编辑字段-查旧数据失败", "error", err, "name", name)
@@ -120,12 +144,12 @@ func (s *FieldService) Update(ctx context.Context, name string, req *model.Updat
 		return errcode.Newf(errcode.ErrFieldRefNotFound, "字段 '%s' 不存在", name)
 	}
 
-	// 3. 硬约束检查
+	// 硬约束：被引用时禁止改 type
 	if old.Type != req.Type && old.RefCount > 0 {
 		return errcode.Newf(errcode.ErrFieldRefChangeType, "该字段已被 %d 个模板/字段引用，无法修改类型", old.RefCount)
 	}
 
-	// 4. 乐观锁写入
+	// 乐观锁写入
 	err = s.fieldStore.Update(ctx, name, req)
 	if err != nil {
 		if errors.Is(err, storemysql.ErrVersionConflict) {
@@ -141,13 +165,12 @@ func (s *FieldService) Update(ctx context.Context, name string, req *model.Updat
 
 // DeleteResult 删除结果
 type DeleteResult struct {
-	Deleted    bool            `json:"deleted"`
+	Deleted    bool             `json:"deleted"`
 	References []model.FieldRef `json:"references,omitempty"`
 }
 
 // Delete 删除字段（硬约束：被引用时禁止删除）
 func (s *FieldService) Delete(ctx context.Context, name string) (*DeleteResult, error) {
-	// 1. 检查字段是否存在
 	field, err := s.fieldStore.GetByName(ctx, name)
 	if err != nil {
 		slog.Error("service.删除字段-查询失败", "error", err, "name", name)
@@ -157,19 +180,16 @@ func (s *FieldService) Delete(ctx context.Context, name string) (*DeleteResult, 
 		return nil, errcode.Newf(errcode.ErrFieldRefNotFound, "字段 '%s' 不存在", name)
 	}
 
-	// 2. 查引用关系
 	refs, err := s.fieldRefStore.GetByFieldName(ctx, name)
 	if err != nil {
 		slog.Error("service.删除字段-查引用失败", "error", err, "name", name)
 		return nil, fmt.Errorf("get refs: %w", err)
 	}
 
-	// 3. 有引用 → 禁止删除，返回引用列表
 	if len(refs) > 0 {
 		return &DeleteResult{Deleted: false, References: refs}, errcode.New(errcode.ErrFieldRefDelete)
 	}
 
-	// 4. 无引用 → 软删除
 	if err := s.fieldStore.SoftDelete(ctx, name); err != nil {
 		if errors.Is(err, storemysql.ErrNotFound) {
 			return nil, errcode.Newf(errcode.ErrFieldRefNotFound, "字段 '%s' 不存在", name)
@@ -195,9 +215,8 @@ func (s *FieldService) CheckName(ctx context.Context, name string) (*model.Check
 	return &model.CheckNameResult{Available: true, Message: "该标识可用"}, nil
 }
 
-// GetReferences 查询字段引用详情（不 JOIN，两次独立查询）
+// GetReferences 查询字段引用详情
 func (s *FieldService) GetReferences(ctx context.Context, name string) (*model.ReferenceDetail, error) {
-	// 1. 检查字段存在
 	field, err := s.fieldStore.GetByName(ctx, name)
 	if err != nil {
 		slog.Error("service.引用详情-查字段失败", "error", err, "name", name)
@@ -207,14 +226,12 @@ func (s *FieldService) GetReferences(ctx context.Context, name string) (*model.R
 		return nil, errcode.Newf(errcode.ErrFieldRefNotFound, "字段 '%s' 不存在", name)
 	}
 
-	// 2. 查引用关系（主键索引前缀）
 	refs, err := s.fieldRefStore.GetByFieldName(ctx, name)
 	if err != nil {
 		slog.Error("service.引用详情-查引用失败", "error", err, "name", name)
 		return nil, fmt.Errorf("get refs: %w", err)
 	}
 
-	// 3. 按 ref_type 分组，收集 ref_name
 	templateNames := make([]string, 0)
 	fieldNames := make([]string, 0)
 	for _, r := range refs {
@@ -233,7 +250,6 @@ func (s *FieldService) GetReferences(ctx context.Context, name string) (*model.R
 		Fields:     make([]model.ReferenceItem, 0, len(fieldNames)),
 	}
 
-	// 4. IN 查 fields 拿 label（走 uk_name）
 	if len(fieldNames) > 0 {
 		fieldList, err := s.fieldStore.GetByNames(ctx, fieldNames)
 		if err != nil {
@@ -253,7 +269,6 @@ func (s *FieldService) GetReferences(ctx context.Context, name string) (*model.R
 		}
 	}
 
-	// 5. 模板引用 — 模板表未建，暂时只返回 ref_name
 	for _, n := range templateNames {
 		result.Templates = append(result.Templates, model.ReferenceItem{
 			RefType: "template",
@@ -265,17 +280,8 @@ func (s *FieldService) GetReferences(ctx context.Context, name string) (*model.R
 	return result, nil
 }
 
-// BatchDelete 批量删除（逐条检查引用，可删的删，不可删的跳过）
+// BatchDelete 批量删除
 func (s *FieldService) BatchDelete(ctx context.Context, names []string) (*model.BatchDeleteResult, error) {
-	if len(names) == 0 {
-		return &model.BatchDeleteResult{
-			Deleted: make([]string, 0),
-			Skipped: make([]model.BatchDeleteSkipped, 0),
-			Message: "未选择任何字段",
-		}, nil
-	}
-
-	// 查所有字段信息（拿 label 用于跳过报告）
 	fields, err := s.fieldStore.GetByNames(ctx, names)
 	if err != nil {
 		slog.Error("service.批量删除-查字段失败", "error", err)
@@ -289,36 +295,20 @@ func (s *FieldService) BatchDelete(ctx context.Context, names []string) (*model.
 	deleted := make([]string, 0)
 	skipped := make([]model.BatchDeleteSkipped, 0)
 
-	// 逐条处理（独立事务，不锁全表）
 	for _, name := range names {
-		// 检查引用
 		hasRefs, err := s.fieldRefStore.HasRefs(ctx, name)
 		if err != nil {
 			slog.Error("service.批量删除-查引用失败", "error", err, "name", name)
-			skipped = append(skipped, model.BatchDeleteSkipped{
-				Name:   name,
-				Label:  labelMap[name],
-				Reason: "查询引用失败",
-			})
+			skipped = append(skipped, model.BatchDeleteSkipped{Name: name, Label: labelMap[name], Reason: "查询引用失败"})
 			continue
 		}
 		if hasRefs {
-			skipped = append(skipped, model.BatchDeleteSkipped{
-				Name:   name,
-				Label:  labelMap[name],
-				Reason: "被引用无法删除",
-			})
+			skipped = append(skipped, model.BatchDeleteSkipped{Name: name, Label: labelMap[name], Reason: "被引用无法删除"})
 			continue
 		}
-
-		// 软删除
 		if err := s.fieldStore.SoftDelete(ctx, name); err != nil {
 			slog.Error("service.批量删除-删除失败", "error", err, "name", name)
-			skipped = append(skipped, model.BatchDeleteSkipped{
-				Name:   name,
-				Label:  labelMap[name],
-				Reason: "删除失败",
-			})
+			skipped = append(skipped, model.BatchDeleteSkipped{Name: name, Label: labelMap[name], Reason: "删除失败"})
 			continue
 		}
 		deleted = append(deleted, name)
@@ -330,20 +320,14 @@ func (s *FieldService) BatchDelete(ctx context.Context, names []string) (*model.
 	}
 
 	slog.Info("service.批量删除完成", "deleted", len(deleted), "skipped", len(skipped))
-	return &model.BatchDeleteResult{
-		Deleted: deleted,
-		Skipped: skipped,
-		Message: msg,
-	}, nil
+	return &model.BatchDeleteResult{Deleted: deleted, Skipped: skipped, Message: msg}, nil
 }
 
 // BatchUpdateCategory 批量修改分类
 func (s *FieldService) BatchUpdateCategory(ctx context.Context, req *model.BatchCategoryRequest) (int64, error) {
-	if len(req.Names) == 0 {
-		return 0, errcode.Newf(errcode.ErrBadRequest, "未选择任何字段")
-	}
-	if !s.dictCache.Exists("field_category", req.Category) {
-		return 0, errcode.Newf(errcode.ErrFieldCategoryNotFound, "标签分类 '%s' 不存在", req.Category)
+	// 业务校验：分类存在性
+	if err := s.checkCategoryExists(req.Category); err != nil {
+		return 0, err
 	}
 
 	affected, err := s.fieldStore.BatchUpdateCategory(ctx, req.Names, req.Category)

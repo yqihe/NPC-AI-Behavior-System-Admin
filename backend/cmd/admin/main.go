@@ -18,7 +18,6 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/router"
 	"github.com/yqihe/npc-ai-admin/backend/internal/service"
 	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
-	"github.com/yqihe/npc-ai-admin/backend/internal/service/validator"
 )
 
 func main() {
@@ -59,14 +58,11 @@ func main() {
 	}
 	cancel()
 
-	// Validator
-	fieldValidator := validator.NewFieldValidator(dictCache, &cfg.Validation)
-
 	// Service
-	fieldService := service.NewFieldService(fieldStore, fieldRefStore, dictCache, fieldValidator, &cfg.Pagination)
+	fieldService := service.NewFieldService(fieldStore, fieldRefStore, dictCache, &cfg.Pagination)
 
 	// Handler
-	fieldHandler := handler.NewFieldHandler(fieldService)
+	fieldHandler := handler.NewFieldHandler(fieldService, &cfg.Validation)
 	dictHandler := handler.NewDictionaryHandler(dictCache)
 
 	// Router
