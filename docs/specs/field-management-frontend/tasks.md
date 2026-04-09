@@ -102,7 +102,7 @@
 
 ---
 
-## T11: FieldForm 集成约束面板 + 默认值控件 (R8)
+## T11: FieldForm 集成约束面板 + 默认值控件 (R8) [x]
 
 **涉及文件**：
 - `frontend/src/views/FieldForm.vue`（修改，集成约束面板）

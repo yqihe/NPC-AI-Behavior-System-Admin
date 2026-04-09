@@ -123,11 +123,65 @@
             </el-radio-group>
           </el-form-item>
 
-          <!-- 约束配置占位（T9-T11 实现） -->
+          <!-- 默认值 -->
+          <el-form-item v-if="form.type" label="默认值">
+            <el-input-number
+              v-if="form.type === 'integer'"
+              v-model="form.properties.default_value"
+              :controls="false"
+              placeholder="选填"
+              style="width: 240px"
+            />
+            <el-input-number
+              v-else-if="form.type === 'float'"
+              v-model="form.properties.default_value"
+              :controls="false"
+              :step="0.1"
+              placeholder="选填"
+              style="width: 240px"
+            />
+            <el-input
+              v-else-if="form.type === 'string'"
+              v-model="form.properties.default_value"
+              placeholder="选填"
+              style="width: 360px"
+            />
+            <el-switch
+              v-else-if="form.type === 'boolean'"
+              v-model="form.properties.default_value"
+            />
+            <span v-else class="default-hint">
+              {{ form.type === 'select' ? '默认值自动取第一个选项' : '引用类型无默认值' }}
+            </span>
+          </el-form-item>
+
+          <!-- 约束配置 -->
           <el-form-item v-if="form.type" label="约束配置">
-            <div class="constraint-placeholder">
-              约束面板（待 T9-T11 实现）— 当前类型: {{ form.type }}
+            <FieldConstraintInteger
+              v-if="form.type === 'integer' || form.type === 'float'"
+              v-model="form.properties.constraints"
+              :restricted="refCount > 0"
+              :type-name="form.type"
+            />
+            <FieldConstraintString
+              v-else-if="form.type === 'string'"
+              v-model="form.properties.constraints"
+              :restricted="refCount > 0"
+            />
+            <div v-else-if="form.type === 'boolean'" class="constraint-empty">
+              布尔类型无需约束配置
             </div>
+            <FieldConstraintSelect
+              v-else-if="form.type === 'select'"
+              v-model="form.properties.constraints"
+              :restricted="refCount > 0"
+            />
+            <FieldConstraintReference
+              v-else-if="form.type === 'reference'"
+              v-model="form.properties.constraints"
+              :restricted="refCount > 0"
+              :current-field-id="isCreate ? 0 : Number(route.params.id)"
+            />
           </el-form-item>
 
           <!-- 提交按钮 -->
@@ -154,6 +208,10 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Lock, WarningFilled, Loading, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { fieldApi } from '@/api/fields'
 import { dictApi } from '@/api/dictionaries'
+import FieldConstraintInteger from '@/components/FieldConstraintInteger.vue'
+import FieldConstraintString from '@/components/FieldConstraintString.vue'
+import FieldConstraintSelect from '@/components/FieldConstraintSelect.vue'
+import FieldConstraintReference from '@/components/FieldConstraintReference.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -402,11 +460,18 @@ async function handleSubmit() {
   color: #E6A23C;
 }
 
-.constraint-placeholder {
+.constraint-empty {
   padding: 16px;
   background: #F5F7FA;
   border-radius: 4px;
   color: #909399;
   font-size: 13px;
+  width: 100%;
+  text-align: center;
+}
+
+.default-hint {
+  font-size: 13px;
+  color: #909399;
 }
 </style>
