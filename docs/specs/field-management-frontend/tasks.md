@@ -31,7 +31,7 @@
 
 ---
 
-## T4: API 层 — Axios 实例 + 字段 API + 字典 API (R17, R20)
+## T4: API 层 — Axios 实例 + 字段 API + 字典 API (R17, R20) [x]
 
 **涉及文件**：
 - `frontend/src/api/request.js`（新建）
