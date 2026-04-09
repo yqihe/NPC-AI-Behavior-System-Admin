@@ -146,13 +146,55 @@
         />
       </div>
     </div>
+
+    <!-- 引用详情弹窗 -->
+    <el-dialog
+      v-model="refDialog.visible"
+      :title="`引用详情 — ${refDialog.label} (${refDialog.name})`"
+      width="500px"
+      @close="resetRefDialog"
+    >
+      <div v-loading="refDialog.loading">
+        <!-- 模板引用 -->
+        <div class="ref-section">
+          <p class="ref-subtitle">
+            模板引用（{{ refDialog.templates.length }} 个模板引用了该字段）：
+          </p>
+          <el-table
+            v-if="refDialog.templates.length > 0"
+            :data="refDialog.templates"
+            size="small"
+          >
+            <el-table-column prop="label" label="模板名称" />
+            <el-table-column prop="ref_type" label="类型" width="100" />
+          </el-table>
+          <p v-else class="ref-empty">暂无模板引用</p>
+        </div>
+
+        <!-- 字段引用 -->
+        <div class="ref-section" style="margin-top: 16px">
+          <p class="ref-subtitle">
+            字段引用（{{ refDialog.fields.length }} 个 reference 字段引用了该字段）：
+          </p>
+          <el-table
+            v-if="refDialog.fields.length > 0"
+            :data="refDialog.fields"
+            size="small"
+          >
+            <el-table-column prop="label" label="字段名" />
+            <el-table-column prop="ref_type" label="类型" width="100" />
+          </el-table>
+          <p v-else class="ref-empty">暂无字段引用</p>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
 import { fieldApi } from '@/api/fields'
 import { dictApi } from '@/api/dictionaries'
@@ -172,6 +214,15 @@ const query = reactive({
   enabled: null,
   page: 1,
   page_size: 20,
+})
+
+const refDialog = reactive({
+  visible: false,
+  loading: false,
+  name: '',
+  label: '',
+  templates: [],
+  fields: [],
 })
 
 // ---------- 数据加载 ----------
@@ -233,10 +284,19 @@ function handleReset() {
   fetchList()
 }
 
-// ---------- 行操作（占位，T6 实现） ----------
+// ---------- 行操作 ----------
 
-function handleToggle(row, val) {
-  // T6 实现
+async function handleToggle(row, val) {
+  try {
+    await fieldApi.toggleEnabled(row.id, val, row.version)
+    ElMessage.success(val ? '已启用' : '已禁用')
+    fetchList()
+  } catch (err) {
+    if (err.code === 40010) {
+      ElMessageBox.alert('数据已被其他用户修改，请刷新页面后重试。', '版本冲突', { type: 'warning' })
+    }
+    // 其他错误拦截器已 toast
+  }
 }
 
 function handleEdit(row) {
@@ -247,12 +307,60 @@ function handleEdit(row) {
   router.push(`/fields/${row.id}/edit`)
 }
 
-function handleDelete(row) {
-  // T6 实现
+async function handleDelete(row) {
+  if (row.enabled) {
+    ElMessageBox.alert('请先禁用该字段，再进行删除。', '提示', { type: 'warning' })
+    return
+  }
+  if (row.ref_count > 0) {
+    // 有引用：显示警告 + 自动打开引用详情
+    await handleShowRefs(row)
+    ElMessage.warning(`该字段被 ${row.ref_count} 处引用，无法删除。请先移除引用关系。`)
+    return
+  }
+  // 无引用：确认删除
+  try {
+    await ElMessageBox.confirm(
+      `确认删除字段「${row.label}」（${row.name}）？删除后无法恢复。`,
+      '删除确认',
+      { confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'warning' },
+    )
+    await fieldApi.delete(row.id)
+    ElMessage.success('删除成功')
+    fetchList()
+  } catch (err) {
+    if (err === 'cancel') return
+    if (err.code === 40005) {
+      await handleShowRefs(row)
+    }
+    // 其他错误拦截器已 toast
+  }
 }
 
-function handleShowRefs(row) {
-  // T6 实现
+async function handleShowRefs(row) {
+  refDialog.visible = true
+  refDialog.loading = true
+  refDialog.name = row.name
+  refDialog.label = row.label
+  refDialog.templates = []
+  refDialog.fields = []
+  try {
+    const res = await fieldApi.references(row.id)
+    refDialog.templates = res.data?.templates || []
+    refDialog.fields = res.data?.fields || []
+  } catch {
+    // 拦截器已 toast
+  } finally {
+    refDialog.loading = false
+  }
+}
+
+function resetRefDialog() {
+  refDialog.loading = false
+  refDialog.name = ''
+  refDialog.label = ''
+  refDialog.templates = []
+  refDialog.fields = []
 }
 
 // ---------- 辅助 ----------
@@ -340,5 +448,21 @@ function formatTime(str) {
 
 :deep(.row-disabled) {
   opacity: 0.5;
+}
+
+.ref-section {
+  margin-bottom: 8px;
+}
+
+.ref-subtitle {
+  font-size: 13px;
+  color: #909399;
+  margin: 0 0 8px 0;
+}
+
+.ref-empty {
+  font-size: 13px;
+  color: #C0C4CC;
+  margin: 4px 0;
 }
 </style>

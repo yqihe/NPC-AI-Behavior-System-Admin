@@ -51,7 +51,7 @@
 
 ---
 
-## T6: 字段列表页 — Toggle + 编辑 + 删除交互 (R5, R11, R12, R13, R14)
+## T6: 字段列表页 — Toggle + 编辑 + 删除交互 (R5, R11, R12, R13, R14) [x]
 
 **涉及文件**：
 - `frontend/src/views/FieldList.vue`（修改，追加交互逻辑）
