@@ -71,11 +71,13 @@ slog.Warn("validator.error", "collection", "fsm_configs", "name", name, "err", e
 
 ### Name 唯一性
 
-`name` 是各 collection 的业务主键。创建时用 MongoDB unique index 保证，不能"先查后插"（竞态）。
+`name` 是各表的业务主键。MySQL 通过 `UNIQUE KEY uk_name (name)` 保证唯一性。创建前在 service 层检查是否已存在（含软删除）。
 
 ### 写操作
 
-UPDATE 使用 `ReplaceOne` 整体替换（PUT 语义）。
+- **创建**：INSERT，初始 `version=1`、`ref_count=0`、`deleted=0`
+- **更新**：UPDATE + 乐观锁（`WHERE version = ?`），`version = version + 1`
+- **删除**：软删除（`UPDATE SET deleted=1`），不物理删除
 
 ### 空值处理
 
@@ -86,11 +88,21 @@ UPDATE 使用 `ReplaceOne` 整体替换（PUT 语义）。
 
 ### 列表查询
 
-配置数量有限（每类 < 100），不分页。返回格式：`{"items": [...]}`，空列表 `{"items": []}`。
+所有列表后端分页（MySQL LIMIT/OFFSET），不做前端全量过滤。返回格式：
 
-### 错误响应
+```json
+{"code": 0, "data": {"items": [...], "total": 100, "page": 1, "page_size": 20}, "message": "OK"}
+```
 
-统一 `{"error": "中文描述"}`。状态码：400 参数错误 / 404 不存在 / 409 重复 / 422 校验失败 / 500 内部错误。
+### 统一响应格式
+
+```json
+{"code": 0, "data": {...}, "message": "OK"}
+```
+
+- `code=0` 成功，`code=40xxx` 业务错误，`code=50000` 内部错误
+- HTTP 状态码统一 200，业务错误码在 `code` 字段中
+- 错误码定义在 `errcode/codes.go`
 
 ### 请求体大小
 
@@ -106,14 +118,39 @@ docker compose down             # 停止
 
 ## 经验沉淀指引
 
-发现新规则/新坑时，按类型添加到对应文档：
+发现新规则/新坑时，按技术领域添加到对应文档：
 
-| 发现类型 | 添加到 |
-|----------|--------|
-| 通用禁令 | `docs/standards/red-lines.md` |
-| Go 语言禁令 | `docs/standards/go-red-lines.md` |
-| 前端禁令 | `docs/standards/frontend-red-lines.md` |
-| ADMIN 架构禁令 | `docs/architecture/red-lines.md` |
-| Go 陷阱 | `docs/development/go-pitfalls.md` |
-| 前端陷阱 | `docs/development/frontend-pitfalls.md` |
-| Skill 流程缺陷 | 对应的 `.claude/commands/*.md` |
+| 发现类型 | 红线（禁令） | 陷阱（踩坑） |
+|----------|-------------|-------------|
+| 通用 | `standards/red-lines.md` | — |
+| Go 语言 | `standards/go-red-lines.md` | `development/go-pitfalls.md` |
+| MySQL | `standards/mysql-red-lines.md` | `development/mysql-pitfalls.md` |
+| Redis | `standards/redis-red-lines.md` | `development/redis-pitfalls.md` |
+| MongoDB | — | `development/mongodb-pitfalls.md` |
+| 缓存模式 | `standards/cache-red-lines.md` | `development/cache-pitfalls.md` |
+| 前端 | `standards/frontend-red-lines.md` | `development/frontend-pitfalls.md` |
+| 后端架构 | `architecture/backend-red-lines.md` | — |
+| UI/UX | `architecture/ui-red-lines.md` | — |
+| Skill 流程 | — | 对应的 `.claude/commands/*.md` |
+
+## Bash 集成测试脚本（Windows 环境）
+
+### 中文编码
+
+Windows 上 Git Bash 的 `curl -d "$var"` 在变量展开时会破坏 UTF-8 中文字节。必须用管道传输：
+
+```bash
+# 错误：中文会乱码
+curl -d "$body" ...
+
+# 正确：通过 stdin 管道传输，避免 shell 展开
+printf '%s' "$body" | curl --data-binary @- -H "Content-Type: application/json; charset=utf-8" ...
+```
+
+### jq 输出 CRLF
+
+Windows 上 `jq -r` 输出带 `\r`（CR），导致 bash 字符串比较失败。所有 assert 函数的 jq 输出必须 `| tr -d '\r'`。
+
+### Docker initdb.d
+
+`docker-entrypoint-initdb.d` 只在数据卷首次初始化时执行。修改迁移文件后必须手动执行或重建数据卷。

@@ -48,7 +48,7 @@
 ### Step 3：修复
 
 - **一次只改一个点**——不准同时改多个可疑位置
-- 改完后检查 `docs/development/go-pitfalls.md` 和 `docs/development/frontend-pitfalls.md`，确认修复没有引入新问题
+- 改完后检查对应技术领域的陷阱文档（`docs/development/` 下按技术拆分），确认修复没有引入新问题
 
 ### Step 4：验证修复
 
@@ -91,11 +91,4 @@
 
 ## 经验沉淀
 
-排查过程中发现的新坑，按类型追加到对应文档：
-- 通用禁令 → `docs/standards/red-lines.md`
-- Go 语言禁令 → `docs/standards/go-red-lines.md`
-- 前端禁令 → `docs/standards/frontend-red-lines.md`
-- ADMIN 项目禁令 → `docs/architecture/red-lines.md`
-- Go 陷阱 → `docs/development/go-pitfalls.md`
-- 前端陷阱 → `docs/development/frontend-pitfalls.md`
-- 开发规则 → `docs/development/dev-rules.md`
+排查过程中发现的新坑，按技术领域追加到对应文档（参考 `docs/development/dev-rules.md` 经验沉淀指引表格）。

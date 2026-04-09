@@ -1,6 +1,6 @@
 # 通用禁止红线
 
-适用于所有项目。语言/框架专属禁令见 `go-red-lines.md`、`frontend-red-lines.md`。项目架构专属禁令见 `../architecture/red-lines.md`。
+适用于所有项目。按技术领域拆分的专属禁令见同目录：`go-red-lines.md`、`mysql-red-lines.md`、`redis-red-lines.md`、`cache-red-lines.md`、`frontend-red-lines.md`。项目架构专属禁令见 `../architecture/backend-red-lines.md` 和 `../architecture/ui-red-lines.md`。
 
 ## 禁止静默降级
 

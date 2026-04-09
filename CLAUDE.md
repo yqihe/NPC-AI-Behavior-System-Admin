@@ -51,28 +51,29 @@
 backend/
   cmd/
     admin/                 #   API 服务入口
-    seed/                  #   Schema 种子脚本
-    worker/                #   Sync Worker（MQ 消费者）
+    seed/                  #   字典种子脚本
   internal/
     handler/               #   HTTP handler（REST API）
     service/               #   业务逻辑
     store/
-      mongo.go             #   MongoDB 操作
-      mysql.go             #   MySQL 操作
-    cache/                 #   Redis 缓存
-    mq/                    #   RabbitMQ 生产者/消费者
-    validator/             #   校验器
+      mysql/               #   MySQL 操作（字段/字典/引用关系）
+      redis/               #   Redis 缓存 + key 管理
+    cache/                 #   内存缓存（字典启动加载）
+    config/                #   配置加载
+    errcode/               #   错误码定义
     model/                 #   数据模型
-    sync/                  #   MongoDB→MySQL 同步
+    router/                #   路由注册
+  migrations/              #   SQL DDL 脚本
 frontend/
   src/
     views/                 #   页面
     components/            #   通用组件（SchemaForm/BtNodeEditor/ConditionEditor 等）
     api/                   #   REST API 调用
 docs/                      # 文档
-  standards/               #   通用标准（跨项目复用）
-  architecture/            #   项目架构约束
-  development/             #   开发规范与陷阱
+  standards/               #   通用标准红线（Go/MySQL/Redis/缓存/前端）
+  architecture/            #   ADMIN 项目专属约束（后端架构/UI-UX）
+  development/             #   开发规范与陷阱（Go/MySQL/MongoDB/Redis/缓存/前端）
+  v3-PLAN/                 #   V3 需求规划文档
 Dockerfile.backend
 Dockerfile.frontend
 docker-compose.yml

@@ -1,0 +1,741 @@
+package service
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"time"
+
+	"github.com/yqihe/npc-ai-admin/backend/internal/cache"
+	"github.com/yqihe/npc-ai-admin/backend/internal/config"
+	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
+	"github.com/yqihe/npc-ai-admin/backend/internal/model"
+	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
+	storeredis "github.com/yqihe/npc-ai-admin/backend/internal/store/redis"
+)
+
+// FieldService 字段管理业务逻辑
+type FieldService struct {
+	fieldStore    *storemysql.FieldStore
+	fieldRefStore *storemysql.FieldRefStore
+	fieldCache    *storeredis.FieldCache
+	dictCache     *cache.DictCache
+	pagCfg        *config.PaginationConfig
+}
+
+// NewFieldService 创建 FieldService
+func NewFieldService(fieldStore *storemysql.FieldStore, fieldRefStore *storemysql.FieldRefStore, fieldCache *storeredis.FieldCache, dictCache *cache.DictCache, pagCfg *config.PaginationConfig) *FieldService {
+	return &FieldService{
+		fieldStore:    fieldStore,
+		fieldRefStore: fieldRefStore,
+		fieldCache:    fieldCache,
+		dictCache:     dictCache,
+		pagCfg:        pagCfg,
+	}
+}
+
+// ---- 业务校验辅助 ----
+
+func (s *FieldService) checkDictExists(group, value string, code int, label string) *errcode.Error {
+	if !s.dictCache.Exists(group, value) {
+		return errcode.Newf(code, "%s '%s' 不存在", label, value)
+	}
+	return nil
+}
+
+func (s *FieldService) checkTypeExists(typ string) *errcode.Error {
+	return s.checkDictExists(model.DictGroupFieldType, typ, errcode.ErrFieldTypeNotFound, "字段类型")
+}
+
+func (s *FieldService) checkCategoryExists(category string) *errcode.Error {
+	return s.checkDictExists(model.DictGroupFieldCategory, category, errcode.ErrFieldCategoryNotFound, "标签分类")
+}
+
+// getFieldOrNotFound 按 ID 查字段 + 判空
+func (s *FieldService) getFieldOrNotFound(ctx context.Context, id int64) (*model.Field, error) {
+	field, err := s.fieldStore.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("get field %d: %w", id, err)
+	}
+	if field == nil {
+		return nil, errcode.Newf(errcode.ErrFieldNotFound, "字段 ID=%d 不存在", id)
+	}
+	return field, nil
+}
+
+// ---- 业务方法 ----
+
+// List 字段列表（Cache-Aside：Redis → MySQL → 写 Redis）
+func (s *FieldService) List(ctx context.Context, q *model.FieldListQuery) (*model.ListData, error) {
+	if q.Page <= 0 {
+		q.Page = s.pagCfg.DefaultPage
+	}
+	if q.PageSize <= 0 {
+		q.PageSize = s.pagCfg.DefaultPageSize
+	}
+	if q.PageSize > s.pagCfg.MaxPageSize {
+		q.PageSize = s.pagCfg.MaxPageSize
+	}
+
+	// 1. 查 Redis 缓存（Redis 挂了跳过，降级直查 MySQL）
+	if cached, hit, err := s.fieldCache.GetList(ctx, q); err == nil && hit {
+		return cached.ToListData(), nil
+	}
+
+	// 2. 查 MySQL
+	items, total, err := s.fieldStore.List(ctx, q)
+	if err != nil {
+		slog.Error("service.字段列表查询失败", "error", err, "query", q)
+		return nil, err
+	}
+
+	for i := range items {
+		items[i].TypeLabel = s.dictCache.GetLabel(model.DictGroupFieldType, items[i].Type)
+		items[i].CategoryLabel = s.dictCache.GetLabel(model.DictGroupFieldCategory, items[i].Category)
+	}
+
+	result := &model.FieldListData{
+		Items:    items,
+		Total:    total,
+		Page:     q.Page,
+		PageSize: q.PageSize,
+	}
+
+	// 3. 写 Redis 缓存
+	s.fieldCache.SetList(ctx, q, result)
+
+	return result.ToListData(), nil
+}
+
+// Create 创建字段
+func (s *FieldService) Create(ctx context.Context, req *model.CreateFieldRequest) (int64, error) {
+	// 业务校验：type/category 存在性
+	if err := s.checkTypeExists(req.Type); err != nil {
+		return 0, err
+	}
+	if err := s.checkCategoryExists(req.Category); err != nil {
+		return 0, err
+	}
+
+	// 业务校验：name 唯一性（含软删除）
+	exists, err := s.fieldStore.ExistsByName(ctx, req.Name)
+	if err != nil {
+		slog.Error("service.创建字段-检查唯一性失败", "error", err, "name", req.Name)
+		return 0, fmt.Errorf("check name exists: %w", err)
+	}
+	if exists {
+		return 0, errcode.Newf(errcode.ErrFieldNameExists, "字段标识 '%s' 已存在", req.Name)
+	}
+
+	// reference 类型：校验引用字段存在性 + 启用状态 + 循环引用检测
+	var refFieldIDs []int64
+	if req.Type == model.FieldTypeReference {
+		props, _ := parseProperties(req.Properties)
+		if props != nil {
+			refFieldIDs = parseRefFieldIDs(props.Constraints)
+			for _, refID := range refFieldIDs {
+				f, err := s.fieldStore.GetByID(ctx, refID)
+				if err != nil {
+					return 0, fmt.Errorf("check ref field %d: %w", refID, err)
+				}
+				if f == nil {
+					return 0, errcode.Newf(errcode.ErrFieldRefNotFound, "引用的字段 ID=%d 不存在", refID)
+				}
+				if !f.Enabled {
+					return 0, errcode.Newf(errcode.ErrFieldRefDisabled, "字段 '%s' 已停用，不能引用", f.Name)
+				}
+			}
+			if len(refFieldIDs) > 0 {
+				// 新建字段还没有 ID，用 name 做占位（不会冲突，因为 name 唯一）
+				// 只需确保被引用的字段链不形成环
+				if err := s.detectCyclicRef(ctx, 0, refFieldIDs); err != nil {
+					return 0, err
+				}
+			}
+		}
+	}
+
+	// 写入
+	id, err := s.fieldStore.Create(ctx, req)
+	if err != nil {
+		slog.Error("service.创建字段失败", "error", err, "name", req.Name)
+		return 0, fmt.Errorf("create field: %w", err)
+	}
+
+	// reference 类型：写入引用关系
+	if len(refFieldIDs) > 0 {
+		affected, err := s.syncFieldRefs(ctx, id, nil, refFieldIDs)
+		if err != nil {
+			slog.Error("service.创建字段-同步引用失败", "error", err, "id", id)
+			return 0, fmt.Errorf("sync field refs: %w", err)
+		}
+		for _, affectedID := range affected {
+			s.fieldCache.DelDetail(ctx, affectedID)
+		}
+	}
+
+	// 清缓存
+	s.fieldCache.InvalidateList(ctx)
+
+	slog.Info("service.创建字段成功", "name", req.Name, "id", id)
+	return id, nil
+}
+
+// GetByID 查询字段详情（Cache-Aside + 分布式锁防击穿）
+func (s *FieldService) GetByID(ctx context.Context, id int64) (*model.Field, error) {
+	// 1. 查 Redis 缓存
+	if cached, hit, err := s.fieldCache.GetDetail(ctx, id); err == nil && hit {
+		if cached == nil {
+			return nil, errcode.Newf(errcode.ErrFieldNotFound, "字段 ID=%d 不存在", id)
+		}
+		return cached, nil
+	}
+
+	// 2. 分布式锁防缓存击穿
+	locked, lockErr := s.fieldCache.TryLock(ctx, id, 3*time.Second)
+	if lockErr != nil {
+		slog.Warn("service.获取锁失败，降级直查MySQL", "error", lockErr, "id", id)
+	}
+	if locked {
+		defer s.fieldCache.Unlock(ctx, id)
+	}
+
+	// 获得锁后再查一次缓存（double-check）
+	if locked {
+		if cached, hit, err := s.fieldCache.GetDetail(ctx, id); err == nil && hit {
+			if cached == nil {
+				return nil, errcode.Newf(errcode.ErrFieldNotFound, "字段 ID=%d 不存在", id)
+			}
+			return cached, nil
+		}
+	}
+
+	// 3. 查 MySQL
+	field, err := s.fieldStore.GetByID(ctx, id)
+	if err != nil {
+		slog.Error("service.查询字段详情失败", "error", err, "id", id)
+		return nil, fmt.Errorf("get field: %w", err)
+	}
+
+	// 4. 写 Redis（field 为 nil 时也缓存，防穿透）
+	s.fieldCache.SetDetail(ctx, id, field)
+
+	if field == nil {
+		return nil, errcode.Newf(errcode.ErrFieldNotFound, "字段 ID=%d 不存在", id)
+	}
+	return field, nil
+}
+
+// Update 编辑字段（仅未启用时可编辑）
+func (s *FieldService) Update(ctx context.Context, req *model.UpdateFieldRequest) error {
+	// 业务校验：type/category 存在性
+	if err := s.checkTypeExists(req.Type); err != nil {
+		return err
+	}
+	if err := s.checkCategoryExists(req.Category); err != nil {
+		return err
+	}
+
+	// 查旧数据
+	old, err := s.getFieldOrNotFound(ctx, req.ID)
+	if err != nil {
+		return err
+	}
+
+	// 硬约束：必须未启用才能编辑
+	if old.Enabled {
+		return errcode.New(errcode.ErrFieldEditNotDisabled)
+	}
+
+	// 硬约束：被引用时禁止改 type
+	if old.Type != req.Type && old.RefCount > 0 {
+		return errcode.Newf(errcode.ErrFieldRefChangeType, "该字段已被 %d 个模板/字段引用，无法修改类型", old.RefCount)
+	}
+
+	// 硬约束：被引用时禁止收紧约束
+	if old.RefCount > 0 && old.Type == req.Type {
+		oldProps, _ := parseProperties(old.Properties)
+		newProps, _ := parseProperties(req.Properties)
+		if oldProps != nil && newProps != nil {
+			if err := checkConstraintTightened(old.Type, oldProps.Constraints, newProps.Constraints); err != nil {
+				return err
+			}
+		}
+	}
+
+	// reference 类型：循环引用检测 + 新增引用启用检查
+	if req.Type == model.FieldTypeReference {
+		newProps, _ := parseProperties(req.Properties)
+		if newProps != nil {
+			newRefIDs := parseRefFieldIDs(newProps.Constraints)
+			if len(newRefIDs) > 0 {
+				// 计算旧引用集合（已有的停用字段可保留）
+				oldRefSet := make(map[int64]bool)
+				if old.Type == model.FieldTypeReference {
+					oldProps, _ := parseProperties(old.Properties)
+					if oldProps != nil {
+						for _, rid := range parseRefFieldIDs(oldProps.Constraints) {
+							oldRefSet[rid] = true
+						}
+					}
+				}
+
+				for _, refID := range newRefIDs {
+					f, err := s.fieldStore.GetByID(ctx, refID)
+					if err != nil {
+						return fmt.Errorf("check ref field %d: %w", refID, err)
+					}
+					if f == nil {
+						return errcode.Newf(errcode.ErrFieldRefNotFound, "引用的字段 ID=%d 不存在", refID)
+					}
+					// 只有新增的引用才检查启用状态
+					if !oldRefSet[refID] && !f.Enabled {
+						return errcode.Newf(errcode.ErrFieldRefDisabled, "字段 '%s' 已停用，不能新增引用", f.Name)
+					}
+				}
+				if err := s.detectCyclicRef(ctx, req.ID, newRefIDs); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	// 乐观锁写入
+	err = s.fieldStore.Update(ctx, req)
+	if err != nil {
+		if errors.Is(err, storemysql.ErrVersionConflict) {
+			return errcode.New(errcode.ErrFieldVersionConflict)
+		}
+		slog.Error("service.编辑字段失败", "error", err, "id", req.ID)
+		return fmt.Errorf("update field: %w", err)
+	}
+
+	// reference 类型：同步引用关系
+	var refAffected []int64
+	if req.Type == model.FieldTypeReference {
+		oldProps, _ := parseProperties(old.Properties)
+		newProps, _ := parseProperties(req.Properties)
+		var oldRefIDs, newRefIDs []int64
+		if oldProps != nil && old.Type == model.FieldTypeReference {
+			oldRefIDs = parseRefFieldIDs(oldProps.Constraints)
+		}
+		if newProps != nil {
+			newRefIDs = parseRefFieldIDs(newProps.Constraints)
+		}
+		affected, err := s.syncFieldRefs(ctx, req.ID, oldRefIDs, newRefIDs)
+		if err != nil {
+			slog.Error("service.编辑字段-同步引用失败", "error", err, "id", req.ID)
+			return fmt.Errorf("sync field refs: %w", err)
+		}
+		refAffected = affected
+	} else if old.Type == model.FieldTypeReference && req.Type != model.FieldTypeReference {
+		// 类型从 reference 改为其他：清除所有引用关系
+		oldProps, _ := parseProperties(old.Properties)
+		if oldProps != nil {
+			oldRefIDs := parseRefFieldIDs(oldProps.Constraints)
+			affected, err := s.syncFieldRefs(ctx, req.ID, oldRefIDs, nil)
+			if err != nil {
+				slog.Error("service.编辑字段-清除引用失败", "error", err, "id", req.ID)
+				return fmt.Errorf("clear field refs: %w", err)
+			}
+			refAffected = affected
+		}
+	}
+
+	// 清缓存：自身 + 受影响的被引用方
+	s.fieldCache.DelDetail(ctx, req.ID)
+	for _, affectedID := range refAffected {
+		s.fieldCache.DelDetail(ctx, affectedID)
+	}
+	s.fieldCache.InvalidateList(ctx)
+
+	slog.Info("service.编辑字段成功", "id", req.ID)
+	return nil
+}
+
+// Delete 软删除字段
+func (s *FieldService) Delete(ctx context.Context, id int64) (*model.DeleteResult, error) {
+	field, err := s.getFieldOrNotFound(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// 硬约束：必须先停用
+	if field.Enabled {
+		return nil, errcode.New(errcode.ErrFieldDeleteNotDisabled)
+	}
+
+	// 事务内原子操作：FOR SHARE 检查引用 + 软删除（防 TOCTOU）
+	tx, err := s.fieldStore.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	hasRefs, err := s.fieldRefStore.HasRefsTx(ctx, tx, id)
+	if err != nil {
+		return nil, fmt.Errorf("check refs in tx: %w", err)
+	}
+	if hasRefs {
+		return nil, errcode.New(errcode.ErrFieldRefDelete)
+	}
+
+	if err := s.fieldStore.SoftDeleteTx(ctx, tx, id); err != nil {
+		if errors.Is(err, storemysql.ErrNotFound) {
+			return nil, errcode.Newf(errcode.ErrFieldNotFound, "字段 ID=%d 不存在", id)
+		}
+		return nil, fmt.Errorf("soft delete: %w", err)
+	}
+
+	// reference 类型字段删除时，清除它对其他字段的引用关系
+	var affectedIDs []int64
+	if field.Type == model.FieldTypeReference {
+		affectedIDs, err = s.fieldRefStore.RemoveBySource(ctx, tx, model.RefTypeField, id)
+		if err != nil {
+			return nil, fmt.Errorf("remove field refs: %w", err)
+		}
+		for _, affectedID := range affectedIDs {
+			if err := s.fieldStore.DecrRefCountTx(ctx, tx, affectedID); err != nil {
+				return nil, fmt.Errorf("decr ref_count %d: %w", affectedID, err)
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+
+	// 清缓存
+	s.fieldCache.DelDetail(ctx, id)
+	for _, affectedID := range affectedIDs {
+		s.fieldCache.DelDetail(ctx, affectedID)
+	}
+	s.fieldCache.InvalidateList(ctx)
+
+	slog.Info("service.删除字段成功", "id", id, "name", field.Name)
+	return &model.DeleteResult{ID: id, Name: field.Name, Label: field.Label}, nil
+}
+
+// CheckName 校验字段标识是否可用（保留 name，创建前校验）
+func (s *FieldService) CheckName(ctx context.Context, name string) (*model.CheckNameResult, error) {
+	exists, err := s.fieldStore.ExistsByName(ctx, name)
+	if err != nil {
+		slog.Error("service.校验字段名失败", "error", err, "name", name)
+		return nil, fmt.Errorf("check name: %w", err)
+	}
+	if exists {
+		return &model.CheckNameResult{Available: false, Message: "该字段标识已存在"}, nil
+	}
+	return &model.CheckNameResult{Available: true, Message: "该标识可用"}, nil
+}
+
+// GetReferences 查询字段引用详情
+func (s *FieldService) GetReferences(ctx context.Context, id int64) (*model.ReferenceDetail, error) {
+	field, err := s.getFieldOrNotFound(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	refs, err := s.fieldRefStore.GetByFieldID(ctx, id)
+	if err != nil {
+		slog.Error("service.引用详情-查引用失败", "error", err, "id", id)
+		return nil, fmt.Errorf("get refs: %w", err)
+	}
+
+	templateIDs := make([]int64, 0)
+	fieldIDs := make([]int64, 0)
+	for _, r := range refs {
+		switch r.RefType {
+		case model.RefTypeTemplate:
+			templateIDs = append(templateIDs, r.RefID)
+		case model.RefTypeField:
+			fieldIDs = append(fieldIDs, r.RefID)
+		}
+	}
+
+	result := &model.ReferenceDetail{
+		FieldID:    id,
+		FieldLabel: field.Label,
+		Templates:  make([]model.ReferenceItem, 0, len(templateIDs)),
+		Fields:     make([]model.ReferenceItem, 0, len(fieldIDs)),
+	}
+
+	if len(fieldIDs) > 0 {
+		fieldList, err := s.fieldStore.GetByIDs(ctx, fieldIDs)
+		if err != nil {
+			slog.Error("service.引用详情-查字段label失败", "error", err)
+			return nil, fmt.Errorf("get field labels: %w", err)
+		}
+		labelMap := make(map[int64]string, len(fieldList))
+		for _, f := range fieldList {
+			labelMap[f.ID] = f.Label
+		}
+		for _, fid := range fieldIDs {
+			result.Fields = append(result.Fields, model.ReferenceItem{
+				RefType: model.RefTypeField,
+				RefID:   fid,
+				Label:   labelMap[fid],
+			})
+		}
+	}
+
+	for _, tid := range templateIDs {
+		result.Templates = append(result.Templates, model.ReferenceItem{
+			RefType: model.RefTypeTemplate,
+			RefID:   tid,
+			Label:   fmt.Sprintf("模板#%d", tid), // TODO: 模板管理完成后 IN 查 templates 拿 label
+		})
+	}
+
+	return result, nil
+}
+
+// ToggleEnabled 切换启用/停用
+func (s *FieldService) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) error {
+	if _, err := s.getFieldOrNotFound(ctx, req.ID); err != nil {
+		return err
+	}
+
+	err := s.fieldStore.ToggleEnabled(ctx, req.ID, req.Enabled, req.Version)
+	if err != nil {
+		if errors.Is(err, storemysql.ErrVersionConflict) {
+			return errcode.New(errcode.ErrFieldVersionConflict)
+		}
+		slog.Error("service.切换启用失败", "error", err, "id", req.ID)
+		return fmt.Errorf("toggle enabled: %w", err)
+	}
+
+	s.fieldCache.DelDetail(ctx, req.ID)
+	s.fieldCache.InvalidateList(ctx)
+
+	slog.Info("service.切换启用成功", "id", req.ID, "enabled", req.Enabled)
+	return nil
+}
+
+// ---- 约束收紧检查 ----
+
+func parseProperties(raw json.RawMessage) (*model.FieldProperties, error) {
+	if len(raw) == 0 {
+		return &model.FieldProperties{}, nil
+	}
+	var props model.FieldProperties
+	if err := json.Unmarshal(raw, &props); err != nil {
+		return nil, fmt.Errorf("unmarshal properties: %w", err)
+	}
+	return &props, nil
+}
+
+func parseConstraintsMap(raw json.RawMessage) (map[string]json.RawMessage, error) {
+	if len(raw) == 0 {
+		return make(map[string]json.RawMessage), nil
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, fmt.Errorf("unmarshal constraints: %w", err)
+	}
+	return m, nil
+}
+
+func getFloat(raw json.RawMessage) (float64, bool) {
+	var v float64
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return 0, false
+	}
+	return v, true
+}
+
+func checkConstraintTightened(fieldType string, oldConstraints, newConstraints json.RawMessage) *errcode.Error {
+	oldMap, err := parseConstraintsMap(oldConstraints)
+	if err != nil {
+		return nil
+	}
+	newMap, err := parseConstraintsMap(newConstraints)
+	if err != nil {
+		return nil
+	}
+
+	switch fieldType {
+	case "integer", "float":
+		if oldMin, ok := getFloat(oldMap["min"]); ok {
+			if newMin, ok2 := getFloat(newMap["min"]); ok2 && newMin > oldMin {
+				return errcode.Newf(errcode.ErrFieldRefTighten, "最小值从 %v 收紧为 %v，请先移除引用", oldMin, newMin)
+			}
+		}
+		if oldMax, ok := getFloat(oldMap["max"]); ok {
+			if newMax, ok2 := getFloat(newMap["max"]); ok2 && newMax < oldMax {
+				return errcode.Newf(errcode.ErrFieldRefTighten, "最大值从 %v 收紧为 %v，请先移除引用", oldMax, newMax)
+			}
+		}
+
+	case "string":
+		if oldMinLen, ok := getFloat(oldMap["minLength"]); ok {
+			if newMinLen, ok2 := getFloat(newMap["minLength"]); ok2 && newMinLen > oldMinLen {
+				return errcode.Newf(errcode.ErrFieldRefTighten, "最小长度从 %v 收紧为 %v，请先移除引用", oldMinLen, newMinLen)
+			}
+		}
+		if oldMaxLen, ok := getFloat(oldMap["maxLength"]); ok {
+			if newMaxLen, ok2 := getFloat(newMap["maxLength"]); ok2 && newMaxLen < oldMaxLen {
+				return errcode.Newf(errcode.ErrFieldRefTighten, "最大长度从 %v 收紧为 %v，请先移除引用", oldMaxLen, newMaxLen)
+			}
+		}
+
+	case "select":
+		oldOptions := parseSelectOptions(oldMap["options"])
+		newOptions := parseSelectOptions(newMap["options"])
+		if len(oldOptions) > 0 {
+			newSet := make(map[string]bool, len(newOptions))
+			for _, o := range newOptions {
+				newSet[o] = true
+			}
+			for _, o := range oldOptions {
+				if !newSet[o] {
+					return errcode.Newf(errcode.ErrFieldRefTighten, "选项 '%s' 被删除，请先移除引用", o)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func parseSelectOptions(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var options []struct {
+		Value string `json:"value"`
+	}
+	if err := json.Unmarshal(raw, &options); err != nil {
+		return nil
+	}
+	values := make([]string, 0, len(options))
+	for _, o := range options {
+		values = append(values, o.Value)
+	}
+	return values
+}
+
+// ---- 循环引用检测 ----
+
+// parseRefFieldIDs 从 reference 字段的 constraints 中提取引用字段 ID 列表
+func parseRefFieldIDs(constraints json.RawMessage) []int64 {
+	if len(constraints) == 0 {
+		return nil
+	}
+	var c struct {
+		Refs []int64 `json:"refs"`
+	}
+	if err := json.Unmarshal(constraints, &c); err != nil {
+		return nil
+	}
+	return c.Refs
+}
+
+// detectCyclicRef 检测循环引用（DFS）
+// currentID: 当前正在创建/编辑的字段 ID（新建时为 0）
+// refIDs: 当前字段要引用的字段 ID 列表
+func (s *FieldService) detectCyclicRef(ctx context.Context, currentID int64, refIDs []int64) *errcode.Error {
+	visited := make(map[int64]bool)
+	if currentID > 0 {
+		visited[currentID] = true
+	}
+
+	var dfs func(ids []int64) *errcode.Error
+	dfs = func(ids []int64) *errcode.Error {
+		for _, id := range ids {
+			if visited[id] {
+				return errcode.Newf(errcode.ErrFieldCyclicRef, "字段 ID=%d 形成循环引用", id)
+			}
+			visited[id] = true
+
+			field, err := s.fieldStore.GetByID(ctx, id)
+			if err != nil || field == nil {
+				continue
+			}
+			if field.Type != model.FieldTypeReference {
+				continue
+			}
+
+			props, err := parseProperties(field.Properties)
+			if err != nil {
+				continue
+			}
+			subRefs := parseRefFieldIDs(props.Constraints)
+			if len(subRefs) > 0 {
+				if err := dfs(subRefs); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+
+	return dfs(refIDs)
+}
+
+// syncFieldRefs 同步 reference 字段的引用关系
+// sourceFieldID: 引用方字段 ID
+// oldRefIDs, newRefIDs: 旧/新被引用字段 ID 列表
+// 返回 ref_count 发生变化的字段 ID 列表（用于清缓存）
+func (s *FieldService) syncFieldRefs(ctx context.Context, sourceFieldID int64, oldRefIDs, newRefIDs []int64) ([]int64, error) {
+	oldSet := make(map[int64]bool, len(oldRefIDs))
+	for _, r := range oldRefIDs {
+		oldSet[r] = true
+	}
+	newSet := make(map[int64]bool, len(newRefIDs))
+	for _, r := range newRefIDs {
+		newSet[r] = true
+	}
+
+	toAdd := make([]int64, 0)
+	toRemove := make([]int64, 0)
+	for _, r := range newRefIDs {
+		if !oldSet[r] {
+			toAdd = append(toAdd, r)
+		}
+	}
+	for _, r := range oldRefIDs {
+		if !newSet[r] {
+			toRemove = append(toRemove, r)
+		}
+	}
+
+	if len(toAdd) == 0 && len(toRemove) == 0 {
+		return nil, nil
+	}
+
+	tx, err := s.fieldStore.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	for _, targetID := range toAdd {
+		if err := s.fieldRefStore.Add(ctx, tx, targetID, model.RefTypeField, sourceFieldID); err != nil {
+			return nil, fmt.Errorf("add field ref %d: %w", targetID, err)
+		}
+		if err := s.fieldStore.IncrRefCountTx(ctx, tx, targetID); err != nil {
+			return nil, fmt.Errorf("incr ref_count %d: %w", targetID, err)
+		}
+	}
+
+	for _, targetID := range toRemove {
+		if err := s.fieldRefStore.Remove(ctx, tx, targetID, model.RefTypeField, sourceFieldID); err != nil {
+			return nil, fmt.Errorf("remove field ref %d: %w", targetID, err)
+		}
+		if err := s.fieldStore.DecrRefCountTx(ctx, tx, targetID); err != nil {
+			return nil, fmt.Errorf("decr ref_count %d: %w", targetID, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+
+	affected := make([]int64, 0, len(toAdd)+len(toRemove))
+	affected = append(affected, toAdd...)
+	affected = append(affected, toRemove...)
+	return affected, nil
+}
