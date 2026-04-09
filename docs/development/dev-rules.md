@@ -21,6 +21,21 @@
 3. **提交当前代码**：保证干净的工作区
 4. **走正式流程**：/spec-create 规划 → /spec-execute 实现
 
+## Claude Code 权限模式
+
+每个 SKILL 对应推荐的权限模式，Claude 在调用 SKILL 前应提醒用户切换：
+
+| SKILL | 推荐模式 | 原因 |
+|-------|----------|------|
+| `/spec-create` | `plan` | 只读分析，不该写代码 |
+| `/spec-execute` | `auto` | 写代码，allow 列表自动执行 |
+| `/verify` | `auto` | 跑构建/测试命令 |
+| `/debug` | `auto` | 需要读写代码修复 |
+| `/integration` | `ask` | 跨项目操作，需确认每步 |
+| 普通对话 | `ask` | 讨论功能，避免误操作 |
+
+切换方式：`/mode auto` / `/mode plan` / `/mode ask`
+
 ## 日志格式
 
 后端统一使用结构化日志：
