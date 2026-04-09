@@ -1,6 +1,412 @@
 <template>
-  <div>字段表单（待实现）</div>
+  <div class="field-form">
+    <!-- 顶部导航 -->
+    <div class="form-header">
+      <el-icon class="back-icon" @click="$router.push('/fields')"><ArrowLeft /></el-icon>
+      <span class="back-text" @click="$router.push('/fields')">返回</span>
+      <span class="header-sep"></span>
+      <span class="header-title">{{ isCreate ? '新建字段' : '编辑字段' }}</span>
+    </div>
+
+    <!-- 表单卡片 -->
+    <div class="form-card">
+      <div class="card-inner">
+        <el-form
+          ref="formRef"
+          :model="form"
+          :rules="rules"
+          label-width="120px"
+          label-position="right"
+        >
+          <!-- 标识符 -->
+          <el-form-item label="字段标识符" prop="name">
+            <template v-if="!isCreate">
+              <el-input
+                :model-value="form.name"
+                disabled
+                style="width: 360px"
+              >
+                <template #prefix>
+                  <el-icon><Lock /></el-icon>
+                </template>
+              </el-input>
+              <div class="field-warn">
+                <el-icon><WarningFilled /></el-icon>
+                标识符创建后不可更改
+              </div>
+            </template>
+            <template v-else>
+              <el-input
+                v-model="form.name"
+                placeholder="如 health、attack_power（小写字母开头，仅含小写字母、数字、下划线）"
+                style="width: 360px"
+                @blur="checkNameUnique"
+              />
+              <div v-if="nameStatus === 'checking'" class="field-hint">
+                <el-icon class="is-loading"><Loading /></el-icon>
+                校验中...
+              </div>
+              <div v-else-if="nameStatus === 'available'" class="field-hint field-hint-success">
+                <el-icon><CircleCheck /></el-icon>
+                标识符可用
+              </div>
+              <div v-else-if="nameStatus === 'taken'" class="field-hint field-hint-error">
+                <el-icon><CircleClose /></el-icon>
+                {{ nameMessage }}
+              </div>
+            </template>
+          </el-form-item>
+
+          <!-- 中文标签 -->
+          <el-form-item label="中文标签" prop="label">
+            <el-input
+              v-model="form.label"
+              placeholder="如 生命值、攻击力（策划可见的显示名称）"
+              style="width: 360px"
+            />
+          </el-form-item>
+
+          <!-- 描述 -->
+          <el-form-item label="描述">
+            <el-input
+              v-model="form.properties.description"
+              type="textarea"
+              :rows="3"
+              placeholder="选填，描述该字段的用途和含义"
+              style="width: 480px"
+            />
+          </el-form-item>
+
+          <!-- 字段类型 -->
+          <el-form-item label="字段类型" prop="type">
+            <el-select
+              v-model="form.type"
+              placeholder="请选择字段类型"
+              style="width: 240px"
+              :disabled="!isCreate && refCount > 0"
+              @change="handleTypeChange"
+            >
+              <el-option
+                v-for="item in typeOptions"
+                :key="item.name"
+                :label="`${item.label} (${item.name})`"
+                :value="item.name"
+              />
+            </el-select>
+            <div v-if="!isCreate && refCount > 0" class="field-warn">
+              <el-icon><WarningFilled /></el-icon>
+              已被 {{ refCount }} 处引用，无法更改类型
+            </div>
+          </el-form-item>
+
+          <!-- 分类 -->
+          <el-form-item label="字段分类" prop="category">
+            <el-select
+              v-model="form.category"
+              placeholder="请选择字段分类"
+              style="width: 240px"
+            >
+              <el-option
+                v-for="item in categoryOptions"
+                :key="item.name"
+                :label="item.label"
+                :value="item.name"
+              />
+            </el-select>
+          </el-form-item>
+
+          <!-- 暴露 BB Key -->
+          <el-form-item label="暴露 BB Key">
+            <el-radio-group v-model="form.properties.expose_bb">
+              <el-radio :value="false">否</el-radio>
+              <el-radio :value="true">是（行为树可读取该字段）</el-radio>
+            </el-radio-group>
+          </el-form-item>
+
+          <!-- 约束配置占位（T9-T11 实现） -->
+          <el-form-item v-if="form.type" label="约束配置">
+            <div class="constraint-placeholder">
+              约束面板（待 T9-T11 实现）— 当前类型: {{ form.type }}
+            </div>
+          </el-form-item>
+
+          <!-- 提交按钮 -->
+          <el-form-item>
+            <el-button @click="$router.push('/fields')">取消</el-button>
+            <el-button
+              type="primary"
+              :loading="submitting"
+              @click="handleSubmit"
+            >
+              保存
+            </el-button>
+          </el-form-item>
+        </el-form>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
+import { ref, reactive, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { ArrowLeft, Lock, WarningFilled, Loading, CircleCheck, CircleClose } from '@element-plus/icons-vue'
+import { fieldApi } from '@/api/fields'
+import { dictApi } from '@/api/dictionaries'
+
+const route = useRoute()
+const router = useRouter()
+const isCreate = route.meta.isCreate
+
+const formRef = ref(null)
+const submitting = ref(false)
+const nameStatus = ref('')  // '' | 'checking' | 'available' | 'taken'
+const nameMessage = ref('')
+const typeOptions = ref([])
+const categoryOptions = ref([])
+const version = ref(0)
+const refCount = ref(0)
+
+const form = reactive({
+  name: '',
+  label: '',
+  type: '',
+  category: '',
+  properties: {
+    description: '',
+    expose_bb: false,
+    default_value: null,
+    constraints: {},
+  },
+})
+
+const namePattern = /^[a-z][a-z0-9_]*$/
+
+const rules = {
+  name: [
+    { required: true, message: '请输入字段标识符', trigger: 'blur' },
+    { pattern: namePattern, message: '小写字母开头，仅含小写字母、数字、下划线', trigger: 'blur' },
+  ],
+  label: [
+    { required: true, message: '请输入中文标签', trigger: 'blur' },
+  ],
+  type: [
+    { required: true, message: '请选择字段类型', trigger: 'change' },
+  ],
+  category: [
+    { required: true, message: '请选择字段分类', trigger: 'change' },
+  ],
+}
+
+// ---------- 初始化 ----------
+
+onMounted(async () => {
+  loadDictionaries()
+  if (!isCreate) {
+    await loadFieldDetail()
+  }
+})
+
+async function loadDictionaries() {
+  try {
+    const [typeRes, catRes] = await Promise.all([
+      dictApi.list('field_type'),
+      dictApi.list('field_category'),
+    ])
+    typeOptions.value = typeRes.data?.items || []
+    categoryOptions.value = catRes.data?.items || []
+  } catch {
+    // 拦截器已 toast
+  }
+}
+
+async function loadFieldDetail() {
+  const id = Number(route.params.id)
+  try {
+    const res = await fieldApi.detail(id)
+    const data = res.data
+    form.name = data.name
+    form.label = data.label
+    form.type = data.type
+    form.category = data.category
+    if (data.properties) {
+      form.properties.description = data.properties.description || ''
+      form.properties.expose_bb = data.properties.expose_bb || false
+      form.properties.default_value = data.properties.default_value ?? null
+      form.properties.constraints = data.properties.constraints || {}
+    }
+    version.value = data.version
+    refCount.value = data.ref_count || 0
+  } catch (err) {
+    if (err.code === 40011) {
+      router.push('/fields')
+    }
+  }
+}
+
+// ---------- 标识符校验 ----------
+
+async function checkNameUnique() {
+  if (!form.name || !namePattern.test(form.name)) {
+    nameStatus.value = ''
+    return
+  }
+  nameStatus.value = 'checking'
+  try {
+    const res = await fieldApi.checkName(form.name)
+    if (res.data?.available) {
+      nameStatus.value = 'available'
+      nameMessage.value = ''
+    } else {
+      nameStatus.value = 'taken'
+      nameMessage.value = res.data?.message || '标识符已被使用'
+    }
+  } catch {
+    nameStatus.value = ''
+  }
+}
+
+// ---------- 类型切换 ----------
+
+function handleTypeChange() {
+  form.properties.constraints = {}
+  form.properties.default_value = null
+}
+
+// ---------- 提交 ----------
+
+async function handleSubmit() {
+  const valid = await formRef.value.validate().catch(() => false)
+  if (!valid) return
+
+  if (isCreate && nameStatus.value === 'taken') {
+    ElMessage.warning('标识符已被使用，请更换')
+    return
+  }
+
+  submitting.value = true
+  try {
+    if (isCreate) {
+      await fieldApi.create({
+        name: form.name,
+        label: form.label,
+        type: form.type,
+        category: form.category,
+        properties: form.properties,
+      })
+      ElMessage.success('创建成功，字段默认为禁用状态，确认无误后请手动启用')
+    } else {
+      await fieldApi.update({
+        id: Number(route.params.id),
+        label: form.label,
+        type: form.type,
+        category: form.category,
+        properties: form.properties,
+        version: version.value,
+      })
+      ElMessage.success('保存成功')
+    }
+    router.push('/fields')
+  } catch (err) {
+    if (err.code === 40010) {
+      ElMessageBox.alert('数据已被其他用户修改，请返回列表刷新后重试。', '版本冲突', { type: 'warning' })
+    }
+    if (err.code === 40001 || err.code === 40002) {
+      nameStatus.value = 'taken'
+      nameMessage.value = err.message
+    }
+  } finally {
+    submitting.value = false
+  }
+}
 </script>
+
+<style scoped>
+.field-form {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.form-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 24px;
+  background: #fff;
+  border-bottom: 1px solid #E4E7ED;
+}
+
+.back-icon {
+  color: #409EFF;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.back-text {
+  color: #409EFF;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.header-sep {
+  width: 1px;
+  height: 16px;
+  background: #DCDFE6;
+}
+
+.header-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.form-card {
+  flex: 1;
+  padding: 24px 32px;
+  overflow-y: auto;
+}
+
+.card-inner {
+  background: #fff;
+  border: 1px solid #E4E7ED;
+  border-radius: 8px;
+  padding: 32px;
+}
+
+.field-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.field-hint-success {
+  color: #67C23A;
+}
+
+.field-hint-error {
+  color: #F56C6C;
+}
+
+.field-warn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #E6A23C;
+}
+
+.constraint-placeholder {
+  padding: 16px;
+  background: #F5F7FA;
+  border-radius: 4px;
+  color: #909399;
+  font-size: 13px;
+}
+</style>

@@ -64,7 +64,7 @@
 
 ---
 
-## T7: 新建字段页 — 基础表单 (R6, R7, R15)
+## T7: 新建字段页 — 基础表单 (R6, R7, R15) [x]
 
 **涉及文件**：
 - `frontend/src/views/FieldForm.vue`（新建）
