@@ -1,7 +1,7 @@
 import { createApp } from 'vue'
+import router from './router'
+import App from './App.vue'
 
-const app = createApp({
-  template: '<div>V3 Frontend Ready</div>',
-})
-
+const app = createApp(App)
+app.use(router)
 app.mount('#app')
