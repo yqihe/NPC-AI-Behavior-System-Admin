@@ -24,7 +24,7 @@
               <el-input
                 :model-value="form.name"
                 disabled
-                style="width: 360px"
+                style="width: 100%"
               >
                 <template #prefix>
                   <el-icon><Lock /></el-icon>
@@ -39,7 +39,7 @@
               <el-input
                 v-model="form.name"
                 placeholder="如 health、attack_power（小写字母开头，仅含小写字母、数字、下划线）"
-                style="width: 360px"
+                style="width: 100%"
                 @blur="checkNameUnique"
               />
               <div v-if="nameStatus === 'checking'" class="field-hint">
@@ -62,7 +62,7 @@
             <el-input
               v-model="form.label"
               placeholder="如 生命值、攻击力（策划可见的显示名称）"
-              style="width: 360px"
+              style="width: 100%"
             />
           </el-form-item>
 
@@ -73,7 +73,7 @@
               type="textarea"
               :rows="3"
               placeholder="选填，描述该字段的用途和含义"
-              style="width: 480px"
+              style="width: 100%"
             />
           </el-form-item>
 
@@ -82,7 +82,7 @@
             <el-select
               v-model="form.type"
               placeholder="请选择字段类型"
-              style="width: 240px"
+              style="width: 100%"
               :disabled="!isCreate && refCount > 0"
               @change="handleTypeChange"
             >
@@ -104,7 +104,7 @@
             <el-select
               v-model="form.category"
               placeholder="请选择字段分类"
-              style="width: 240px"
+              style="width: 100%"
             >
               <el-option
                 v-for="item in categoryOptions"
@@ -130,7 +130,7 @@
               v-model="form.properties.default_value"
               :controls="false"
               placeholder="选填"
-              style="width: 240px"
+              style="width: 100%"
             />
             <el-input-number
               v-else-if="form.type === 'float'"
@@ -138,13 +138,13 @@
               :controls="false"
               :step="0.1"
               placeholder="选填"
-              style="width: 240px"
+              style="width: 100%"
             />
             <el-input
               v-else-if="form.type === 'string'"
               v-model="form.properties.default_value"
               placeholder="选填"
-              style="width: 360px"
+              style="width: 100%"
             />
             <el-switch
               v-else-if="form.type === 'boolean'"
@@ -185,7 +185,7 @@
           </el-form-item>
 
           <!-- 提交按钮 -->
-          <el-form-item>
+          <div class="form-actions">
             <el-button @click="$router.push('/fields')">取消</el-button>
             <el-button
               type="primary"
@@ -194,7 +194,7 @@
             >
               保存
             </el-button>
-          </el-form-item>
+          </div>
         </el-form>
       </div>
     </div>
@@ -295,7 +295,24 @@ async function loadFieldDetail() {
       form.properties.description = data.properties.description || ''
       form.properties.expose_bb = data.properties.expose_bb || false
       form.properties.default_value = data.properties.default_value ?? null
-      form.properties.constraints = data.properties.constraints || {}
+      const constraints = data.properties.constraints || {}
+      // reference 类型：后端存 refs(ID数组)，前端需要 ref_fields(对象数组)
+      if (data.type === 'reference' && constraints.refs) {
+        const refIds = constraints.refs as number[]
+        const refFieldItems = []
+        for (const rid of refIds) {
+          try {
+            const refRes = await fieldApi.detail(rid)
+            const rd = refRes.data
+            refFieldItems.push({ id: rd.id, name: rd.name, label: rd.label, type: rd.type, type_label: '' })
+          } catch {
+            refFieldItems.push({ id: rid, name: `field_${rid}`, label: `字段${rid}`, type: 'unknown', type_label: '' })
+          }
+        }
+        constraints.ref_fields = refFieldItems
+        delete constraints.refs
+      }
+      form.properties.constraints = constraints
     }
     version.value = data.version
     refCount.value = data.ref_count || 0
@@ -337,6 +354,19 @@ function handleTypeChange() {
 
 // ---------- 提交 ----------
 
+/** 构建提交用的 properties，reference 类型需要把 ref_fields 转成后端的 refs 格式 */
+function buildSubmitProperties() {
+  const props = { ...form.properties, constraints: { ...form.properties.constraints } }
+  if (form.type === 'reference' && props.constraints) {
+    const refFields = (props.constraints as Record<string, unknown>).ref_fields as Array<{ id: number }> | undefined
+    if (refFields) {
+      ;(props.constraints as Record<string, unknown>).refs = refFields.map((f) => f.id)
+      delete (props.constraints as Record<string, unknown>).ref_fields
+    }
+  }
+  return props
+}
+
 async function handleSubmit() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
@@ -348,13 +378,14 @@ async function handleSubmit() {
 
   submitting.value = true
   try {
+    const submitProps = buildSubmitProperties()
     if (isCreate) {
       await fieldApi.create({
         name: form.name,
         label: form.label,
         type: form.type,
         category: form.category,
-        properties: form.properties,
+        properties: submitProps,
       })
       ElMessage.success('创建成功，字段默认为禁用状态，确认无误后请手动启用')
     } else {
@@ -363,7 +394,7 @@ async function handleSubmit() {
         label: form.label,
         type: form.type,
         category: form.category,
-        properties: form.properties,
+        properties: submitProps,
         version: version.value,
       })
       ElMessage.success('保存成功')
@@ -432,6 +463,8 @@ async function handleSubmit() {
 }
 
 .card-inner {
+  max-width: 800px;
+  margin: 0 auto;
   background: #fff;
   border: 1px solid #E4E7ED;
   border-radius: 8px;
@@ -477,5 +510,12 @@ async function handleSubmit() {
 .default-hint {
   font-size: 13px;
   color: #909399;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 16px;
+  gap: 12px;
 }
 </style>

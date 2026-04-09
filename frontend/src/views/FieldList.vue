@@ -19,14 +19,14 @@
         v-model="query.label"
         placeholder="搜索中文标签"
         clearable
-        style="width: 200px"
+        class="filter-item filter-item-wide"
         @keyup.enter="handleSearch"
       />
       <el-select
         v-model="query.type"
         placeholder="字段类型"
         clearable
-        style="width: 160px"
+        class="filter-item"
       >
         <el-option
           v-for="item in typeOptions"
@@ -39,7 +39,7 @@
         v-model="query.category"
         placeholder="字段分类"
         clearable
-        style="width: 160px"
+        class="filter-item"
       >
         <el-option
           v-for="item in categoryOptions"
@@ -52,7 +52,7 @@
         v-model="query.enabled"
         placeholder="状态"
         clearable
-        style="width: 140px"
+        class="filter-item"
       >
         <el-option label="已启用" :value="true" />
         <el-option label="已禁用" :value="false" />
@@ -290,11 +290,23 @@ function handleReset() {
 // ---------- 行操作 ----------
 
 async function handleToggle(row: FieldListItem, val: boolean) {
+  const action = val ? '启用' : '禁用'
+  const msg = val
+    ? `确认启用字段「${row.label}」？启用后可被模板引用。`
+    : `确认禁用字段「${row.label}」？禁用后新模板无法引用该字段，已有引用不受影响。`
   try {
-    await fieldApi.toggleEnabled(row.id, val, row.version)
-    ElMessage.success(val ? '已启用' : '已禁用')
+    await ElMessageBox.confirm(msg, `${action}确认`, {
+      confirmButtonText: `确认${action}`,
+      cancelButtonText: '取消',
+      type: val ? 'success' : 'warning',
+    })
+    // 列表接口不返回 version，先获取详情拿到最新 version
+    const detail = await fieldApi.detail(row.id)
+    await fieldApi.toggleEnabled(row.id, val, detail.data.version)
+    ElMessage.success(`已${action}`)
     fetchList()
   } catch (err) {
+    if (err === 'cancel') return
     if ((err as BizError).code === 40010) {
       ElMessageBox.alert('数据已被其他用户修改，请刷新页面后重试。', '版本冲突', { type: 'warning' })
     }
@@ -422,6 +434,16 @@ function formatTime(str: string) {
   gap: 12px;
   padding: 16px 24px;
   background: #fff;
+  flex-wrap: wrap;
+}
+
+.filter-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.filter-item-wide {
+  flex: 1.5;
 }
 
 .table-wrap {
@@ -449,7 +471,7 @@ function formatTime(str: string) {
   color: #C0C4CC;
 }
 
-:deep(.row-disabled) {
+:deep(.row-disabled td:not(:nth-last-child(-n+3))) {
   opacity: 0.5;
 }
 
