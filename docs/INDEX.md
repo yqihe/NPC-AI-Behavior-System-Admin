@@ -36,23 +36,36 @@
 ---
 
 ## standards/ — 通用标准（跨项目复用）
-| 文档 | 内容概括 | 何时查阅 |
-|------|----------|----------|
-| [red-lines.md](standards/red-lines.md) | 通用禁止红线（静默降级、安全、测试、过度设计、协作） | 所有开发活动 |
-| [go-red-lines.md](standards/go-red-lines.md) | Go 语言禁止红线（资源泄漏、序列化、错误处理、shutdown） | 编写 Go 代码时 |
-| [frontend-red-lines.md](standards/frontend-red-lines.md) | 前端禁止红线（数据源污染、无效输入、URL 编码） | 编写前端代码时 |
 
-## architecture/ — 项目架构与约束
-| 文档 | 内容概括 | 何时查阅 |
-|------|----------|----------|
-| [red-lines.md](architecture/red-lines.md) | ADMIN 项目禁止红线（技术暴露、数据格式、缓存、引用完整性、UX） | 编写或审查 ADMIN 代码时 |
+按技术领域拆分的禁止红线：
 
-## development/ — 开发规范
+| 文档 | 技术领域 | 何时查阅 |
+|------|----------|----------|
+| [red-lines.md](standards/red-lines.md) | 通用（静默降级、安全、测试、过度设计、协作） | 所有开发活动 |
+| [go-red-lines.md](standards/go-red-lines.md) | Go 语言（资源泄漏、序列化、错误处理、字符串、包设计、shutdown） | 编写 Go 代码时 |
+| [mysql-red-lines.md](standards/mysql-red-lines.md) | MySQL（事务一致性、LIKE 注入） | 编写 MySQL 查询时 |
+| [redis-red-lines.md](standards/redis-red-lines.md) | Redis（SCAN 禁用、DEL 错误检查） | 编写 Redis 操作时 |
+| [cache-red-lines.md](standards/cache-red-lines.md) | 缓存模式（Cache-Aside、失效策略、穿透/雪崩） | 设计缓存逻辑时 |
+| [frontend-red-lines.md](standards/frontend-red-lines.md) | 前端（数据源污染、无效输入、URL 编码） | 编写前端代码时 |
+
+## architecture/ — ADMIN 项目专属约束
+
 | 文档 | 内容概括 | 何时查阅 |
 |------|----------|----------|
-| [dev-rules.md](development/dev-rules.md) | 协作流程、日志格式、文档同步、Git 规则、CRUD 规则、Docker | 所有开发活动 |
-| [go-pitfalls.md](development/go-pitfalls.md) | Go 陷阱清单（JSON/BSON、HTTP Handler、MongoDB/Redis、错误处理） | 编写 Go 代码时 |
-| [frontend-pitfalls.md](development/frontend-pitfalls.md) | 前端陷阱清单（JS 基础、Vue 3 响应式、Element Plus、Axios、Router） | 编写前端代码时 |
+| [backend-red-lines.md](architecture/backend-red-lines.md) | 后端架构（数据格式、引用完整性、REST API、硬编码、过度设计） | 编写或审查后端代码时 |
+| [ui-red-lines.md](architecture/ui-red-lines.md) | UI/UX（技术暴露、表单友好） | 编写或审查前端页面时 |
+
+## development/ — 开发规范与陷阱
+
+| 文档 | 技术领域 | 何时查阅 |
+|------|----------|----------|
+| [dev-rules.md](development/dev-rules.md) | 协作流程、Git、CRUD、Docker | 所有开发活动 |
+| [go-pitfalls.md](development/go-pitfalls.md) | Go 语言（JSON/BSON、HTTP、错误处理、数据结构、字符串、包设计） | 编写 Go 代码时 |
+| [mysql-pitfalls.md](development/mysql-pitfalls.md) | MySQL（事务与锁、查询优化） | 编写 MySQL 查询时 |
+| [mongodb-pitfalls.md](development/mongodb-pitfalls.md) | MongoDB（连接、操作、集成测试） | 编写 MongoDB 操作时 |
+| [redis-pitfalls.md](development/redis-pitfalls.md) | Redis（操作注意事项、分布式锁） | 编写 Redis 操作时 |
+| [cache-pitfalls.md](development/cache-pitfalls.md) | 缓存模式（Cache-Aside、穿透、雪崩、失效策略） | 设计缓存逻辑时 |
+| [frontend-pitfalls.md](development/frontend-pitfalls.md) | 前端（JS 基础、Vue 3、Element Plus、Axios、Router） | 编写前端代码时 |
 
 ## 游戏服务端参考文档
 | 文档 | 位置 | 何时查阅 |

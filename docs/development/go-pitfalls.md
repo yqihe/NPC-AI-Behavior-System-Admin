@@ -1,10 +1,10 @@
-# Go 常见陷阱
+# Go 语言常见陷阱
 
-编写 Go 代码时主动检查。禁止红线见 `../standards/go-red-lines.md`。
+纯 Go 语言层面的陷阱。MySQL 见 `mysql-pitfalls.md`，MongoDB 见 `mongodb-pitfalls.md`，Redis 见 `redis-pitfalls.md`，缓存模式见 `cache-pitfalls.md`。禁止红线见 `../standards/go-red-lines.md`。
 
 ## JSON / BSON 序列化
 
-- **nil slice → `null`**：`var s []T` 序列化�� `null`，前端 `v-for` 报错。必须 `make([]T, 0)`
+- **nil slice → `null`**：`var s []T` 序列化为 `null`，前端 `v-for` 报错。必须 `make([]T, 0)`
 - **nil map → `null`**：同理，必须 `make(map[string]T)`
 - **json.Number 精度**：`json.Unmarshal` 到 `any` 时数字变 `float64`。存 MongoDB 用 `bson.UnmarshalExtJSON` 保留类型
 - **struct tag**：`json:"name"` 和 `bson:"name"` 必须同时写
@@ -17,22 +17,7 @@
 - **响应后忘 return**：`writeError` 后必须 `return`，否则继续执行导致二次写入或空指针
 - **响应写入后继续写**：`WriteHeader` 只能调一次
 - **goroutine 中写 ResponseWriter**：handler return 后 ResponseWriter 失效
-- **请求体**：`http.Request.Body` 读一次解析一��，不要二次读取
-
-## MongoDB 操作
-
-- **连接泄漏**：`mongo.Client` 必须在 shutdown 时 `Disconnect`
-- **Context 超时**：所有操作带 `context.WithTimeout`
-- **FindOne 无结果**：返回 `mongo.ErrNoDocuments`，用 `errors.Is` 判断
-- **UpdateOne 无匹配**：`result.MatchedCount == 0` 返��� 404
-- **Duplicate key**：检查 `WriteErrors[i].Code == 11000` 转 409
-- **bson.M key 顺序**：`bson.M` 是 map 无序，需要有序用 `bson.D`
-
-## Redis 操作
-
-- **Get 返回 redis.Nil**：key 不存在时返回 `redis.Nil`，用 `errors.Is(err, redis.Nil)` 判断
-- **序列化一致**：存 `json.Marshal`，取 `json.Unmarshal` 到相同类型
-- **key 命名**：统一前缀 `admin:`，避免与游戏服务端冲���
+- **请求体**：`http.Request.Body` 读一次解析一次，不要二次读取
 
 ## 错误处理
 
@@ -44,11 +29,23 @@
 
 - **nil map 写入 panic**：`var m map[string]string; m["a"] = "b"` panic。必须 `make` 初始化
 
+## 字符串
+
+- **`len()` 不是字符数**：`len("中文标签")` 返回 12（UTF-8 字节数），不是 4。校验中文字符串长度必须用 `utf8.RuneCountInString()`。纯 ASCII 字段名（如 `^[a-z][a-z0-9_]*$`）用 `len()` 没问题
+
+## sqlx / database/sql
+
+- **`json.RawMessage` 不能 scan NULL**：MySQL 列可能为 NULL，`json.RawMessage` 是 `[]byte` 的别名，driver 无法将 nil 存入非指针类型。必须用 `*json.RawMessage`。否则启动加载时 `sql: Scan error on column "extra": unsupported Scan, storing driver.Value type <nil> into type *json.RawMessage`
+
 ## 测试
 
 - **-race**：`go test -race ./...` 必须通过
-- **集成测试连真实 MongoDB**：不 mock，用 Docker 起测试库
-- **测试清理**：每个用例用独立 collection 或 `TestMain` 清库
+- **测试清理**：每个用例用独立数据或 `TestMain` 清库
+
+## 包设计
+
+- **依赖方向不能倒置**：`store`（数据访问层）不应 import `cache`（缓存层）。如果 store 需要 cache 的东西（如 key 函数），说明那些东西放错了位置，应该移到 store 中
+- **导出可见性最小化**：只在包内使用的常量用小写（unexported）。比如 Redis version key 只在 `store/redis` 内部使用，不需要导出给外部
 
 ---
 
