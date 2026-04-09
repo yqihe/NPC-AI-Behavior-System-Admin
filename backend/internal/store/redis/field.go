@@ -43,37 +43,37 @@ func ttl(base time.Duration, jitter time.Duration) time.Duration {
 // ---- 单条缓存 ----
 
 // GetDetail 查单条缓存
-func (c *FieldCache) GetDetail(ctx context.Context, name string) (*model.Field, bool, error) {
-	key := FieldDetailKey(name)
+func (c *FieldCache) GetDetail(ctx context.Context, id int64) (*model.Field, bool, error) {
+	key := FieldDetailKey(id)
 	data, err := c.rdb.Get(ctx, key).Bytes()
 	if err == redis.Nil {
-		slog.Debug("cache.字段详情未命中", "name", name)
+		slog.Debug("cache.字段详情未命中", "id", id)
 		return nil, false, nil
 	}
 	if err != nil {
-		slog.Error("cache.字段详情读取失败", "error", err, "name", name)
+		slog.Error("cache.字段详情读取失败", "error", err, "id", id)
 		return nil, false, err
 	}
 
 	// 空值标记
 	if string(data) == nullMarker {
-		slog.Debug("cache.字段详情命中空值", "name", name)
+		slog.Debug("cache.字段详情命中空值", "id", id)
 		return nil, true, nil
 	}
 
 	var field model.Field
 	if err := json.Unmarshal(data, &field); err != nil {
-		slog.Error("cache.字段详情反序列化失败", "error", err, "name", name)
+		slog.Error("cache.字段详情反序列化失败", "error", err, "id", id)
 		return nil, false, err
 	}
 
-	slog.Debug("cache.字段详情命中", "name", name)
+	slog.Debug("cache.字段详情命中", "id", id)
 	return &field, true, nil
 }
 
 // SetDetail 写单条缓存
-func (c *FieldCache) SetDetail(ctx context.Context, name string, field *model.Field) {
-	key := FieldDetailKey(name)
+func (c *FieldCache) SetDetail(ctx context.Context, id int64, field *model.Field) {
+	key := FieldDetailKey(id)
 	var data []byte
 	if field == nil {
 		data = []byte(nullMarker)
@@ -81,21 +81,21 @@ func (c *FieldCache) SetDetail(ctx context.Context, name string, field *model.Fi
 		var err error
 		data, err = json.Marshal(field)
 		if err != nil {
-			slog.Error("cache.字段详情序列化失败", "error", err, "name", name)
+			slog.Error("cache.字段详情序列化失败", "error", err, "id", id)
 			return
 		}
 	}
 
 	if err := c.rdb.Set(ctx, key, data, ttl(detailTTLBase, detailTTLJitter)).Err(); err != nil {
-		slog.Error("cache.字段详情写入失败", "error", err, "name", name)
+		slog.Error("cache.字段详情写入失败", "error", err, "id", id)
 	}
 }
 
 // DelDetail 删单条缓存
-func (c *FieldCache) DelDetail(ctx context.Context, name string) {
-	key := FieldDetailKey(name)
+func (c *FieldCache) DelDetail(ctx context.Context, id int64) {
+	key := FieldDetailKey(id)
 	if err := c.rdb.Del(ctx, key).Err(); err != nil {
-		slog.Error("cache.字段详情删除失败", "error", err, "name", name)
+		slog.Error("cache.字段详情删除失败", "error", err, "id", id)
 	}
 }
 
@@ -178,8 +178,8 @@ func (c *FieldCache) Available(ctx context.Context) bool {
 // ---- 分布式锁 ----
 
 // TryLock 尝试获取分布式锁（防缓存击穿）
-func (c *FieldCache) TryLock(ctx context.Context, name string, expire time.Duration) (bool, error) {
-	key := FieldLockKey(name)
+func (c *FieldCache) TryLock(ctx context.Context, id int64, expire time.Duration) (bool, error) {
+	key := FieldLockKey(id)
 	ok, err := c.rdb.SetNX(ctx, key, "1", expire).Result()
 	if err != nil {
 		return false, fmt.Errorf("try lock: %w", err)
@@ -188,8 +188,8 @@ func (c *FieldCache) TryLock(ctx context.Context, name string, expire time.Durat
 }
 
 // Unlock 释放分布式锁
-func (c *FieldCache) Unlock(ctx context.Context, name string) {
-	key := FieldLockKey(name)
+func (c *FieldCache) Unlock(ctx context.Context, id int64) {
+	key := FieldLockKey(id)
 	if err := c.rdb.Del(ctx, key).Err(); err != nil {
 		slog.Error("cache.释放锁失败", "error", err, "key", key)
 	}

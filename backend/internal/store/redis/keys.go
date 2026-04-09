@@ -35,12 +35,12 @@ func FieldListKey(version int64, typ, category, label string, enabled *bool, pag
 	return fmt.Sprintf("%sv%d:%s:%s:%s:%s:%d:%d", prefixFieldList, version, typ, category, label, e, page, pageSize)
 }
 
-// FieldDetailKey 字段详情缓存 key: fields:detail:{name}
-func FieldDetailKey(name string) string {
-	return prefixFieldDetail + name
+// FieldDetailKey 字段详情缓存 key: fields:detail:{id}
+func FieldDetailKey(id int64) string {
+	return fmt.Sprintf("%s%d", prefixFieldDetail, id)
 }
 
-// FieldLockKey 字段分布式锁 key: fields:lock:{name}
-func FieldLockKey(name string) string {
-	return prefixFieldLock + name
+// FieldLockKey 字段分布式锁 key: fields:lock:{id}
+func FieldLockKey(id int64) string {
+	return fmt.Sprintf("%s%d", prefixFieldLock, id)
 }
