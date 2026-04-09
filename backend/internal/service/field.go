@@ -36,9 +36,8 @@ func NewFieldService(fieldStore *storemysql.FieldStore, fieldRefStore *storemysq
 	}
 }
 
-// ---- 业务校验（需查缓存/DB） ----
+// ---- 业务校验辅助 ----
 
-// checkDictExists 校验字典值是否存在（通用：type/category 等）
 func (s *FieldService) checkDictExists(group, value string, code int, label string) *errcode.Error {
 	if !s.dictCache.Exists(group, value) {
 		return errcode.Newf(code, "%s '%s' 不存在", label, value)
@@ -54,14 +53,14 @@ func (s *FieldService) checkCategoryExists(category string) *errcode.Error {
 	return s.checkDictExists(model.DictGroupFieldCategory, category, errcode.ErrFieldCategoryNotFound, "标签分类")
 }
 
-// getFieldOrNotFound 查字段 + 判空，通用模式
-func (s *FieldService) getFieldOrNotFound(ctx context.Context, name string) (*model.Field, error) {
-	field, err := s.fieldStore.GetByName(ctx, name)
+// getFieldOrNotFound 按 ID 查字段 + 判空
+func (s *FieldService) getFieldOrNotFound(ctx context.Context, id int64) (*model.Field, error) {
+	field, err := s.fieldStore.GetByID(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("get field %s: %w", name, err)
+		return nil, fmt.Errorf("get field %d: %w", id, err)
 	}
 	if field == nil {
-		return nil, errcode.Newf(errcode.ErrFieldNotFound, "字段 '%s' 不存在", name)
+		return nil, errcode.Newf(errcode.ErrFieldNotFound, "字段 ID=%d 不存在", id)
 	}
 	return field, nil
 }
@@ -104,7 +103,7 @@ func (s *FieldService) List(ctx context.Context, q *model.FieldListQuery) (*mode
 		PageSize: q.PageSize,
 	}
 
-	// 3. 写 Redis 缓存（失败只记日志，不影响响应）
+	// 3. 写 Redis 缓存
 	s.fieldCache.SetList(ctx, q, result)
 
 	return result.ToListData(), nil
@@ -130,26 +129,28 @@ func (s *FieldService) Create(ctx context.Context, req *model.CreateFieldRequest
 		return 0, errcode.Newf(errcode.ErrFieldNameExists, "字段标识 '%s' 已存在", req.Name)
 	}
 
-	// reference 类型：校验引用字段存在性 + 循环引用检测
-	var newRefs []string
+	// reference 类型：校验引用字段存在性 + 启用状态 + 循环引用检测
+	var refFieldIDs []int64
 	if req.Type == model.FieldTypeReference {
 		props, _ := parseProperties(req.Properties)
 		if props != nil {
-			newRefs = parseRefFields(props.Constraints)
-			for _, refName := range newRefs {
-				f, err := s.fieldStore.GetByName(ctx, refName)
+			refFieldIDs = parseRefFieldIDs(props.Constraints)
+			for _, refID := range refFieldIDs {
+				f, err := s.fieldStore.GetByID(ctx, refID)
 				if err != nil {
-					return 0, fmt.Errorf("check ref field %s: %w", refName, err)
+					return 0, fmt.Errorf("check ref field %d: %w", refID, err)
 				}
 				if f == nil {
-					return 0, errcode.Newf(errcode.ErrFieldRefNotFound, "引用的字段 '%s' 不存在", refName)
+					return 0, errcode.Newf(errcode.ErrFieldRefNotFound, "引用的字段 ID=%d 不存在", refID)
 				}
 				if !f.Enabled {
-					return 0, errcode.Newf(errcode.ErrFieldRefDisabled, "字段 '%s' 已停用，不能引用", refName)
+					return 0, errcode.Newf(errcode.ErrFieldRefDisabled, "字段 '%s' 已停用，不能引用", f.Name)
 				}
 			}
-			if len(newRefs) > 0 {
-				if err := s.detectCyclicRef(ctx, req.Name, newRefs); err != nil {
+			if len(refFieldIDs) > 0 {
+				// 新建字段还没有 ID，用 name 做占位（不会冲突，因为 name 唯一）
+				// 只需确保被引用的字段链不形成环
+				if err := s.detectCyclicRef(ctx, 0, refFieldIDs); err != nil {
 					return 0, err
 				}
 			}
@@ -157,8 +158,6 @@ func (s *FieldService) Create(ctx context.Context, req *model.CreateFieldRequest
 	}
 
 	// 写入
-	// TODO: Create + syncFieldRefs 目前非原子操作，reference 字段创建时如果 syncFieldRefs
-	// 失败会导致引用关系缺失。模板管理上线时统一重构为事务内操作。
 	id, err := s.fieldStore.Create(ctx, req)
 	if err != nil {
 		slog.Error("service.创建字段失败", "error", err, "name", req.Name)
@@ -166,14 +165,14 @@ func (s *FieldService) Create(ctx context.Context, req *model.CreateFieldRequest
 	}
 
 	// reference 类型：写入引用关系
-	if len(newRefs) > 0 {
-		affected, err := s.syncFieldRefs(ctx, req.Name, nil, newRefs)
+	if len(refFieldIDs) > 0 {
+		affected, err := s.syncFieldRefs(ctx, id, nil, refFieldIDs)
 		if err != nil {
-			slog.Error("service.创建字段-同步引用失败", "error", err, "name", req.Name)
+			slog.Error("service.创建字段-同步引用失败", "error", err, "id", id)
 			return 0, fmt.Errorf("sync field refs: %w", err)
 		}
-		for _, n := range affected {
-			s.fieldCache.DelDetail(ctx, n)
+		for _, affectedID := range affected {
+			s.fieldCache.DelDetail(ctx, affectedID)
 		}
 	}
 
@@ -184,53 +183,53 @@ func (s *FieldService) Create(ctx context.Context, req *model.CreateFieldRequest
 	return id, nil
 }
 
-// GetByName 查询字段详情（Cache-Aside + 分布式锁防击穿）
-func (s *FieldService) GetByName(ctx context.Context, name string) (*model.Field, error) {
+// GetByID 查询字段详情（Cache-Aside + 分布式锁防击穿）
+func (s *FieldService) GetByID(ctx context.Context, id int64) (*model.Field, error) {
 	// 1. 查 Redis 缓存
-	if cached, hit, err := s.fieldCache.GetDetail(ctx, name); err == nil && hit {
+	if cached, hit, err := s.fieldCache.GetDetail(ctx, id); err == nil && hit {
 		if cached == nil {
-			return nil, errcode.Newf(errcode.ErrFieldNotFound, "字段 '%s' 不存在", name)
+			return nil, errcode.Newf(errcode.ErrFieldNotFound, "字段 ID=%d 不存在", id)
 		}
 		return cached, nil
 	}
 
-	// 2. 分布式锁防缓存击穿：只放一个请求穿透到 MySQL
-	locked, lockErr := s.fieldCache.TryLock(ctx, name, 3*time.Second)
+	// 2. 分布式锁防缓存击穿
+	locked, lockErr := s.fieldCache.TryLock(ctx, id, 3*time.Second)
 	if lockErr != nil {
-		slog.Warn("service.获取锁失败，降级直查MySQL", "error", lockErr, "name", name)
+		slog.Warn("service.获取锁失败，降级直查MySQL", "error", lockErr, "id", id)
 	}
 	if locked {
-		defer s.fieldCache.Unlock(ctx, name)
+		defer s.fieldCache.Unlock(ctx, id)
 	}
 
-	// 获得锁后再查一次缓存（等锁期间可能已被其他请求回填）
+	// 获得锁后再查一次缓存（double-check）
 	if locked {
-		if cached, hit, err := s.fieldCache.GetDetail(ctx, name); err == nil && hit {
+		if cached, hit, err := s.fieldCache.GetDetail(ctx, id); err == nil && hit {
 			if cached == nil {
-				return nil, errcode.Newf(errcode.ErrFieldNotFound, "字段 '%s' 不存在", name)
+				return nil, errcode.Newf(errcode.ErrFieldNotFound, "字段 ID=%d 不存在", id)
 			}
 			return cached, nil
 		}
 	}
 
 	// 3. 查 MySQL
-	field, err := s.fieldStore.GetByName(ctx, name)
+	field, err := s.fieldStore.GetByID(ctx, id)
 	if err != nil {
-		slog.Error("service.查询字段详情失败", "error", err, "name", name)
+		slog.Error("service.查询字段详情失败", "error", err, "id", id)
 		return nil, fmt.Errorf("get field: %w", err)
 	}
 
 	// 4. 写 Redis（field 为 nil 时也缓存，防穿透）
-	s.fieldCache.SetDetail(ctx, name, field)
+	s.fieldCache.SetDetail(ctx, id, field)
 
 	if field == nil {
-		return nil, errcode.Newf(errcode.ErrFieldNotFound, "字段 '%s' 不存在", name)
+		return nil, errcode.Newf(errcode.ErrFieldNotFound, "字段 ID=%d 不存在", id)
 	}
 	return field, nil
 }
 
-// Update 编辑字段
-func (s *FieldService) Update(ctx context.Context, name string, req *model.UpdateFieldRequest) error {
+// Update 编辑字段（仅未启用时可编辑）
+func (s *FieldService) Update(ctx context.Context, req *model.UpdateFieldRequest) error {
 	// 业务校验：type/category 存在性
 	if err := s.checkTypeExists(req.Type); err != nil {
 		return err
@@ -240,9 +239,14 @@ func (s *FieldService) Update(ctx context.Context, name string, req *model.Updat
 	}
 
 	// 查旧数据
-	old, err := s.getFieldOrNotFound(ctx, name)
+	old, err := s.getFieldOrNotFound(ctx, req.ID)
 	if err != nil {
 		return err
+	}
+
+	// 硬约束：必须未启用才能编辑
+	if old.Enabled {
+		return errcode.New(errcode.ErrFieldEditNotDisabled)
 	}
 
 	// 硬约束：被引用时禁止改 type
@@ -265,34 +269,33 @@ func (s *FieldService) Update(ctx context.Context, name string, req *model.Updat
 	if req.Type == model.FieldTypeReference {
 		newProps, _ := parseProperties(req.Properties)
 		if newProps != nil {
-			newRefs := parseRefFields(newProps.Constraints)
-			if len(newRefs) > 0 {
+			newRefIDs := parseRefFieldIDs(newProps.Constraints)
+			if len(newRefIDs) > 0 {
 				// 计算旧引用集合（已有的停用字段可保留）
-				oldRefSet := make(map[string]bool)
+				oldRefSet := make(map[int64]bool)
 				if old.Type == model.FieldTypeReference {
 					oldProps, _ := parseProperties(old.Properties)
 					if oldProps != nil {
-						for _, r := range parseRefFields(oldProps.Constraints) {
-							oldRefSet[r] = true
+						for _, rid := range parseRefFieldIDs(oldProps.Constraints) {
+							oldRefSet[rid] = true
 						}
 					}
 				}
 
-				for _, refName := range newRefs {
-					f, err := s.fieldStore.GetByName(ctx, refName)
+				for _, refID := range newRefIDs {
+					f, err := s.fieldStore.GetByID(ctx, refID)
 					if err != nil {
-						return fmt.Errorf("check ref field %s: %w", refName, err)
+						return fmt.Errorf("check ref field %d: %w", refID, err)
 					}
 					if f == nil {
-						return errcode.Newf(errcode.ErrFieldRefNotFound, "引用的字段 '%s' 不存在", refName)
+						return errcode.Newf(errcode.ErrFieldRefNotFound, "引用的字段 ID=%d 不存在", refID)
 					}
 					// 只有新增的引用才检查启用状态
-					if !oldRefSet[refName] && !f.Enabled {
-						return errcode.Newf(errcode.ErrFieldRefDisabled, "字段 '%s' 已停用，不能新增引用", refName)
+					if !oldRefSet[refID] && !f.Enabled {
+						return errcode.Newf(errcode.ErrFieldRefDisabled, "字段 '%s' 已停用，不能新增引用", f.Name)
 					}
 				}
-				// 循环引用检测
-				if err := s.detectCyclicRef(ctx, name, newRefs); err != nil {
+				if err := s.detectCyclicRef(ctx, req.ID, newRefIDs); err != nil {
 					return err
 				}
 			}
@@ -300,30 +303,30 @@ func (s *FieldService) Update(ctx context.Context, name string, req *model.Updat
 	}
 
 	// 乐观锁写入
-	err = s.fieldStore.Update(ctx, name, req)
+	err = s.fieldStore.Update(ctx, req)
 	if err != nil {
 		if errors.Is(err, storemysql.ErrVersionConflict) {
 			return errcode.New(errcode.ErrFieldVersionConflict)
 		}
-		slog.Error("service.编辑字段失败", "error", err, "name", name)
+		slog.Error("service.编辑字段失败", "error", err, "id", req.ID)
 		return fmt.Errorf("update field: %w", err)
 	}
 
 	// reference 类型：同步引用关系
-	var refAffected []string
+	var refAffected []int64
 	if req.Type == model.FieldTypeReference {
 		oldProps, _ := parseProperties(old.Properties)
 		newProps, _ := parseProperties(req.Properties)
-		var oldRefs, newRefs []string
+		var oldRefIDs, newRefIDs []int64
 		if oldProps != nil && old.Type == model.FieldTypeReference {
-			oldRefs = parseRefFields(oldProps.Constraints)
+			oldRefIDs = parseRefFieldIDs(oldProps.Constraints)
 		}
 		if newProps != nil {
-			newRefs = parseRefFields(newProps.Constraints)
+			newRefIDs = parseRefFieldIDs(newProps.Constraints)
 		}
-		affected, err := s.syncFieldRefs(ctx, name, oldRefs, newRefs)
+		affected, err := s.syncFieldRefs(ctx, req.ID, oldRefIDs, newRefIDs)
 		if err != nil {
-			slog.Error("service.编辑字段-同步引用失败", "error", err, "name", name)
+			slog.Error("service.编辑字段-同步引用失败", "error", err, "id", req.ID)
 			return fmt.Errorf("sync field refs: %w", err)
 		}
 		refAffected = affected
@@ -331,10 +334,10 @@ func (s *FieldService) Update(ctx context.Context, name string, req *model.Updat
 		// 类型从 reference 改为其他：清除所有引用关系
 		oldProps, _ := parseProperties(old.Properties)
 		if oldProps != nil {
-			oldRefs := parseRefFields(oldProps.Constraints)
-			affected, err := s.syncFieldRefs(ctx, name, oldRefs, nil)
+			oldRefIDs := parseRefFieldIDs(oldProps.Constraints)
+			affected, err := s.syncFieldRefs(ctx, req.ID, oldRefIDs, nil)
 			if err != nil {
-				slog.Error("service.编辑字段-清除引用失败", "error", err, "name", name)
+				slog.Error("service.编辑字段-清除引用失败", "error", err, "id", req.ID)
 				return fmt.Errorf("clear field refs: %w", err)
 			}
 			refAffected = affected
@@ -342,78 +345,60 @@ func (s *FieldService) Update(ctx context.Context, name string, req *model.Updat
 	}
 
 	// 清缓存：自身 + 受影响的被引用方
-	s.fieldCache.DelDetail(ctx, name)
-	for _, n := range refAffected {
-		s.fieldCache.DelDetail(ctx, n)
+	s.fieldCache.DelDetail(ctx, req.ID)
+	for _, affectedID := range refAffected {
+		s.fieldCache.DelDetail(ctx, affectedID)
 	}
 	s.fieldCache.InvalidateList(ctx)
 
-	slog.Info("service.编辑字段成功", "name", name)
+	slog.Info("service.编辑字段成功", "id", req.ID)
 	return nil
 }
 
-// DeleteResult 删除结果
-type DeleteResult struct {
-	Deleted    bool             `json:"deleted"`
-	References []model.FieldRef `json:"references,omitempty"`
-}
-
-// Delete 删除字段（硬约束：被引用时禁止删除）
-func (s *FieldService) Delete(ctx context.Context, name string) (*DeleteResult, error) {
-	// 先查字段是否存在（事务外，快速失败）
-	field, err := s.getFieldOrNotFound(ctx, name)
+// Delete 软删除字段
+func (s *FieldService) Delete(ctx context.Context, id int64) (*model.DeleteResult, error) {
+	field, err := s.getFieldOrNotFound(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	// 硬约束：必须先停用才能删除
+	// 硬约束：必须先停用
 	if field.Enabled {
 		return nil, errcode.New(errcode.ErrFieldDeleteNotDisabled)
 	}
 
-	// 先查引用详情（事务外，给前端展示用）
-	refs, err := s.fieldRefStore.GetByFieldName(ctx, name)
-	if err != nil {
-		slog.Error("service.删除字段-查引用失败", "error", err, "name", name)
-		return nil, fmt.Errorf("get refs: %w", err)
-	}
-	if len(refs) > 0 {
-		return &DeleteResult{Deleted: false, References: refs}, errcode.New(errcode.ErrFieldRefDelete)
-	}
-
-	// 事务内原子操作：再次检查引用 + 软删除（防 TOCTOU）
+	// 事务内原子操作：FOR SHARE 检查引用 + 软删除（防 TOCTOU）
 	tx, err := s.fieldStore.DB().BeginTxx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
 
-	hasRefs, err := s.fieldRefStore.HasRefsTx(ctx, tx, name)
+	hasRefs, err := s.fieldRefStore.HasRefsTx(ctx, tx, id)
 	if err != nil {
 		return nil, fmt.Errorf("check refs in tx: %w", err)
 	}
 	if hasRefs {
-		return &DeleteResult{Deleted: false}, errcode.New(errcode.ErrFieldRefDelete)
+		return nil, errcode.New(errcode.ErrFieldRefDelete)
 	}
 
-	if err := s.fieldStore.SoftDeleteTx(ctx, tx, name); err != nil {
+	if err := s.fieldStore.SoftDeleteTx(ctx, tx, id); err != nil {
 		if errors.Is(err, storemysql.ErrNotFound) {
-			return nil, errcode.Newf(errcode.ErrFieldNotFound, "字段 '%s' 不存在", name)
+			return nil, errcode.Newf(errcode.ErrFieldNotFound, "字段 ID=%d 不存在", id)
 		}
 		return nil, fmt.Errorf("soft delete: %w", err)
 	}
 
 	// reference 类型字段删除时，清除它对其他字段的引用关系
-	var affectedFields []string
+	var affectedIDs []int64
 	if field.Type == model.FieldTypeReference {
-		var err error
-		affectedFields, err = s.fieldRefStore.RemoveByRef(ctx, tx, model.RefTypeField, name)
+		affectedIDs, err = s.fieldRefStore.RemoveBySource(ctx, tx, model.RefTypeField, id)
 		if err != nil {
 			return nil, fmt.Errorf("remove field refs: %w", err)
 		}
-		for _, affectedName := range affectedFields {
-			if err := s.fieldStore.DecrRefCount(ctx, tx, affectedName); err != nil {
-				return nil, fmt.Errorf("decr ref_count %s: %w", affectedName, err)
+		for _, affectedID := range affectedIDs {
+			if err := s.fieldStore.DecrRefCountTx(ctx, tx, affectedID); err != nil {
+				return nil, fmt.Errorf("decr ref_count %d: %w", affectedID, err)
 			}
 		}
 	}
@@ -422,18 +407,18 @@ func (s *FieldService) Delete(ctx context.Context, name string) (*DeleteResult, 
 		return nil, fmt.Errorf("commit: %w", err)
 	}
 
-	// 清缓存（事务提交后）
-	s.fieldCache.DelDetail(ctx, name)
-	for _, affectedName := range affectedFields {
-		s.fieldCache.DelDetail(ctx, affectedName)
+	// 清缓存
+	s.fieldCache.DelDetail(ctx, id)
+	for _, affectedID := range affectedIDs {
+		s.fieldCache.DelDetail(ctx, affectedID)
 	}
 	s.fieldCache.InvalidateList(ctx)
 
-	slog.Info("service.删除字段成功", "name", name)
-	return &DeleteResult{Deleted: true}, nil
+	slog.Info("service.删除字段成功", "id", id, "name", field.Name)
+	return &model.DeleteResult{ID: id, Name: field.Name, Label: field.Label}, nil
 }
 
-// CheckName 校验字段标识是否可用
+// CheckName 校验字段标识是否可用（保留 name，创建前校验）
 func (s *FieldService) CheckName(ctx context.Context, name string) (*model.CheckNameResult, error) {
 	exists, err := s.fieldStore.ExistsByName(ctx, name)
 	if err != nil {
@@ -447,228 +432,90 @@ func (s *FieldService) CheckName(ctx context.Context, name string) (*model.Check
 }
 
 // GetReferences 查询字段引用详情
-func (s *FieldService) GetReferences(ctx context.Context, name string) (*model.ReferenceDetail, error) {
-	field, err := s.getFieldOrNotFound(ctx, name)
+func (s *FieldService) GetReferences(ctx context.Context, id int64) (*model.ReferenceDetail, error) {
+	field, err := s.getFieldOrNotFound(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	refs, err := s.fieldRefStore.GetByFieldName(ctx, name)
+	refs, err := s.fieldRefStore.GetByFieldID(ctx, id)
 	if err != nil {
-		slog.Error("service.引用详情-查引用失败", "error", err, "name", name)
+		slog.Error("service.引用详情-查引用失败", "error", err, "id", id)
 		return nil, fmt.Errorf("get refs: %w", err)
 	}
 
-	templateNames := make([]string, 0)
-	fieldNames := make([]string, 0)
+	templateIDs := make([]int64, 0)
+	fieldIDs := make([]int64, 0)
 	for _, r := range refs {
 		switch r.RefType {
 		case model.RefTypeTemplate:
-			templateNames = append(templateNames, r.RefName)
+			templateIDs = append(templateIDs, r.RefID)
 		case model.RefTypeField:
-			fieldNames = append(fieldNames, r.RefName)
+			fieldIDs = append(fieldIDs, r.RefID)
 		}
 	}
 
 	result := &model.ReferenceDetail{
-		FieldName:  name,
+		FieldID:    id,
 		FieldLabel: field.Label,
-		Templates:  make([]model.ReferenceItem, 0, len(templateNames)),
-		Fields:     make([]model.ReferenceItem, 0, len(fieldNames)),
+		Templates:  make([]model.ReferenceItem, 0, len(templateIDs)),
+		Fields:     make([]model.ReferenceItem, 0, len(fieldIDs)),
 	}
 
-	if len(fieldNames) > 0 {
-		fieldList, err := s.fieldStore.GetByNames(ctx, fieldNames)
+	if len(fieldIDs) > 0 {
+		fieldList, err := s.fieldStore.GetByIDs(ctx, fieldIDs)
 		if err != nil {
 			slog.Error("service.引用详情-查字段label失败", "error", err)
 			return nil, fmt.Errorf("get field labels: %w", err)
 		}
-		labelMap := make(map[string]string, len(fieldList))
+		labelMap := make(map[int64]string, len(fieldList))
 		for _, f := range fieldList {
-			labelMap[f.Name] = f.Label
+			labelMap[f.ID] = f.Label
 		}
-		for _, n := range fieldNames {
+		for _, fid := range fieldIDs {
 			result.Fields = append(result.Fields, model.ReferenceItem{
 				RefType: model.RefTypeField,
-				RefName: n,
-				Label:   labelMap[n],
+				RefID:   fid,
+				Label:   labelMap[fid],
 			})
 		}
 	}
 
-	for _, n := range templateNames {
+	for _, tid := range templateIDs {
 		result.Templates = append(result.Templates, model.ReferenceItem{
 			RefType: model.RefTypeTemplate,
-			RefName: n,
-			Label:   n, // TODO: 模板管理完成后 IN 查 templates 拿 label
+			RefID:   tid,
+			Label:   fmt.Sprintf("模板#%d", tid), // TODO: 模板管理完成后 IN 查 templates 拿 label
 		})
 	}
 
 	return result, nil
 }
 
-// BatchDelete 批量删除
-func (s *FieldService) BatchDelete(ctx context.Context, names []string) (*model.BatchDeleteResult, error) {
-	fields, err := s.fieldStore.GetByNames(ctx, names)
-	if err != nil {
-		slog.Error("service.批量删除-查字段失败", "error", err)
-		return nil, fmt.Errorf("get fields: %w", err)
-	}
-	fieldMap := make(map[string]*model.Field, len(fields))
-	for i := range fields {
-		fieldMap[fields[i].Name] = &fields[i]
-	}
-
-	deleted := make([]string, 0)
-	skipped := make([]model.BatchDeleteSkipped, 0)
-	affectedFields := make([]string, 0) // 被引用方（需清缓存）
-
-	for _, name := range names {
-		field := fieldMap[name]
-		if field == nil {
-			skipped = append(skipped, model.BatchDeleteSkipped{Name: name, Reason: "字段不存在"})
-			continue
-		}
-
-		if field.Enabled {
-			skipped = append(skipped, model.BatchDeleteSkipped{Name: name, Label: field.Label, Reason: "请先停用再删除"})
-			continue
-		}
-
-		hasRefs, err := s.fieldRefStore.HasRefs(ctx, name)
-		if err != nil {
-			slog.Error("service.批量删除-查引用失败", "error", err, "name", name)
-			skipped = append(skipped, model.BatchDeleteSkipped{Name: name, Label: field.Label, Reason: "查询引用失败"})
-			continue
-		}
-		if hasRefs {
-			skipped = append(skipped, model.BatchDeleteSkipped{Name: name, Label: field.Label, Reason: "被引用无法删除"})
-			continue
-		}
-
-		// 事务内原子操作：FOR SHARE 重新检查引用 + 软删除（防 TOCTOU）
-		tx, err := s.fieldStore.DB().BeginTxx(ctx, nil)
-		if err != nil {
-			skipped = append(skipped, model.BatchDeleteSkipped{Name: name, Label: field.Label, Reason: "事务启动失败"})
-			continue
-		}
-
-		hasRefsTx, err := s.fieldRefStore.HasRefsTx(ctx, tx, name)
-		if err != nil {
-			tx.Rollback()
-			skipped = append(skipped, model.BatchDeleteSkipped{Name: name, Label: field.Label, Reason: "查询引用失败"})
-			continue
-		}
-		if hasRefsTx {
-			tx.Rollback()
-			skipped = append(skipped, model.BatchDeleteSkipped{Name: name, Label: field.Label, Reason: "被引用无法删除"})
-			continue
-		}
-
-		if err := s.fieldStore.SoftDeleteTx(ctx, tx, name); err != nil {
-			tx.Rollback()
-			skipped = append(skipped, model.BatchDeleteSkipped{Name: name, Label: field.Label, Reason: "删除失败"})
-			continue
-		}
-
-		if field.Type == model.FieldTypeReference {
-			affected, err := s.fieldRefStore.RemoveByRef(ctx, tx, model.RefTypeField, name)
-			if err != nil {
-				tx.Rollback()
-				skipped = append(skipped, model.BatchDeleteSkipped{Name: name, Label: field.Label, Reason: "清理引用失败"})
-				continue
-			}
-			decrFailed := false
-			for _, affectedName := range affected {
-				if err := s.fieldStore.DecrRefCount(ctx, tx, affectedName); err != nil {
-					tx.Rollback()
-					skipped = append(skipped, model.BatchDeleteSkipped{Name: name, Label: field.Label, Reason: "更新引用计数失败"})
-					decrFailed = true
-					break
-				}
-			}
-			if decrFailed {
-				continue
-			}
-			affectedFields = append(affectedFields, affected...)
-		}
-
-		if err := tx.Commit(); err != nil {
-			skipped = append(skipped, model.BatchDeleteSkipped{Name: name, Label: field.Label, Reason: "提交失败"})
-			continue
-		}
-
-		deleted = append(deleted, name)
-	}
-
-	msg := fmt.Sprintf("%d 项已删除", len(deleted))
-	if len(skipped) > 0 {
-		msg += fmt.Sprintf("，%d 项因被引用无法删除", len(skipped))
-	}
-
-	// 清缓存
-	if len(deleted) > 0 {
-		for _, name := range deleted {
-			s.fieldCache.DelDetail(ctx, name)
-		}
-		for _, name := range affectedFields {
-			s.fieldCache.DelDetail(ctx, name)
-		}
-		s.fieldCache.InvalidateList(ctx)
-	}
-
-	slog.Info("service.批量删除完成", "deleted", len(deleted), "skipped", len(skipped))
-	return &model.BatchDeleteResult{Deleted: deleted, Skipped: skipped, Message: msg}, nil
-}
-
-// BatchUpdateCategory 批量修改分类
-func (s *FieldService) BatchUpdateCategory(ctx context.Context, req *model.BatchCategoryRequest) (int64, error) {
-	// 业务校验：分类存在性
-	if err := s.checkCategoryExists(req.Category); err != nil {
-		return 0, err
-	}
-
-	affected, err := s.fieldStore.BatchUpdateCategory(ctx, req.Names, req.Category)
-	if err != nil {
-		slog.Error("service.批量修改分类失败", "error", err)
-		return 0, fmt.Errorf("batch update category: %w", err)
-	}
-
-	// 清缓存（detail + list 都要清）
-	for _, name := range req.Names {
-		s.fieldCache.DelDetail(ctx, name)
-	}
-	s.fieldCache.InvalidateList(ctx)
-
-	slog.Info("service.批量修改分类成功", "affected", affected, "category", req.Category)
-	return affected, nil
-}
-
 // ToggleEnabled 切换启用/停用
 func (s *FieldService) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) error {
-	if _, err := s.getFieldOrNotFound(ctx, req.Name); err != nil {
+	if _, err := s.getFieldOrNotFound(ctx, req.ID); err != nil {
 		return err
 	}
 
-	err := s.fieldStore.ToggleEnabled(ctx, req.Name, req.Enabled, req.Version)
+	err := s.fieldStore.ToggleEnabled(ctx, req.ID, req.Enabled, req.Version)
 	if err != nil {
 		if errors.Is(err, storemysql.ErrVersionConflict) {
 			return errcode.New(errcode.ErrFieldVersionConflict)
 		}
-		slog.Error("service.切换启用失败", "error", err, "name", req.Name)
+		slog.Error("service.切换启用失败", "error", err, "id", req.ID)
 		return fmt.Errorf("toggle enabled: %w", err)
 	}
 
-	s.fieldCache.DelDetail(ctx, req.Name)
+	s.fieldCache.DelDetail(ctx, req.ID)
 	s.fieldCache.InvalidateList(ctx)
 
-	slog.Info("service.切换启用成功", "name", req.Name, "enabled", req.Enabled)
+	slog.Info("service.切换启用成功", "id", req.ID, "enabled", req.Enabled)
 	return nil
 }
 
 // ---- 约束收紧检查 ----
 
-// parseProperties 解析 properties JSON
 func parseProperties(raw json.RawMessage) (*model.FieldProperties, error) {
 	if len(raw) == 0 {
 		return &model.FieldProperties{}, nil
@@ -680,7 +527,6 @@ func parseProperties(raw json.RawMessage) (*model.FieldProperties, error) {
 	return &props, nil
 }
 
-// parseConstraintsMap 解析 constraints 为通用 map
 func parseConstraintsMap(raw json.RawMessage) (map[string]json.RawMessage, error) {
 	if len(raw) == 0 {
 		return make(map[string]json.RawMessage), nil
@@ -692,7 +538,6 @@ func parseConstraintsMap(raw json.RawMessage) (map[string]json.RawMessage, error
 	return m, nil
 }
 
-// getFloat 从 json.RawMessage 中提取数值
 func getFloat(raw json.RawMessage) (float64, bool) {
 	var v float64
 	if err := json.Unmarshal(raw, &v); err != nil {
@@ -701,12 +546,10 @@ func getFloat(raw json.RawMessage) (float64, bool) {
 	return v, true
 }
 
-// checkConstraintTightened 检查约束是否被收紧
-// 返回 nil 表示未收紧（放宽或不变），返回 error 表示收紧了
 func checkConstraintTightened(fieldType string, oldConstraints, newConstraints json.RawMessage) *errcode.Error {
 	oldMap, err := parseConstraintsMap(oldConstraints)
 	if err != nil {
-		return nil // 旧数据解析失败，跳过检查
+		return nil
 	}
 	newMap, err := parseConstraintsMap(newConstraints)
 	if err != nil {
@@ -715,7 +558,6 @@ func checkConstraintTightened(fieldType string, oldConstraints, newConstraints j
 
 	switch fieldType {
 	case "integer", "float":
-		// min 只能减小或不变，max 只能增大或不变
 		if oldMin, ok := getFloat(oldMap["min"]); ok {
 			if newMin, ok2 := getFloat(newMap["min"]); ok2 && newMin > oldMin {
 				return errcode.Newf(errcode.ErrFieldRefTighten, "最小值从 %v 收紧为 %v，请先移除引用", oldMin, newMin)
@@ -728,7 +570,6 @@ func checkConstraintTightened(fieldType string, oldConstraints, newConstraints j
 		}
 
 	case "string":
-		// minLength 只能减小，maxLength 只能增大
 		if oldMinLen, ok := getFloat(oldMap["minLength"]); ok {
 			if newMinLen, ok2 := getFloat(newMap["minLength"]); ok2 && newMinLen > oldMinLen {
 				return errcode.Newf(errcode.ErrFieldRefTighten, "最小长度从 %v 收紧为 %v，请先移除引用", oldMinLen, newMinLen)
@@ -741,7 +582,6 @@ func checkConstraintTightened(fieldType string, oldConstraints, newConstraints j
 		}
 
 	case "select":
-		// 只能新增选项，不能删除已有选项
 		oldOptions := parseSelectOptions(oldMap["options"])
 		newOptions := parseSelectOptions(newMap["options"])
 		if len(oldOptions) > 0 {
@@ -760,7 +600,6 @@ func checkConstraintTightened(fieldType string, oldConstraints, newConstraints j
 	return nil
 }
 
-// parseSelectOptions 从 options JSON 中提取选项的 value 列表
 func parseSelectOptions(raw json.RawMessage) []string {
 	if len(raw) == 0 {
 		return nil
@@ -780,13 +619,13 @@ func parseSelectOptions(raw json.RawMessage) []string {
 
 // ---- 循环引用检测 ----
 
-// parseRefFields 从 reference 字段的 constraints 中提取引用列表
-func parseRefFields(constraints json.RawMessage) []string {
+// parseRefFieldIDs 从 reference 字段的 constraints 中提取引用字段 ID 列表
+func parseRefFieldIDs(constraints json.RawMessage) []int64 {
 	if len(constraints) == 0 {
 		return nil
 	}
 	var c struct {
-		Refs []string `json:"refs"`
+		Refs []int64 `json:"refs"`
 	}
 	if err := json.Unmarshal(constraints, &c); err != nil {
 		return nil
@@ -795,22 +634,23 @@ func parseRefFields(constraints json.RawMessage) []string {
 }
 
 // detectCyclicRef 检测循环引用（DFS）
-// currentName: 当前正在创建/编辑的字段名
-// refs: 当前字段要引用的字段列表
-// 返回 nil 表示无环
-func (s *FieldService) detectCyclicRef(ctx context.Context, currentName string, refs []string) *errcode.Error {
-	visited := map[string]bool{currentName: true}
+// currentID: 当前正在创建/编辑的字段 ID（新建时为 0）
+// refIDs: 当前字段要引用的字段 ID 列表
+func (s *FieldService) detectCyclicRef(ctx context.Context, currentID int64, refIDs []int64) *errcode.Error {
+	visited := make(map[int64]bool)
+	if currentID > 0 {
+		visited[currentID] = true
+	}
 
-	var dfs func(names []string) *errcode.Error
-	dfs = func(names []string) *errcode.Error {
-		for _, name := range names {
-			if visited[name] {
-				return errcode.Newf(errcode.ErrFieldCyclicRef, "字段 '%s' 与 '%s' 形成循环引用", currentName, name)
+	var dfs func(ids []int64) *errcode.Error
+	dfs = func(ids []int64) *errcode.Error {
+		for _, id := range ids {
+			if visited[id] {
+				return errcode.Newf(errcode.ErrFieldCyclicRef, "字段 ID=%d 形成循环引用", id)
 			}
-			visited[name] = true
+			visited[id] = true
 
-			// 查该字段是否也是 reference 类型，递归展开
-			field, err := s.fieldStore.GetByName(ctx, name)
+			field, err := s.fieldStore.GetByID(ctx, id)
 			if err != nil || field == nil {
 				continue
 			}
@@ -822,7 +662,7 @@ func (s *FieldService) detectCyclicRef(ctx context.Context, currentName string, 
 			if err != nil {
 				continue
 			}
-			subRefs := parseRefFields(props.Constraints)
+			subRefs := parseRefFieldIDs(props.Constraints)
 			if len(subRefs) > 0 {
 				if err := dfs(subRefs); err != nil {
 					return err
@@ -832,31 +672,31 @@ func (s *FieldService) detectCyclicRef(ctx context.Context, currentName string, 
 		return nil
 	}
 
-	return dfs(refs)
+	return dfs(refIDs)
 }
 
-// syncFieldRefs 同步 reference 字段的引用关系到 field_refs 表
-// 比较新旧引用列表，增删 field_refs 记录并维护 ref_count
-// 返回 ref_count 发生变化的字段名列表（用于清缓存）
-func (s *FieldService) syncFieldRefs(ctx context.Context, fieldName string, oldRefs, newRefs []string) ([]string, error) {
-	oldSet := make(map[string]bool, len(oldRefs))
-	for _, r := range oldRefs {
+// syncFieldRefs 同步 reference 字段的引用关系
+// sourceFieldID: 引用方字段 ID
+// oldRefIDs, newRefIDs: 旧/新被引用字段 ID 列表
+// 返回 ref_count 发生变化的字段 ID 列表（用于清缓存）
+func (s *FieldService) syncFieldRefs(ctx context.Context, sourceFieldID int64, oldRefIDs, newRefIDs []int64) ([]int64, error) {
+	oldSet := make(map[int64]bool, len(oldRefIDs))
+	for _, r := range oldRefIDs {
 		oldSet[r] = true
 	}
-	newSet := make(map[string]bool, len(newRefs))
-	for _, r := range newRefs {
+	newSet := make(map[int64]bool, len(newRefIDs))
+	for _, r := range newRefIDs {
 		newSet[r] = true
 	}
 
-	// 计算差集
-	toAdd := make([]string, 0)
-	toRemove := make([]string, 0)
-	for _, r := range newRefs {
+	toAdd := make([]int64, 0)
+	toRemove := make([]int64, 0)
+	for _, r := range newRefIDs {
 		if !oldSet[r] {
 			toAdd = append(toAdd, r)
 		}
 	}
-	for _, r := range oldRefs {
+	for _, r := range oldRefIDs {
 		if !newSet[r] {
 			toRemove = append(toRemove, r)
 		}
@@ -872,29 +712,21 @@ func (s *FieldService) syncFieldRefs(ctx context.Context, fieldName string, oldR
 	}
 	defer tx.Rollback()
 
-	for _, refName := range toAdd {
-		if err := s.fieldRefStore.Add(ctx, tx, &model.FieldRef{
-			FieldName: refName,
-			RefType:   model.RefTypeField,
-			RefName:   fieldName,
-		}); err != nil {
-			return nil, fmt.Errorf("add field ref %s: %w", refName, err)
+	for _, targetID := range toAdd {
+		if err := s.fieldRefStore.Add(ctx, tx, targetID, model.RefTypeField, sourceFieldID); err != nil {
+			return nil, fmt.Errorf("add field ref %d: %w", targetID, err)
 		}
-		if err := s.fieldStore.IncrRefCount(ctx, tx, refName); err != nil {
-			return nil, fmt.Errorf("incr ref_count %s: %w", refName, err)
+		if err := s.fieldStore.IncrRefCountTx(ctx, tx, targetID); err != nil {
+			return nil, fmt.Errorf("incr ref_count %d: %w", targetID, err)
 		}
 	}
 
-	for _, refName := range toRemove {
-		if err := s.fieldRefStore.Remove(ctx, tx, &model.FieldRef{
-			FieldName: refName,
-			RefType:   model.RefTypeField,
-			RefName:   fieldName,
-		}); err != nil {
-			return nil, fmt.Errorf("remove field ref %s: %w", refName, err)
+	for _, targetID := range toRemove {
+		if err := s.fieldRefStore.Remove(ctx, tx, targetID, model.RefTypeField, sourceFieldID); err != nil {
+			return nil, fmt.Errorf("remove field ref %d: %w", targetID, err)
 		}
-		if err := s.fieldStore.DecrRefCount(ctx, tx, refName); err != nil {
-			return nil, fmt.Errorf("decr ref_count %s: %w", refName, err)
+		if err := s.fieldStore.DecrRefCountTx(ctx, tx, targetID); err != nil {
+			return nil, fmt.Errorf("decr ref_count %d: %w", targetID, err)
 		}
 	}
 
@@ -902,8 +734,7 @@ func (s *FieldService) syncFieldRefs(ctx context.Context, fieldName string, oldR
 		return nil, fmt.Errorf("commit: %w", err)
 	}
 
-	// 返回所有 ref_count 变化的字段名
-	affected := make([]string, 0, len(toAdd)+len(toRemove))
+	affected := make([]int64, 0, len(toAdd)+len(toRemove))
 	affected = append(affected, toAdd...)
 	affected = append(affected, toRemove...)
 	return affected, nil
