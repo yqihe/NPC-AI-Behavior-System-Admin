@@ -28,7 +28,8 @@ const (
 	ErrFieldNotFound         = 40011 // 字段不存在
 	ErrFieldRefNotFound      = 40014 // 引用的字段不存在
 	ErrFieldDeleteNotDisabled = 40012 // 删除前必须先停用
-	ErrFieldRefDisabled      = 40013 // 不能引用已停用的字段
+	ErrFieldRefDisabled       = 40013 // 不能引用已停用的字段
+	ErrFieldEditNotDisabled   = 40015 // 编辑前必须先停用
 )
 
 // --- 错误消息 ---
@@ -51,7 +52,8 @@ var messages = map[int]string{
 	ErrFieldNotFound:         "字段不存在",
 	ErrFieldRefNotFound:      "引用的字段不存在",
 	ErrFieldDeleteNotDisabled: "请先停用该字段再删除",
-	ErrFieldRefDisabled:      "不能引用已停用的字段",
+	ErrFieldRefDisabled:       "不能引用已停用的字段",
+	ErrFieldEditNotDisabled:   "请先停用该字段再编辑",
 }
 
 // Msg 获取错误码对应的默认消息
