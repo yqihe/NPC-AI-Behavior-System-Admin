@@ -18,11 +18,11 @@ func NewFieldRefStore(db *sqlx.DB) *FieldRefStore {
 	return &FieldRefStore{db: db}
 }
 
-// Add 添加引用关系（事务内）
-func (s *FieldRefStore) Add(ctx context.Context, tx *sqlx.Tx, ref *model.FieldRef) error {
+// Add 添加引用关系（事务内，按 ID）
+func (s *FieldRefStore) Add(ctx context.Context, tx *sqlx.Tx, fieldID int64, refType string, refID int64) error {
 	_, err := tx.ExecContext(ctx,
-		`INSERT IGNORE INTO field_refs (field_name, ref_type, ref_name) VALUES (?, ?, ?)`,
-		ref.FieldName, ref.RefType, ref.RefName,
+		`INSERT IGNORE INTO field_refs (field_id, ref_type, ref_id) VALUES (?, ?, ?)`,
+		fieldID, refType, refID,
 	)
 	if err != nil {
 		return fmt.Errorf("add field ref: %w", err)
@@ -30,11 +30,11 @@ func (s *FieldRefStore) Add(ctx context.Context, tx *sqlx.Tx, ref *model.FieldRe
 	return nil
 }
 
-// Remove 移除引用关系（事务内）
-func (s *FieldRefStore) Remove(ctx context.Context, tx *sqlx.Tx, ref *model.FieldRef) error {
+// Remove 移除单条引用关系（事务内，按 ID）
+func (s *FieldRefStore) Remove(ctx context.Context, tx *sqlx.Tx, fieldID int64, refType string, refID int64) error {
 	_, err := tx.ExecContext(ctx,
-		`DELETE FROM field_refs WHERE field_name = ? AND ref_type = ? AND ref_name = ?`,
-		ref.FieldName, ref.RefType, ref.RefName,
+		`DELETE FROM field_refs WHERE field_id = ? AND ref_type = ? AND ref_id = ?`,
+		fieldID, refType, refID,
 	)
 	if err != nil {
 		return fmt.Errorf("remove field ref: %w", err)
@@ -42,78 +42,55 @@ func (s *FieldRefStore) Remove(ctx context.Context, tx *sqlx.Tx, ref *model.Fiel
 	return nil
 }
 
-// RemoveByRef 移除某个引用方的所有引用（如删除模板时，清理该模板的所有字段引用）
-func (s *FieldRefStore) RemoveByRef(ctx context.Context, tx *sqlx.Tx, refType, refName string) ([]string, error) {
-	// 先查出被引用的字段列表（用于后续 ref_count 维护）
+// RemoveBySource 移除某个引用方的所有引用，返回被引用的字段 ID 列表（用于 ref_count 维护）
+// 例：删除 reference 类型字段时，清理它对其他字段的引用
+func (s *FieldRefStore) RemoveBySource(ctx context.Context, tx *sqlx.Tx, refType string, refID int64) ([]int64, error) {
+	// 先查出被引用的字段 ID 列表（必须在同一事务内）
 	refs := make([]model.FieldRef, 0)
-	err := s.db.SelectContext(ctx, &refs,
-		`SELECT field_name, ref_type, ref_name FROM field_refs WHERE ref_type = ? AND ref_name = ?`,
-		refType, refName,
+	err := tx.SelectContext(ctx, &refs,
+		`SELECT field_id, ref_type, ref_id FROM field_refs WHERE ref_type = ? AND ref_id = ?`,
+		refType, refID,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("query refs by ref: %w", err)
+		return nil, fmt.Errorf("query refs by source: %w", err)
 	}
 
-	fieldNames := make([]string, 0, len(refs))
+	fieldIDs := make([]int64, 0, len(refs))
 	for _, r := range refs {
-		fieldNames = append(fieldNames, r.FieldName)
+		fieldIDs = append(fieldIDs, r.FieldID)
 	}
 
 	// 删除
 	_, err = tx.ExecContext(ctx,
-		`DELETE FROM field_refs WHERE ref_type = ? AND ref_name = ?`,
-		refType, refName,
+		`DELETE FROM field_refs WHERE ref_type = ? AND ref_id = ?`,
+		refType, refID,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("remove refs by ref: %w", err)
+		return nil, fmt.Errorf("remove refs by source: %w", err)
 	}
 
-	return fieldNames, nil
+	return fieldIDs, nil
 }
 
-// GetByFieldName 查询某个字段的所有引用方（主键索引前缀）
-func (s *FieldRefStore) GetByFieldName(ctx context.Context, fieldName string) ([]model.FieldRef, error) {
+// GetByFieldID 查询某个字段的所有引用方（主键索引前缀）
+func (s *FieldRefStore) GetByFieldID(ctx context.Context, fieldID int64) ([]model.FieldRef, error) {
 	refs := make([]model.FieldRef, 0)
 	err := s.db.SelectContext(ctx, &refs,
-		`SELECT field_name, ref_type, ref_name FROM field_refs WHERE field_name = ?`,
-		fieldName,
+		`SELECT field_id, ref_type, ref_id FROM field_refs WHERE field_id = ?`,
+		fieldID,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("get refs by field name: %w", err)
+		return nil, fmt.Errorf("get refs by field id: %w", err)
 	}
 	return refs, nil
 }
 
-// GetByRefName 查询某个引用方引用了哪些字段（走 idx_ref）
-func (s *FieldRefStore) GetByRefName(ctx context.Context, refType, refName string) ([]model.FieldRef, error) {
-	refs := make([]model.FieldRef, 0)
-	err := s.db.SelectContext(ctx, &refs,
-		`SELECT field_name, ref_type, ref_name FROM field_refs WHERE ref_type = ? AND ref_name = ?`,
-		refType, refName,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("get refs by ref name: %w", err)
-	}
-	return refs, nil
-}
-
-// HasRefs 检查字段是否有引用（删除前检查）
-func (s *FieldRefStore) HasRefs(ctx context.Context, fieldName string) (bool, error) {
-	var count int
-	err := s.db.GetContext(ctx, &count,
-		`SELECT COUNT(*) FROM field_refs WHERE field_name = ?`, fieldName,
-	)
-	if err != nil {
-		return false, fmt.Errorf("check has refs: %w", err)
-	}
-	return count > 0, nil
-}
-
-// HasRefsTx 事务内检查引用（原子删除用，防 TOCTOU）
-func (s *FieldRefStore) HasRefsTx(ctx context.Context, tx *sqlx.Tx, fieldName string) (bool, error) {
+// HasRefsTx 事务内检查引用（删除前检查，防 TOCTOU）
+// FOR SHARE 保证当前读 + 阻止并发 INSERT/DELETE
+func (s *FieldRefStore) HasRefsTx(ctx context.Context, tx *sqlx.Tx, fieldID int64) (bool, error) {
 	var count int
 	err := tx.GetContext(ctx, &count,
-		`SELECT COUNT(*) FROM field_refs WHERE field_name = ?`, fieldName,
+		`SELECT COUNT(*) FROM field_refs WHERE field_id = ? FOR SHARE`, fieldID,
 	)
 	if err != nil {
 		return false, fmt.Errorf("check has refs tx: %w", err)
