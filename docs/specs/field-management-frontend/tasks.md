@@ -111,7 +111,7 @@
 
 ---
 
-## T12: Docker 部署配置 (R19)
+## T12: Docker 部署配置 (R19) [x]
 
 **涉及文件**：
 - `frontend/nginx.conf`（新建）
