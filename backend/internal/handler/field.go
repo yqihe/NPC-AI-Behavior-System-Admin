@@ -57,6 +57,13 @@ func checkRequired(value, fieldName string) *errcode.Error {
 	return nil
 }
 
+func checkID(id int64) *errcode.Error {
+	if id <= 0 {
+		return errcode.Newf(errcode.ErrBadRequest, "ID 不合法")
+	}
+	return nil
+}
+
 func checkVersion(version int) *errcode.Error {
 	if version <= 0 {
 		return errcode.Newf(errcode.ErrBadRequest, "版本号不合法")
@@ -79,7 +86,6 @@ func (h *FieldHandler) List(ctx context.Context, req *model.FieldListQuery) (*mo
 
 // Create 创建字段
 func (h *FieldHandler) Create(ctx context.Context, req *model.CreateFieldRequest) (*model.CreateFieldResponse, error) {
-	// 前置校验
 	if err := h.checkName(req.Name); err != nil {
 		return nil, err
 	}
@@ -106,21 +112,20 @@ func (h *FieldHandler) Create(ctx context.Context, req *model.CreateFieldRequest
 	return &model.CreateFieldResponse{ID: id, Name: req.Name}, nil
 }
 
-// Get 字段详情
-func (h *FieldHandler) Get(ctx context.Context, req *model.NameRequest) (*model.Field, error) {
-	if err := checkRequired(req.Name, "字段标识"); err != nil {
+// Get 字段详情（按 ID）
+func (h *FieldHandler) Get(ctx context.Context, req *model.IDRequest) (*model.Field, error) {
+	if err := checkID(req.ID); err != nil {
 		return nil, err
 	}
 
-	slog.Debug("handler.字段详情", "name", req.Name)
+	slog.Debug("handler.字段详情", "id", req.ID)
 
-	return h.fieldService.GetByName(ctx, req.Name)
+	return h.fieldService.GetByID(ctx, req.ID)
 }
 
-// Update 编辑字段
+// Update 编辑字段（按 ID）
 func (h *FieldHandler) Update(ctx context.Context, req *model.UpdateFieldRequest) (*string, error) {
-	// 前置校验
-	if err := checkRequired(req.Name, "字段标识"); err != nil {
+	if err := checkID(req.ID); err != nil {
 		return nil, err
 	}
 	if err := h.checkLabel(req.Label); err != nil {
@@ -139,9 +144,9 @@ func (h *FieldHandler) Update(ctx context.Context, req *model.UpdateFieldRequest
 		return nil, err
 	}
 
-	slog.Debug("handler.编辑字段", "name", req.Name, "type", req.Type, "version", req.Version)
+	slog.Debug("handler.编辑字段", "id", req.ID, "type", req.Type, "version", req.Version)
 
-	err := h.fieldService.Update(ctx, req.Name, req)
+	err := h.fieldService.Update(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -149,15 +154,15 @@ func (h *FieldHandler) Update(ctx context.Context, req *model.UpdateFieldRequest
 	return successMsg("保存成功"), nil
 }
 
-// Delete 删除字段
-func (h *FieldHandler) Delete(ctx context.Context, req *model.NameRequest) (*service.DeleteResult, error) {
-	if err := checkRequired(req.Name, "字段标识"); err != nil {
+// Delete 软删除字段（按 ID）
+func (h *FieldHandler) Delete(ctx context.Context, req *model.IDRequest) (*model.DeleteResult, error) {
+	if err := checkID(req.ID); err != nil {
 		return nil, err
 	}
 
-	slog.Debug("handler.删除字段", "name", req.Name)
+	slog.Debug("handler.删除字段", "id", req.ID)
 
-	return h.fieldService.Delete(ctx, req.Name)
+	return h.fieldService.Delete(ctx, req.ID)
 }
 
 // CheckName 字段标识唯一性校验
@@ -171,38 +176,27 @@ func (h *FieldHandler) CheckName(ctx context.Context, req *model.CheckNameReques
 	return h.fieldService.CheckName(ctx, req.Name)
 }
 
-// GetReferences 字段引用详情
-func (h *FieldHandler) GetReferences(ctx context.Context, req *model.NameRequest) (*model.ReferenceDetail, error) {
-	if err := checkRequired(req.Name, "字段标识"); err != nil {
+// GetReferences 字段引用详情（按 ID）
+func (h *FieldHandler) GetReferences(ctx context.Context, req *model.IDRequest) (*model.ReferenceDetail, error) {
+	if err := checkID(req.ID); err != nil {
 		return nil, err
 	}
 
-	slog.Debug("handler.引用详情", "name", req.Name)
+	slog.Debug("handler.引用详情", "id", req.ID)
 
-	return h.fieldService.GetReferences(ctx, req.Name)
+	return h.fieldService.GetReferences(ctx, req.ID)
 }
 
-// BatchDelete 批量删除字段
-func (h *FieldHandler) BatchDelete(ctx context.Context, req *model.BatchDeleteRequest) (*model.BatchDeleteResult, error) {
-	if len(req.Names) == 0 {
-		return nil, errcode.Newf(errcode.ErrBadRequest, "未选择任何字段")
-	}
-
-	slog.Debug("handler.批量删除", "names", req.Names, "count", len(req.Names))
-
-	return h.fieldService.BatchDelete(ctx, req.Names)
-}
-
-// ToggleEnabled 切换启用/停用
+// ToggleEnabled 切换启用/停用（按 ID）
 func (h *FieldHandler) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) (*string, error) {
-	if err := checkRequired(req.Name, "字段标识"); err != nil {
+	if err := checkID(req.ID); err != nil {
 		return nil, err
 	}
 	if err := checkVersion(req.Version); err != nil {
 		return nil, err
 	}
 
-	slog.Debug("handler.切换启用", "name", req.Name, "enabled", req.Enabled)
+	slog.Debug("handler.切换启用", "id", req.ID, "enabled", req.Enabled)
 
 	err := h.fieldService.ToggleEnabled(ctx, req)
 	if err != nil {
@@ -210,23 +204,4 @@ func (h *FieldHandler) ToggleEnabled(ctx context.Context, req *model.ToggleEnabl
 	}
 
 	return successMsg("操作成功"), nil
-}
-
-// BatchUpdateCategory 批量修改分类
-func (h *FieldHandler) BatchUpdateCategory(ctx context.Context, req *model.BatchCategoryRequest) (*model.BatchCategoryResponse, error) {
-	if len(req.Names) == 0 {
-		return nil, errcode.Newf(errcode.ErrBadRequest, "未选择任何字段")
-	}
-	if err := checkRequired(req.Category, "标签分类"); err != nil {
-		return nil, err
-	}
-
-	slog.Debug("handler.批量修改分类", "names", req.Names, "category", req.Category)
-
-	affected, err := h.fieldService.BatchUpdateCategory(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	return &model.BatchCategoryResponse{Affected: affected}, nil
 }
