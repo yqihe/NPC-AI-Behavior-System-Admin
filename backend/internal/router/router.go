@@ -15,7 +15,7 @@ func Setup(r *gin.Engine, fh *handler.FieldHandler, dh *handler.DictionaryHandle
 
 	v1 := r.Group("/api/v1")
 
-	// 字段管理
+	// 字段管理（8 个接口）
 	fields := v1.Group("/fields")
 	{
 		fields.POST("/list", handler.WrapCtx(fh.List))
@@ -25,8 +25,7 @@ func Setup(r *gin.Engine, fh *handler.FieldHandler, dh *handler.DictionaryHandle
 		fields.POST("/delete", handler.WrapCtx(fh.Delete))
 		fields.POST("/references", handler.WrapCtx(fh.GetReferences))
 		fields.POST("/check-name", handler.WrapCtx(fh.CheckName))
-		fields.POST("/batch-delete", handler.WrapCtx(fh.BatchDelete))
-		fields.POST("/batch-category", handler.WrapCtx(fh.BatchUpdateCategory))
+		fields.POST("/toggle-enabled", handler.WrapCtx(fh.ToggleEnabled))
 	}
 
 	// 字典选项
