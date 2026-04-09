@@ -53,14 +53,14 @@
 
 ## 写 Go 代码时必须检查
 
-参考 `docs/development/go-pitfalls.md`，重点关注：
+按涉及的技术领域查阅对应陷阱文档（`docs/development/` 下按技术拆分），重点关注：
 
-- **序列化安全**：nil slice/map 初始化了吗？bson tag 写了吗？omitempty 会吞零值吗？
-- **HTTP Handler**：写错误响应后 return 了吗？WriteHeader 只调一次了吗？
-- **MongoDB 操作**：context 带超时了吗？ErrNoDocuments 单独判断了吗？MatchedCount==0 返回 404 了吗？
-- **Redis 操作**：redis.Nil 判断了吗？缓存 key 有统一前缀吗？写操作后清缓存了吗？
-- **错误处理**：error 没忽略吧？errors.Is/As 而非 ==？错误信息没暴露给前端吧？
-- **nil 安全**：map 初始化了吗？指针解引用前检查 nil 了吗？
+- **Go 语言**（`go-pitfalls.md`）：nil slice/map 初始化了吗？bson tag 写了吗？omitempty 会吞零值吗？error 没忽略吧？map 初始化了吗？中文字符串长度用 `utf8.RuneCountInString` 了吗？
+- **HTTP Handler**（`go-pitfalls.md`）：写错误响应后 return 了吗？WriteHeader 只调一次了吗？
+- **MySQL**（`mysql-pitfalls.md`）：事务内查询用 tx 了吗？TOCTOU 防护用了 FOR SHARE 吗？LIKE 转义了吗？乐观锁 rows==0 语义清楚吗？
+- **MongoDB**（`mongodb-pitfalls.md`）：context 带超时了吗？ErrNoDocuments 单独判断了吗？MatchedCount==0 返回 404 了吗？
+- **Redis**（`redis-pitfalls.md`）：redis.Nil 判断了吗？缓存 key 用 keys.go 生成了吗？
+- **缓存**（`cache-pitfalls.md`）：写操作后清了 list 和 detail 缓存吗？空值标记防穿透了吗？TTL 加抖动了吗？
 
 ## 写前端代码时必须检查
 
@@ -98,19 +98,11 @@ log.Debug("组件.动作", "key1", val1, "key2", val2)
 **满足需求**：[R1, R3, ...]
 **新增测试**：[有/无，覆盖什么]
 **文档同步**：[更新了哪些文档 / 无需更新]
-**Go 陷阱检查**：[检查了哪些项，有无发现]
-**前端陷阱检查**：[检查了哪些项，有无发现]（仅涉及前端时）
+**陷阱检查**：[按涉及技术领域检查了哪些项，有无发现]
 
 → 建议跑 `/verify <feature-name>` 验证
 ```
 
 ## 经验沉淀
 
-执行过程中踩到的坑，按类型追加到对应文档：
-- 通用禁令 → `docs/standards/red-lines.md`
-- Go 语言禁令 → `docs/standards/go-red-lines.md`
-- 前端禁令 → `docs/standards/frontend-red-lines.md`
-- ADMIN 项目禁令 → `docs/architecture/red-lines.md`
-- Go 陷阱 → `docs/development/go-pitfalls.md`
-- 前端陷阱 → `docs/development/frontend-pitfalls.md`
-- 开发规则 → `docs/development/dev-rules.md`
+执行过程中踩到的坑，按技术领域追加到对应文档（参考 `docs/development/dev-rules.md` 经验沉淀指引表格）。

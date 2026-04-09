@@ -5,6 +5,13 @@ import (
 	"time"
 )
 
+// 字典组名常量
+const (
+	DictGroupFieldType       = "field_type"       // 字段类型
+	DictGroupFieldCategory   = "field_category"   // 字段分类
+	DictGroupFieldProperties = "field_properties"  // 字段属性
+)
+
 // Dictionary 字典条目
 type Dictionary struct {
 	ID        int64           `json:"id" db:"id"`
@@ -12,7 +19,7 @@ type Dictionary struct {
 	Name      string          `json:"name" db:"name"`
 	Label     string          `json:"label" db:"label"`
 	SortOrder int             `json:"sort_order" db:"sort_order"`
-	Extra     json.RawMessage `json:"extra" db:"extra"`
+	Extra     *json.RawMessage `json:"extra" db:"extra"`
 	Enabled   bool            `json:"enabled" db:"enabled"`
 	CreatedAt time.Time       `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time       `json:"updated_at" db:"updated_at"`
@@ -22,7 +29,7 @@ type Dictionary struct {
 type DictionaryItem struct {
 	Name  string          `json:"name"`
 	Label string          `json:"label"`
-	Extra json.RawMessage `json:"extra,omitempty"`
+	Extra *json.RawMessage `json:"extra,omitempty"`
 }
 
 // DictListRequest 字典列表请求
