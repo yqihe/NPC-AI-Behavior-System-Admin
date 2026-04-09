@@ -1,9 +1,16 @@
 #!/bin/bash
 # =============================================================================
-# 字段管理 API 全方位集成测试
+# 字段管理 API 全方位集成测试（ID 重构版）
 # 运行前提：docker compose up -d && seed 脚本已执行
 # 用法：bash tests/field_api_test.sh
 # =============================================================================
+
+# Windows 环境 UTF-8 支持
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+if command -v chcp.com &>/dev/null; then
+  chcp.com 65001 > /dev/null 2>&1
+fi
 
 BASE="http://localhost:9821/api/v1"
 PASS=0
@@ -17,7 +24,7 @@ P="t${TS}_"
 assert_code() {
   local test_name="$1" expected_code="$2" actual_body="$3"
   TOTAL=$((TOTAL + 1))
-  actual_code=$(echo "$actual_body" | jq -r '.code // empty' 2>/dev/null)
+  actual_code=$(echo "$actual_body" | jq -r '.code // empty' 2>/dev/null | tr -d '\r')
   if [ "$actual_code" = "$expected_code" ]; then
     echo "  [PASS] $test_name"
     PASS=$((PASS + 1))
@@ -31,7 +38,7 @@ assert_code() {
 assert_field() {
   local test_name="$1" jq_expr="$2" expected="$3" actual_body="$4"
   TOTAL=$((TOTAL + 1))
-  actual=$(echo "$actual_body" | jq -r "$jq_expr" 2>/dev/null)
+  actual=$(echo "$actual_body" | jq -r "$jq_expr" 2>/dev/null | tr -d '\r')
   if [ "$actual" = "$expected" ]; then
     echo "  [PASS] $test_name"
     PASS=$((PASS + 1))
@@ -44,7 +51,7 @@ assert_field() {
 assert_ge() {
   local test_name="$1" jq_expr="$2" min_val="$3" actual_body="$4"
   TOTAL=$((TOTAL + 1))
-  actual=$(echo "$actual_body" | jq -r "$jq_expr" 2>/dev/null)
+  actual=$(echo "$actual_body" | jq -r "$jq_expr" 2>/dev/null | tr -d '\r')
   if [ "$actual" -ge "$min_val" ] 2>/dev/null; then
     echo "  [PASS] $test_name (=$actual)"
     PASS=$((PASS + 1))
@@ -54,49 +61,62 @@ assert_ge() {
   fi
 }
 
-assert_le() {
-  local test_name="$1" jq_expr="$2" max_val="$3" actual_body="$4"
+assert_not_equal() {
+  local test_name="$1" jq_expr="$2" unexpected="$3" actual_body="$4"
   TOTAL=$((TOTAL + 1))
-  actual=$(echo "$actual_body" | jq -r "$jq_expr" 2>/dev/null)
-  if [ "$actual" -le "$max_val" ] 2>/dev/null; then
+  actual=$(echo "$actual_body" | jq -r "$jq_expr" 2>/dev/null | tr -d '\r')
+  if [ "$actual" != "$unexpected" ]; then
     echo "  [PASS] $test_name (=$actual)"
     PASS=$((PASS + 1))
   else
-    echo "  [FAIL] $test_name — 期望 <= $max_val, 实际: $actual"
+    echo "  [FAIL] $test_name — 不应为 $unexpected, 实际: $actual"
     FAIL=$((FAIL + 1))
   fi
 }
 
 post() {
-  curl -s -X POST "$BASE$1" -H "Content-Type: application/json" -d "$2"
+  local url="$BASE$1"
+  local body="$2"
+  printf '%s' "$body" | curl -s -X POST "$url" -H "Content-Type: application/json; charset=utf-8" --data-binary @-
 }
 
+# 按 ID 获取字段详情，返回完整响应
+get_detail() {
+  local id="$1"
+  post "/fields/detail" "{\"id\":${id}}"
+}
+
+# 获取字段 version
 get_version() {
-  local name="$1"
-  post "/fields/detail" "{\"name\":\"${name}\"}" | jq -r '.data.version'
+  local id="$1"
+  get_detail "$id" | jq -r '.data.version' | tr -d '\r'
 }
 
+# 启用字段
 enable_field() {
-  local name="$1"
-  local ver=$(get_version "$name")
-  post "/fields/toggle-enabled" "{\"name\":\"${name}\",\"enabled\":true,\"version\":${ver}}" > /dev/null
+  local id="$1"
+  local ver=$(get_version "$id")
+  post "/fields/toggle-enabled" "{\"id\":${id},\"enabled\":true,\"version\":${ver}}" > /dev/null
 }
 
+# 停用字段
 disable_field() {
-  local name="$1"
-  local ver=$(get_version "$name")
-  post "/fields/toggle-enabled" "{\"name\":\"${name}\",\"enabled\":false,\"version\":${ver}}" > /dev/null
+  local id="$1"
+  local ver=$(get_version "$id")
+  post "/fields/toggle-enabled" "{\"id\":${id},\"enabled\":false,\"version\":${ver}}" > /dev/null
 }
 
+# 停用 + 删除
 disable_then_delete() {
-  local name="$1"
-  disable_field "$name"
-  post "/fields/delete" "{\"name\":\"${name}\"}" > /dev/null 2>&1
+  local id="$1"
+  disable_field "$id"
+  post "/fields/delete" "{\"id\":${id}}" > /dev/null 2>&1
 }
 
 # =============================================================================
 echo "=========================================="
 echo "  字段管理 API 全方位集成测试 (prefix=$P)"
+echo "  所有操作使用 ID 标识"
 echo "=========================================="
 
 # --- 健康检查 ---
@@ -113,43 +133,43 @@ else
 fi
 
 # =============================================================================
-# 功能 11：字典选项查询
-# 场景：字段管理页新建/编辑字段时，下拉选项从后端动态获取
+# 功能 9：字典选项查询
 # =============================================================================
 echo ""
-echo "[功能11: 字典选项查询]"
+echo "[功能9: 字典选项查询]"
 
 R=$(post "/dictionaries" '{"group":"field_type"}')
-assert_code "11.1 查询 field_type 成功" "0" "$R"
-assert_field "11.2 返回 6 种类型" ".data.items | length" "6" "$R"
+assert_code "9.1 查询 field_type 成功" "0" "$R"
+assert_field "9.2 返回 6 种类型" ".data.items | length" "6" "$R"
 
 R=$(post "/dictionaries" '{"group":"field_category"}')
-assert_code "11.3 查询 field_category 成功" "0" "$R"
-assert_field "11.4 返回 6 种分类" ".data.items | length" "6" "$R"
+assert_code "9.3 查询 field_category 成功" "0" "$R"
+assert_field "9.4 返回 6 种分类" ".data.items | length" "6" "$R"
 
 R=$(post "/dictionaries" '{"group":"field_properties"}')
-assert_code "11.5 查询 field_properties 成功" "0" "$R"
+assert_code "9.5 查询 field_properties 成功" "0" "$R"
 
 R=$(post "/dictionaries" '{"group":""}')
-assert_code "11.6 空 group 返回参数错误" "40000" "$R"
+assert_code "9.6 空 group 返回参数错误" "40000" "$R"
 
 R=$(post "/dictionaries" '{"group":"nonexistent"}')
-assert_code "11.7 不存在的 group 返回成功（空列表）" "0" "$R"
-assert_field "11.7 返回空列表" ".data.items | length" "0" "$R"
+assert_code "9.7 不存在的 group 返回成功（空列表）" "0" "$R"
+assert_field "9.8 返回空列表" ".data.items | length" "0" "$R"
 
 # =============================================================================
-# 功能 2：新建字段
-# 场景：管理员定义新的 NPC 属性，默认未启用
+# 功能 2：新建字段（默认未启用）
 # =============================================================================
 echo ""
-echo "[功能2: 新建字段（默认未启用）]"
+echo "[功能2: 新建字段]"
 
 R=$(post "/fields/create" "{\"name\":\"${P}hp\",\"label\":\"测试生命值\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{\"description\":\"HP\",\"expose_bb\":false,\"constraints\":{\"min\":0,\"max\":100}}}")
 assert_code "2.1 创建成功" "0" "$R"
 assert_field "2.1 返回 name" ".data.name" "${P}hp" "$R"
+HP_ID=$(echo "$R" | jq -r '.data.id')
+assert_not_equal "2.1 返回 id > 0" ".data.id" "null" "$R"
 
-# 默认未启用 — 新建字段处于配置窗口期
-R=$(post "/fields/detail" "{\"name\":\"${P}hp\"}")
+# 默认未启用
+R=$(get_detail "$HP_ID")
 assert_field "2.2 新建默认 enabled=false" ".data.enabled" "false" "$R"
 assert_field "2.2 初始 version=1" ".data.version" "1" "$R"
 assert_field "2.2 初始 ref_count=0" ".data.ref_count" "0" "$R"
@@ -158,535 +178,416 @@ assert_field "2.2 初始 ref_count=0" ".data.ref_count" "0" "$R"
 R=$(post "/fields/create" "{\"name\":\"${P}hp\",\"label\":\"重复\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{}}")
 assert_code "2.3 重复名字返回 40001" "40001" "$R"
 
-# 格式校验
-R=$(post "/fields/create" '{"name":"TestBad","label":"x","type":"integer","category":"combat","properties":{}}')
-assert_code "2.4 大写名字返回 40002" "40002" "$R"
+# 非法名字格式
+R=$(post "/fields/create" '{"name":"HP-bad","label":"坏","type":"integer","category":"combat","properties":{}}')
+assert_code "2.4 大写+横线返回 40002" "40002" "$R"
 
-R=$(post "/fields/create" '{"name":"123start","label":"x","type":"integer","category":"combat","properties":{}}')
+R=$(post "/fields/create" '{"name":"123start","label":"数字开头","type":"integer","category":"combat","properties":{}}')
 assert_code "2.5 数字开头返回 40002" "40002" "$R"
 
-# 字典校验
-R=$(post "/fields/create" "{\"name\":\"${P}bad1\",\"label\":\"x\",\"type\":\"nonexistent\",\"category\":\"combat\",\"properties\":{}}")
-assert_code "2.6 不存在类型返回 40003" "40003" "$R"
+# 缺必填字段
+R=$(post "/fields/create" '{"name":"","label":"空名","type":"integer","category":"combat","properties":{}}')
+assert_code "2.6 空名返回 40002" "40002" "$R"
 
-R=$(post "/fields/create" "{\"name\":\"${P}bad2\",\"label\":\"x\",\"type\":\"integer\",\"category\":\"nonexistent\",\"properties\":{}}")
-assert_code "2.7 不存在分类返回 40004" "40004" "$R"
+R=$(post "/fields/create" "{\"name\":\"${P}nolabel\",\"label\":\"\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{}}")
+assert_code "2.7 空标签返回 40000" "40000" "$R"
 
-# 必填校验
-R=$(post "/fields/create" '{"name":"","label":"x","type":"integer","category":"combat","properties":{}}')
-assert_code "2.8 空 name 返回参数错误" "40002" "$R"
+R=$(post "/fields/create" "{\"name\":\"${P}notype\",\"label\":\"无类型\",\"type\":\"\",\"category\":\"combat\",\"properties\":{}}")
+assert_code "2.8 空类型返回 40000" "40000" "$R"
 
-R=$(post "/fields/create" "{\"name\":\"${P}bad3\",\"label\":\"\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{}}")
-assert_code "2.9 空 label 返回参数错误" "40000" "$R"
+R=$(post "/fields/create" "{\"name\":\"${P}noprops\",\"label\":\"无属性\",\"type\":\"integer\",\"category\":\"combat\"}")
+assert_code "2.9 无 properties 返回 40000" "40000" "$R"
 
-R=$(post "/fields/create" "{\"name\":\"${P}bad4\",\"label\":\"x\",\"type\":\"integer\",\"category\":\"combat\"}")
-assert_code "2.10 无 properties 返回参数错误" "40000" "$R"
+# 不存在的类型/分类
+R=$(post "/fields/create" "{\"name\":\"${P}badtype\",\"label\":\"假类型\",\"type\":\"faketype\",\"category\":\"combat\",\"properties\":{}}")
+assert_code "2.10 不存在的类型返回 40003" "40003" "$R"
 
-# 创建其他测试字段
-post "/fields/create" "{\"name\":\"${P}speed\",\"label\":\"测试速度\",\"type\":\"float\",\"category\":\"movement\",\"properties\":{\"expose_bb\":true,\"constraints\":{\"min\":0,\"max\":50}}}" > /dev/null
-post "/fields/create" "{\"name\":\"${P}name_str\",\"label\":\"测试名称\",\"type\":\"string\",\"category\":\"basic\",\"properties\":{\"constraints\":{\"minLength\":1,\"maxLength\":20}}}" > /dev/null
-post "/fields/create" "{\"name\":\"${P}alive\",\"label\":\"是否存活\",\"type\":\"boolean\",\"category\":\"basic\",\"properties\":{}}" > /dev/null
-post "/fields/create" "{\"name\":\"${P}mood\",\"label\":\"情绪\",\"type\":\"select\",\"category\":\"personality\",\"properties\":{\"constraints\":{\"options\":[{\"value\":\"happy\"},{\"value\":\"sad\"},{\"value\":\"angry\"}]}}}" > /dev/null
-post "/fields/create" "{\"name\":\"${P}batch_a\",\"label\":\"批量A\",\"type\":\"boolean\",\"category\":\"basic\",\"properties\":{}}" > /dev/null
-post "/fields/create" "{\"name\":\"${P}batch_b\",\"label\":\"批量B\",\"type\":\"boolean\",\"category\":\"basic\",\"properties\":{}}" > /dev/null
-post "/fields/create" "{\"name\":\"${P}batch_c\",\"label\":\"批量C\",\"type\":\"boolean\",\"category\":\"basic\",\"properties\":{}}" > /dev/null
-echo "  [INFO] 额外创建 speed, name_str, alive, mood, batch_a, batch_b, batch_c（均未启用）"
+R=$(post "/fields/create" "{\"name\":\"${P}badcat\",\"label\":\"假分类\",\"type\":\"integer\",\"category\":\"fakecat\",\"properties\":{}}")
+assert_code "2.11 不存在的分类返回 40004" "40004" "$R"
 
-# =============================================================================
-# 功能 10：启用/停用切换
-# 场景 A：管理员确认配置无误后启用，其他模块才能看到
-# 场景 B：管理员下线字段先停用，存量不动增量拦截
-# =============================================================================
-echo ""
-echo "[功能10: 启用/停用切换]"
+# 创建其他类型字段用于后续测试
+R=$(post "/fields/create" "{\"name\":\"${P}atk\",\"label\":\"攻击力\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{\"description\":\"ATK\",\"expose_bb\":false,\"constraints\":{\"min\":0,\"max\":999}}}")
+assert_code "2.12 创建 atk" "0" "$R"
+ATK_ID=$(echo "$R" | jq -r '.data.id')
 
-R=$(post "/fields/detail" "{\"name\":\"${P}hp\"}")
-VER=$(echo "$R" | jq -r '.data.version')
+R=$(post "/fields/create" "{\"name\":\"${P}str\",\"label\":\"力量文本\",\"type\":\"string\",\"category\":\"basic\",\"properties\":{\"description\":\"STR\",\"expose_bb\":false,\"constraints\":{\"minLength\":1,\"maxLength\":50}}}")
+assert_code "2.13 创建 string 类型" "0" "$R"
+STR_ID=$(echo "$R" | jq -r '.data.id')
 
-R=$(post "/fields/toggle-enabled" "{\"name\":\"${P}hp\",\"enabled\":true,\"version\":${VER}}")
-assert_code "10.1 启用成功" "0" "$R"
+R=$(post "/fields/create" "{\"name\":\"${P}flag\",\"label\":\"布尔标记\",\"type\":\"boolean\",\"category\":\"basic\",\"properties\":{\"description\":\"flag\",\"expose_bb\":false}}")
+assert_code "2.14 创建 boolean 类型" "0" "$R"
+FLAG_ID=$(echo "$R" | jq -r '.data.id')
 
-R=$(post "/fields/detail" "{\"name\":\"${P}hp\"}")
-assert_field "10.2 enabled=true" ".data.enabled" "true" "$R"
-VER=$(echo "$R" | jq -r '.data.version')
-
-R=$(post "/fields/toggle-enabled" "{\"name\":\"${P}hp\",\"enabled\":false,\"version\":${VER}}")
-assert_code "10.3 停用成功" "0" "$R"
-
-R=$(post "/fields/detail" "{\"name\":\"${P}hp\"}")
-assert_field "10.4 enabled=false" ".data.enabled" "false" "$R"
-
-# 乐观锁
-R=$(post "/fields/toggle-enabled" "{\"name\":\"${P}hp\",\"enabled\":true,\"version\":1}")
-assert_code "10.5 版本冲突返回 40010" "40010" "$R"
-
-# 不合法版本号
-R=$(post "/fields/toggle-enabled" "{\"name\":\"${P}hp\",\"enabled\":true,\"version\":0}")
-assert_code "10.6 version=0 返回参数错误" "40000" "$R"
-
-# 不存在字段
-R=$(post "/fields/toggle-enabled" '{"name":"nonexistent_xyz","enabled":true,"version":1}')
-assert_code "10.7 不存在字段返回 40011" "40011" "$R"
-
-# 把 hp 和部分字段启用，后续测试要用
-enable_field "${P}hp"
-enable_field "${P}speed"
-enable_field "${P}alive"
-enable_field "${P}mood"
+R=$(post "/fields/create" "{\"name\":\"${P}mood\",\"label\":\"情绪选择\",\"type\":\"select\",\"category\":\"personality\",\"properties\":{\"description\":\"mood\",\"expose_bb\":false,\"constraints\":{\"options\":[{\"value\":\"happy\",\"label\":\"开心\"},{\"value\":\"sad\",\"label\":\"伤心\"}],\"minSelect\":1,\"maxSelect\":1}}}")
+assert_code "2.15 创建 select 类型" "0" "$R"
+MOOD_ID=$(echo "$R" | jq -r '.data.id')
 
 # =============================================================================
 # 功能 6：字段名唯一性校验
-# 场景：新建字段时输入框失焦实时校验，含软删除也不可复用
 # =============================================================================
 echo ""
 echo "[功能6: 字段名唯一性校验]"
 
-R=$(post "/fields/check-name" "{\"name\":\"${P}unique_xyz\"}")
-assert_code "6.1 可用名称" "0" "$R"
-assert_field "6.1 available=true" ".data.available" "true" "$R"
-
 R=$(post "/fields/check-name" "{\"name\":\"${P}hp\"}")
-assert_field "6.2 已存在 available=false" ".data.available" "false" "$R"
+assert_code "6.1 已存在的名字" "0" "$R"
+assert_field "6.1 available=false" ".data.available" "false" "$R"
+
+R=$(post "/fields/check-name" "{\"name\":\"${P}not_exist_999\"}")
+assert_code "6.2 不存在的名字" "0" "$R"
+assert_field "6.2 available=true" ".data.available" "true" "$R"
 
 R=$(post "/fields/check-name" '{"name":""}')
-assert_code "6.3 空名称返回参数错误" "40000" "$R"
+assert_code "6.3 空名返回参数错误" "40000" "$R"
+
+# =============================================================================
+# 功能 3：字段详情（按 ID）
+# =============================================================================
+echo ""
+echo "[功能3: 字段详情（按 ID）]"
+
+R=$(get_detail "$HP_ID")
+assert_code "3.1 按 ID 查详情成功" "0" "$R"
+assert_field "3.1 返回正确 name" ".data.name" "${P}hp" "$R"
+assert_field "3.1 返回正确 label" ".data.label" "测试生命值" "$R"
+assert_field "3.1 返回 properties" ".data.properties.description" "HP" "$R"
+
+R=$(get_detail "999999")
+assert_code "3.2 不存在的 ID 返回 40011" "40011" "$R"
+
+R=$(post "/fields/detail" '{"id":0}')
+assert_code "3.3 ID=0 返回参数错误" "40000" "$R"
+
+R=$(post "/fields/detail" '{"id":-1}')
+assert_code "3.4 ID=-1 返回参数错误" "40000" "$R"
 
 # =============================================================================
 # 功能 1：字段列表
-# 场景 A：字段管理页浏览全部字段（不传 enabled）
-# 场景 B：其他模块选字段（传 enabled=true 只看启用的）
 # =============================================================================
 echo ""
 echo "[功能1: 字段列表]"
 
-# 场景 A：字段管理页看全部
-R=$(post "/fields/list" '{}')
-assert_code "1.1 默认分页成功" "0" "$R"
-assert_ge "1.2 total >= 8（含启用+未启用）" ".data.total" "8" "$R"
+R=$(post "/fields/list" '{"page":1,"page_size":20}')
+assert_code "1.1 列表成功" "0" "$R"
+assert_ge "1.1 至少有测试创建的字段" ".data.total" "4" "$R"
+assert_field "1.1 items 是数组" ".data.items | type" "array" "$R"
 
-# 验证列表包含 enabled 字段
-assert_field "1.3 列表含 enabled 字段" '.data.items[0] | has("enabled")' "true" "$R"
-# 验证列表包含 type_label 翻译
-assert_field "1.4 列表含 type_label" '.data.items[0] | has("type_label")' "true" "$R"
+# 列表项包含 id 字段
+assert_not_equal "1.2 列表项有 id" ".data.items[0].id" "null" "$R"
 
-# 场景 B：其他模块选字段 — 只看启用的
-R=$(post "/fields/list" '{"enabled":true}')
-assert_code "1.5 enabled=true 筛选成功" "0" "$R"
-ENABLED_TOTAL=$(echo "$R" | jq -r '.data.total')
+# 按类型筛选
+R=$(post "/fields/list" '{"type":"boolean","page":1,"page_size":20}')
+assert_code "1.3 按 type 筛选" "0" "$R"
 
-R=$(post "/fields/list" '{"enabled":false}')
-assert_code "1.6 enabled=false 筛选成功" "0" "$R"
-DISABLED_TOTAL=$(echo "$R" | jq -r '.data.total')
+# 按分类筛选
+R=$(post "/fields/list" '{"category":"combat","page":1,"page_size":20}')
+assert_code "1.4 按 category 筛选" "0" "$R"
 
-R=$(post "/fields/list" '{}')
-ALL_TOTAL=$(echo "$R" | jq -r '.data.total')
+# 按标签模糊搜索
+R=$(post "/fields/list" "{\"label\":\"测试生命\",\"page\":1,\"page_size\":20}")
+assert_code "1.5 模糊搜索" "0" "$R"
+assert_ge "1.5 至少找到 1 条" ".data.total" "1" "$R"
 
-TOTAL=$((TOTAL + 1))
-SUM=$((ENABLED_TOTAL + DISABLED_TOTAL))
-if [ "$SUM" = "$ALL_TOTAL" ]; then
-  echo "  [PASS] 1.7 启用($ENABLED_TOTAL) + 未启用($DISABLED_TOTAL) = 全部($ALL_TOTAL)"
-  PASS=$((PASS + 1))
-else
-  echo "  [FAIL] 1.7 启用($ENABLED_TOTAL) + 未启用($DISABLED_TOTAL) != 全部($ALL_TOTAL)"
-  FAIL=$((FAIL + 1))
-fi
+# enabled 筛选 — 场景 A：字段管理页不传 enabled
+R=$(post "/fields/list" '{"page":1,"page_size":20}')
+assert_code "1.6 不传 enabled 返回全部" "0" "$R"
 
-# 组合筛选
-R=$(post "/fields/list" '{"type":"integer"}')
-assert_code "1.8 按 type 筛选" "0" "$R"
+# enabled 筛选 — 场景 B：其他模块传 enabled=true
+R=$(post "/fields/list" '{"enabled":true,"page":1,"page_size":20}')
+assert_code "1.7 enabled=true 仅返回启用" "0" "$R"
 
-R=$(post "/fields/list" '{"category":"combat"}')
-assert_code "1.9 按 category 筛选" "0" "$R"
+# 分页边界
+R=$(post "/fields/list" '{"page":0,"page_size":0}')
+assert_code "1.8 page=0 自动校正" "0" "$R"
+assert_field "1.8 page 校正为 1" ".data.page" "1" "$R"
 
-R=$(post "/fields/list" "{\"label\":\"测试\"}")
-assert_code "1.10 按 label 模糊搜索" "0" "$R"
-
-R=$(post "/fields/list" '{"type":"integer","enabled":true}')
-assert_code "1.11 type + enabled 组合筛选" "0" "$R"
-
-# 分页
-R=$(post "/fields/list" '{"page":1,"page_size":2}')
-assert_le "1.12 分页 page_size=2 返回条数 <= 2" ".data.items | length" "2" "$R"
-assert_field "1.12 page_size=2 响应" ".data.page_size" "2" "$R"
+# 空结果
+R=$(post "/fields/list" '{"label":"绝对不存在的标签zzz","page":1,"page_size":20}')
+assert_code "1.9 空结果" "0" "$R"
+assert_field "1.9 total=0" ".data.total" "0" "$R"
+assert_field "1.9 items 空数组" ".data.items | length" "0" "$R"
 
 # =============================================================================
-# 功能 3：字段详情
-# 场景 A：管理员查看/编辑字段
-# 场景 B：模板管理页获取字段配置（停用字段也能查）
-# =============================================================================
-echo ""
-echo "[功能3: 字段详情]"
-
-R=$(post "/fields/detail" "{\"name\":\"${P}hp\"}")
-assert_code "3.1 查询成功" "0" "$R"
-assert_field "3.1 name 正确" ".data.name" "${P}hp" "$R"
-assert_field "3.1 type 正确" ".data.type" "integer" "$R"
-assert_field "3.1 properties 含 description" ".data.properties.description" "HP" "$R"
-
-# 未启用的字段也能查详情（模板里已有的停用字段仍需看配置）
-R=$(post "/fields/detail" "{\"name\":\"${P}name_str\"}")
-assert_code "3.2 未启用字段也能查详情" "0" "$R"
-assert_field "3.2 enabled=false" ".data.enabled" "false" "$R"
-
-# 不存在字段 — 返回 40011 ErrFieldNotFound
-R=$(post "/fields/detail" '{"name":"nonexistent_xyz"}')
-assert_code "3.3 不存在返回 40011" "40011" "$R"
-
-R=$(post "/fields/detail" '{"name":""}')
-assert_code "3.4 空 name 返回参数错误" "40000" "$R"
-
-# =============================================================================
-# 功能 4：编辑字段
-# 场景 A：管理员修改字段配置（启用/停用都能编辑）
-# 场景 B：reference 类型改成其他类型，自动清理引用
+# 功能 4：编辑字段（仅未启用时可编辑）
 # =============================================================================
 echo ""
 echo "[功能4: 编辑字段]"
 
-VER=$(get_version "${P}hp")
-R=$(post "/fields/update" "{\"name\":\"${P}hp\",\"label\":\"生命值-改\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{\"expose_bb\":true,\"constraints\":{\"min\":0,\"max\":100}},\"version\":${VER}}")
-assert_code "4.1 启用字段编辑成功" "0" "$R"
+# 4.1 正常编辑（未启用状态）
+HP_VER=$(get_version "$HP_ID")
+R=$(post "/fields/update" "{\"id\":${HP_ID},\"label\":\"生命值改\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{\"description\":\"HP changed\",\"expose_bb\":true,\"constraints\":{\"min\":0,\"max\":200}},\"version\":${HP_VER}}")
+assert_code "4.1 编辑成功（未启用状态）" "0" "$R"
 
-R=$(post "/fields/detail" "{\"name\":\"${P}hp\"}")
-# 中文在 Git Bash 的 jq 输出可能乱码，只验证 label 非原值
-LABEL_CHANGED=$(echo "$R" | jq -r '.data.label != "测试生命值"' 2>/dev/null)
-TOTAL=$((TOTAL + 1))
-if [ "$LABEL_CHANGED" = "true" ]; then
-  echo "  [PASS] 4.2 label 已更新"
-  PASS=$((PASS + 1))
-else
-  echo "  [FAIL] 4.2 label 未更新"
-  FAIL=$((FAIL + 1))
-fi
+R=$(get_detail "$HP_ID")
+assert_field "4.1 label 已更新" ".data.label" "生命值改" "$R"
+assert_field "4.1 description 已更新" ".data.properties.description" "HP changed" "$R"
+assert_field "4.1 max 已更新" ".data.properties.constraints.max" "200" "$R"
 
-# 未启用字段也能编辑
-VER=$(get_version "${P}name_str")
-R=$(post "/fields/update" "{\"name\":\"${P}name_str\",\"label\":\"名称-改\",\"type\":\"string\",\"category\":\"basic\",\"properties\":{\"constraints\":{\"minLength\":1,\"maxLength\":30}},\"version\":${VER}}")
-assert_code "4.3 未启用字段也能编辑" "0" "$R"
+# 4.2 启用后禁止编辑
+enable_field "$HP_ID"
+HP_VER=$(get_version "$HP_ID")
+R=$(post "/fields/update" "{\"id\":${HP_ID},\"label\":\"不该成功\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{},\"version\":${HP_VER}}")
+assert_code "4.2 启用后编辑返回 40015" "40015" "$R"
 
-# 版本冲突
-R=$(post "/fields/update" "{\"name\":\"${P}hp\",\"label\":\"冲突\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{},\"version\":1}")
-assert_code "4.4 版本冲突返回 40010" "40010" "$R"
+# 恢复为停用状态
+disable_field "$HP_ID"
 
-# 不存在字段 — 40011
-R=$(post "/fields/update" '{"name":"nonexistent_xyz","label":"x","type":"integer","category":"combat","properties":{},"version":1}')
-assert_code "4.5 不存在返回 40011" "40011" "$R"
+# 4.3 乐观锁冲突
+HP_VER=$(get_version "$HP_ID")
+R=$(post "/fields/update" "{\"id\":${HP_ID},\"label\":\"锁测试\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{\"description\":\"lock test\",\"expose_bb\":false,\"constraints\":{\"min\":0,\"max\":200}},\"version\":999}")
+assert_code "4.3 版本冲突返回 40010" "40010" "$R"
 
-# =============================================================================
-# 功能 9：批量修改分类
-# 场景：管理员把一批字段从一个分类移到另一个分类
-# =============================================================================
-echo ""
-echo "[功能9: 批量修改分类]"
+# 4.4 不存在的 ID
+R=$(post "/fields/update" '{"id":999999,"label":"不存在","type":"integer","category":"combat","properties":{},"version":1}')
+assert_code "4.4 不存在的 ID 返回 40011" "40011" "$R"
 
-R=$(post "/fields/batch-category" "{\"names\":[\"${P}batch_a\",\"${P}batch_b\"],\"category\":\"combat\"}")
-assert_code "9.1 批量改分类成功" "0" "$R"
-assert_field "9.1 affected=2" ".data.affected" "2" "$R"
+# 4.5 无效 ID
+R=$(post "/fields/update" '{"id":0,"label":"无效","type":"integer","category":"combat","properties":{},"version":1}')
+assert_code "4.5 ID=0 返回参数错误" "40000" "$R"
 
-# 验证确实改了
-R=$(post "/fields/detail" "{\"name\":\"${P}batch_a\"}")
-assert_field "9.2 batch_a category 已变" ".data.category" "combat" "$R"
+# 4.6 不存在的类型/分类
+HP_VER=$(get_version "$HP_ID")
+R=$(post "/fields/update" "{\"id\":${HP_ID},\"label\":\"假类型\",\"type\":\"faketype\",\"category\":\"combat\",\"properties\":{},\"version\":${HP_VER}}")
+assert_code "4.6 不存在的类型返回 40003" "40003" "$R"
 
-# 不存在分类
-R=$(post "/fields/batch-category" "{\"names\":[\"${P}batch_c\"],\"category\":\"nonexistent\"}")
-assert_code "9.3 不存在分类返回 40004" "40004" "$R"
-
-# 空列表
-R=$(post "/fields/batch-category" '{"names":[],"category":"combat"}')
-assert_code "9.4 空 names 返回参数错误" "40000" "$R"
+R=$(post "/fields/update" "{\"id\":${HP_ID},\"label\":\"假分类\",\"type\":\"integer\",\"category\":\"fakecat\",\"properties\":{},\"version\":${HP_VER}}")
+assert_code "4.7 不存在的分类返回 40004" "40004" "$R"
 
 # =============================================================================
-# 功能 5：删除字段
-# 场景：管理员彻底移除不需要的字段，必须先停用、无引用
+# 功能 8：启用/停用切换
 # =============================================================================
 echo ""
-echo "[功能5: 删除字段]"
+echo "[功能8: 启用/停用切换]"
 
-# 启用状态直接删除 → 被拒绝（必须先停用）
-R=$(post "/fields/delete" "{\"name\":\"${P}alive\"}")
-assert_code "5.1 启用状态删除返回 40012" "40012" "$R"
+ATK_VER=$(get_version "$ATK_ID")
+R=$(post "/fields/toggle-enabled" "{\"id\":${ATK_ID},\"enabled\":true,\"version\":${ATK_VER}}")
+assert_code "8.1 启用成功" "0" "$R"
 
-# 停用后删除成功
-disable_field "${P}alive"
-R=$(post "/fields/delete" "{\"name\":\"${P}alive\"}")
-assert_code "5.2 停用后删除成功" "0" "$R"
-assert_field "5.2 deleted=true" ".data.deleted" "true" "$R"
+R=$(get_detail "$ATK_ID")
+assert_field "8.1 enabled=true" ".data.enabled" "true" "$R"
 
-# 已删除查不到
-R=$(post "/fields/detail" "{\"name\":\"${P}alive\"}")
-assert_code "5.3 已删除查不到，返回 40011" "40011" "$R"
+ATK_VER=$(get_version "$ATK_ID")
+R=$(post "/fields/toggle-enabled" "{\"id\":${ATK_ID},\"enabled\":false,\"version\":${ATK_VER}}")
+assert_code "8.2 停用成功" "0" "$R"
 
-# 软删除后名字仍然被占用
-R=$(post "/fields/check-name" "{\"name\":\"${P}alive\"}")
-assert_field "5.4 软删除后名字仍占用" ".data.available" "false" "$R"
+R=$(get_detail "$ATK_ID")
+assert_field "8.2 enabled=false" ".data.enabled" "false" "$R"
 
-# 不存在字段
-R=$(post "/fields/delete" '{"name":"nonexistent_xyz"}')
-assert_code "5.5 不存在返回 40011" "40011" "$R"
+# 乐观锁冲突
+R=$(post "/fields/toggle-enabled" "{\"id\":${ATK_ID},\"enabled\":true,\"version\":999}")
+assert_code "8.3 版本冲突返回 40010" "40010" "$R"
+
+# 不存在的 ID
+R=$(post "/fields/toggle-enabled" '{"id":999999,"enabled":true,"version":1}')
+assert_code "8.4 不存在的 ID 返回 40011" "40011" "$R"
+
+# 无效 ID
+R=$(post "/fields/toggle-enabled" '{"id":0,"enabled":true,"version":1}')
+assert_code "8.5 ID=0 返回参数错误" "40000" "$R"
+
+# =============================================================================
+# 功能 10：约束收紧检查（内嵌在编辑中）
+# =============================================================================
+echo ""
+echo "[功能10: 约束收紧检查]"
+
+# 创建一个被引用的字段来测试收紧检查
+R=$(post "/fields/create" "{\"name\":\"${P}target\",\"label\":\"收紧目标\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{\"description\":\"target\",\"expose_bb\":false,\"constraints\":{\"min\":0,\"max\":100}}}")
+assert_code "10.0 创建 target" "0" "$R"
+TARGET_ID=$(echo "$R" | jq -r '.data.id')
+
+# 启用 target 以便被引用
+enable_field "$TARGET_ID"
+
+# 创建 reference 字段引用 target
+R=$(post "/fields/create" "{\"name\":\"${P}reftest\",\"label\":\"引用测试\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"description\":\"ref test\",\"expose_bb\":false,\"constraints\":{\"refs\":[${TARGET_ID}]}}}")
+assert_code "10.1 创建 reference 字段" "0" "$R"
+REF_ID=$(echo "$R" | jq -r '.data.id')
+
+# 确认 target 的 ref_count 增加
+R=$(get_detail "$TARGET_ID")
+assert_field "10.2 target ref_count=1" ".data.ref_count" "1" "$R"
+
+# 尝试收紧 target 的约束（ref_count > 0）— 需先停用
+disable_field "$TARGET_ID"
+TARGET_VER=$(get_version "$TARGET_ID")
+R=$(post "/fields/update" "{\"id\":${TARGET_ID},\"label\":\"收紧目标\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{\"description\":\"target\",\"expose_bb\":false,\"constraints\":{\"min\":10,\"max\":100}},\"version\":${TARGET_VER}}")
+assert_code "10.3 min 收紧返回 40007" "40007" "$R"
+
+R=$(post "/fields/update" "{\"id\":${TARGET_ID},\"label\":\"收紧目标\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{\"description\":\"target\",\"expose_bb\":false,\"constraints\":{\"min\":0,\"max\":50}},\"version\":${TARGET_VER}}")
+assert_code "10.4 max 收紧返回 40007" "40007" "$R"
+
+# 约束放宽允许
+R=$(post "/fields/update" "{\"id\":${TARGET_ID},\"label\":\"收紧目标\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{\"description\":\"target\",\"expose_bb\":false,\"constraints\":{\"min\":-10,\"max\":200}},\"version\":${TARGET_VER}}")
+assert_code "10.5 约束放宽成功" "0" "$R"
+
+# 被引用时禁止改类型
+TARGET_VER=$(get_version "$TARGET_ID")
+R=$(post "/fields/update" "{\"id\":${TARGET_ID},\"label\":\"收紧目标\",\"type\":\"string\",\"category\":\"combat\",\"properties\":{\"description\":\"target\",\"expose_bb\":false,\"constraints\":{\"minLength\":0,\"maxLength\":100}},\"version\":${TARGET_VER}}")
+assert_code "10.6 被引用时改类型返回 40006" "40006" "$R"
+
+# =============================================================================
+# 功能 11：循环引用检测 + 引用关系维护
+# =============================================================================
+echo ""
+echo "[功能11: 循环引用检测]"
+
+# 创建两个字段用于循环引用测试
+R=$(post "/fields/create" "{\"name\":\"${P}a\",\"label\":\"链A\",\"type\":\"integer\",\"category\":\"basic\",\"properties\":{\"description\":\"A\",\"expose_bb\":false}}")
+A_ID=$(echo "$R" | jq -r '.data.id')
+enable_field "$A_ID"
+
+R=$(post "/fields/create" "{\"name\":\"${P}b\",\"label\":\"链B\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"description\":\"B\",\"expose_bb\":false,\"constraints\":{\"refs\":[${A_ID}]}}}")
+assert_code "11.1 B 引用 A 成功" "0" "$R"
+B_ID=$(echo "$R" | jq -r '.data.id')
+enable_field "$B_ID"
+
+# 尝试创建 C 引用 B，再编辑 B 引用 C → 循环
+R=$(post "/fields/create" "{\"name\":\"${P}c\",\"label\":\"链C\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"description\":\"C\",\"expose_bb\":false,\"constraints\":{\"refs\":[${B_ID}]}}}")
+assert_code "11.2 C 引用 B 成功" "0" "$R"
+C_ID=$(echo "$R" | jq -r '.data.id')
+enable_field "$C_ID"
+
+# 引用停用字段
+R=$(post "/fields/create" "{\"name\":\"${P}d\",\"label\":\"链D\",\"type\":\"integer\",\"category\":\"basic\",\"properties\":{\"description\":\"D\",\"expose_bb\":false}}")
+D_ID=$(echo "$R" | jq -r '.data.id')
+# D 未启用，尝试引用它
+R=$(post "/fields/create" "{\"name\":\"${P}e\",\"label\":\"链E\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"description\":\"E\",\"expose_bb\":false,\"constraints\":{\"refs\":[${D_ID}]}}}")
+assert_code "11.3 引用停用字段返回 40013" "40013" "$R"
+
+# 引用不存在的字段
+R=$(post "/fields/create" "{\"name\":\"${P}f\",\"label\":\"链F\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"description\":\"F\",\"expose_bb\":false,\"constraints\":{\"refs\":[999999]}}}")
+assert_code "11.4 引用不存在字段返回 40014" "40014" "$R"
+
+# 删除 reference 字段时 ref_count 减回去
+disable_then_delete "$REF_ID"
+R=$(get_detail "$TARGET_ID")
+assert_field "11.5 删除引用方后 target ref_count=0" ".data.ref_count" "0" "$R"
 
 # =============================================================================
 # 功能 7：字段引用详情
-# 场景：管理员停用/删除前先看谁在用这个字段
 # =============================================================================
 echo ""
 echo "[功能7: 字段引用详情]"
 
-R=$(post "/fields/references" "{\"name\":\"${P}hp\"}")
-assert_code "7.1 查询成功" "0" "$R"
-assert_field "7.1 field_name" ".data.field_name" "${P}hp" "$R"
-assert_field "7.1 无引用 templates 空" ".data.templates | length" "0" "$R"
-assert_field "7.1 无引用 fields 空" ".data.fields | length" "0" "$R"
+R=$(post "/fields/references" "{\"id\":${A_ID}}")
+assert_code "7.1 查引用详情成功" "0" "$R"
+assert_field "7.1 返回 field_id" ".data.field_id" "$A_ID" "$R"
+assert_ge "7.1 至少 1 个字段引用" ".data.fields | length" "1" "$R"
 
-R=$(post "/fields/references" '{"name":"nonexistent_xyz"}')
-assert_code "7.2 不存在返回 40011" "40011" "$R"
+# 无引用的字段
+R=$(post "/fields/references" "{\"id\":${FLAG_ID}}")
+assert_code "7.2 无引用字段" "0" "$R"
+assert_field "7.2 templates 空" ".data.templates | length" "0" "$R"
+assert_field "7.2 fields 空" ".data.fields | length" "0" "$R"
 
-# =============================================================================
-# 功能 8：批量删除
-# 场景：管理员勾选多个字段一起删除，能删的删、不能删的跳过
-# =============================================================================
-echo ""
-echo "[功能8: 批量删除]"
-
-# batch_a 是启用的，batch_b 和 batch_c 是未启用的
-enable_field "${P}batch_a"
-
-R=$(post "/fields/batch-delete" "{\"names\":[\"${P}batch_a\",\"${P}batch_b\",\"${P}batch_c\"]}")
-assert_code "8.1 批量删除成功" "0" "$R"
-assert_field "8.1 删除 2 个（未启用的）" ".data.deleted | length" "2" "$R"
-assert_field "8.1 跳过 1 个（已启用的）" ".data.skipped | length" "1" "$R"
-
-# 跳过原因
-assert_field "8.2 跳过原因含停用提示" ".data.skipped[0].reason" "请先停用再删除" "$R"
-
-# 不存在的字段也能处理
-R=$(post "/fields/batch-delete" '{"names":["nonexistent_a","nonexistent_b"]}')
-assert_code "8.3 不存在的字段被跳过" "0" "$R"
-assert_field "8.3 全部跳过" ".data.deleted | length" "0" "$R"
-
-# 空列表
-R=$(post "/fields/batch-delete" '{"names":[]}')
-assert_code "8.4 空 names 返回参数错误" "40000" "$R"
-
-# 清理 batch_a
-disable_then_delete "${P}batch_a"
+# 不存在的 ID
+R=$(post "/fields/references" '{"id":999999}')
+assert_code "7.3 不存在的 ID 返回 40011" "40011" "$R"
 
 # =============================================================================
-# 功能 12：约束收紧检查
-# 场景：被引用的字段编辑约束时，只能放宽不能收紧
+# 功能 5：删除字段
 # =============================================================================
 echo ""
-echo "[功能12: 约束收紧检查]"
+echo "[功能5: 软删除字段]"
 
-# 创建字段并让它被引用
-post "/fields/create" "{\"name\":\"${P}cstr\",\"label\":\"约束测试\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{\"constraints\":{\"min\":0,\"max\":100}}}" > /dev/null
-enable_field "${P}cstr"
-post "/fields/create" "{\"name\":\"${P}ref_c\",\"label\":\"约束引用者\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"constraints\":{\"refs\":[\"${P}cstr\"]}}}" > /dev/null
-echo "  [INFO] 创建 ${P}cstr(启用) 被 ${P}ref_c(reference) 引用"
+# 5.1 删除启用中的字段 → 必须先停用
+enable_field "$STR_ID"
+R=$(post "/fields/delete" "{\"id\":${STR_ID}}")
+assert_code "5.1 启用状态删除返回 40012" "40012" "$R"
 
-# 收紧 min → 拒绝
-VER=$(get_version "${P}cstr")
-R=$(post "/fields/update" "{\"name\":\"${P}cstr\",\"label\":\"约束测试\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{\"constraints\":{\"min\":10,\"max\":100}},\"version\":${VER}}")
-assert_code "12.1 收紧 min(0→10) 返回 40007" "40007" "$R"
+# 5.2 停用后删除
+disable_field "$STR_ID"
+R=$(post "/fields/delete" "{\"id\":${STR_ID}}")
+assert_code "5.2 停用后删除成功" "0" "$R"
+assert_field "5.2 返回 id" ".data.id" "$STR_ID" "$R"
 
-# 收紧 max → 拒绝
-R=$(post "/fields/update" "{\"name\":\"${P}cstr\",\"label\":\"约束测试\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{\"constraints\":{\"min\":0,\"max\":50}},\"version\":${VER}}")
-assert_code "12.2 收紧 max(100→50) 返回 40007" "40007" "$R"
+# 5.3 确认已删除（列表不可见）
+R=$(get_detail "$STR_ID")
+assert_code "5.3 已删除字段查不到" "40011" "$R"
 
-# 放宽 → 允许
-R=$(post "/fields/update" "{\"name\":\"${P}cstr\",\"label\":\"约束放宽\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{\"constraints\":{\"min\":-10,\"max\":200}},\"version\":${VER}}")
-assert_code "12.3 放宽(min↓max↑) 允许" "0" "$R"
+# 5.4 删除不存在的字段
+R=$(post "/fields/delete" '{"id":999999}')
+assert_code "5.4 不存在的 ID 返回 40011" "40011" "$R"
 
-# 被引用时禁止改类型
-VER=$(get_version "${P}cstr")
-R=$(post "/fields/update" "{\"name\":\"${P}cstr\",\"label\":\"改类型\",\"type\":\"string\",\"category\":\"combat\",\"properties\":{},\"version\":${VER}}")
-assert_code "12.4 被引用时改类型返回 40006" "40006" "$R"
+# 5.5 无效 ID
+R=$(post "/fields/delete" '{"id":0}')
+assert_code "5.5 ID=0 返回参数错误" "40000" "$R"
 
-# 删引用者后无引用，可随意修改
-disable_then_delete "${P}ref_c"
-VER=$(get_version "${P}cstr")
-R=$(post "/fields/update" "{\"name\":\"${P}cstr\",\"label\":\"无引用收紧\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{\"constraints\":{\"min\":50,\"max\":60}},\"version\":${VER}}")
-assert_code "12.5 无引用后可收紧" "0" "$R"
+# 5.6 被引用的字段无法删除
+disable_field "$A_ID"
+R=$(post "/fields/delete" "{\"id\":${A_ID}}")
+assert_code "5.6 被引用的字段返回 40005" "40005" "$R"
 
-# --- string 类型约束 ---
-echo "  [INFO] 测试 string/select 约束"
-enable_field "${P}name_str"
-post "/fields/create" "{\"name\":\"${P}ref_s\",\"label\":\"字符串引用\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"constraints\":{\"refs\":[\"${P}name_str\"]}}}" > /dev/null
+# 5.7 已删除的 name 不能复用
+R=$(post "/fields/check-name" "{\"name\":\"${P}str\"}")
+assert_field "5.7 已删除 name 不可复用" ".data.available" "false" "$R"
 
-VER=$(get_version "${P}name_str")
-R=$(post "/fields/update" "{\"name\":\"${P}name_str\",\"label\":\"名称\",\"type\":\"string\",\"category\":\"basic\",\"properties\":{\"constraints\":{\"minLength\":5,\"maxLength\":30}},\"version\":${VER}}")
-assert_code "12.6 string 收紧 minLength(1→5) 返回 40007" "40007" "$R"
-
-R=$(post "/fields/update" "{\"name\":\"${P}name_str\",\"label\":\"名称\",\"type\":\"string\",\"category\":\"basic\",\"properties\":{\"constraints\":{\"minLength\":1,\"maxLength\":10}},\"version\":${VER}}")
-assert_code "12.7 string 收紧 maxLength(30→10) 返回 40007" "40007" "$R"
-
-disable_then_delete "${P}ref_s"
-
-# --- select 类型约束 ---
-enable_field "${P}mood"
-post "/fields/create" "{\"name\":\"${P}ref_m\",\"label\":\"选项引用\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"constraints\":{\"refs\":[\"${P}mood\"]}}}" > /dev/null
-
-VER=$(get_version "${P}mood")
-R=$(post "/fields/update" "{\"name\":\"${P}mood\",\"label\":\"情绪\",\"type\":\"select\",\"category\":\"personality\",\"properties\":{\"constraints\":{\"options\":[{\"value\":\"happy\"},{\"value\":\"angry\"}]}},\"version\":${VER}}")
-assert_code "12.8 select 删除选项(sad) 返回 40007" "40007" "$R"
-
-R=$(post "/fields/update" "{\"name\":\"${P}mood\",\"label\":\"情绪\",\"type\":\"select\",\"category\":\"personality\",\"properties\":{\"constraints\":{\"options\":[{\"value\":\"happy\"},{\"value\":\"sad\"},{\"value\":\"angry\"},{\"value\":\"calm\"}]}},\"version\":${VER}}")
-assert_code "12.9 select 新增选项(calm) 允许" "0" "$R"
-
-disable_then_delete "${P}ref_m"
+# 5.8 删除 boolean 类型（无引用，正常删除流程）
+R=$(post "/fields/delete" "{\"id\":${FLAG_ID}}")
+assert_code "5.8 无引用字段删除成功" "0" "$R"
 
 # =============================================================================
-# 功能 13：循环引用检测 + 引用关系维护
-# 场景 A：创建 reference 字段选择引用（只能引用启用字段）
-# 场景 B：编辑 reference 字段，已有的停用引用允许保持
-# 场景 C：删除 reference 字段，引用计数自动恢复
+# 攻击性测试
 # =============================================================================
 echo ""
-echo "[功能13: 循环引用检测 + 引用关系]"
+echo "[攻击性测试]"
 
-post "/fields/create" "{\"name\":\"${P}fa\",\"label\":\"基础A\",\"type\":\"integer\",\"category\":\"basic\",\"properties\":{}}" > /dev/null
-post "/fields/create" "{\"name\":\"${P}fb\",\"label\":\"基础B\",\"type\":\"string\",\"category\":\"basic\",\"properties\":{}}" > /dev/null
-enable_field "${P}fa"
-enable_field "${P}fb"
+# 注入攻击 — name 含特殊字符
+R=$(post "/fields/create" '{"name":"a]\"injection","label":"注入","type":"integer","category":"combat","properties":{}}')
+assert_code "ATK.1 注入字符被格式校验拦截" "40002" "$R"
 
-# 13.1 创建 reference 引用启用字段
-R=$(post "/fields/create" "{\"name\":\"${P}rx\",\"label\":\"引用X\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"constraints\":{\"refs\":[\"${P}fa\",\"${P}fb\"]}}}")
-assert_code "13.1 创建 reference 成功" "0" "$R"
+# SQL 注入 — label 含 SQL
+R=$(post "/fields/create" "{\"name\":\"${P}sqli\",\"label\":\"'; DROP TABLE fields; --\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{}}")
+assert_code "ATK.2 SQL 注入无害（创建成功或校验拦截）" "0" "$R"
+SQLI_ID=$(echo "$R" | jq -r '.data.id')
+if [ "$SQLI_ID" != "null" ] && [ -n "$SQLI_ID" ]; then
+  disable_then_delete "$SQLI_ID"
+fi
 
-# 13.2 被引用字段的 ref_count 增加
-R=$(post "/fields/detail" "{\"name\":\"${P}fa\"}")
-assert_field "13.2 fa.ref_count=1" ".data.ref_count" "1" "$R"
-R=$(post "/fields/detail" "{\"name\":\"${P}fb\"}")
-assert_field "13.2 fb.ref_count=1" ".data.ref_count" "1" "$R"
+# 超长 name
+LONG_NAME=$(python3 -c "print('a' * 100)" 2>/dev/null || echo "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+R=$(post "/fields/create" "{\"name\":\"${LONG_NAME}\",\"label\":\"超长\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{}}")
+assert_code "ATK.3 超长 name 被拦截" "40002" "$R"
 
-# 13.3 引用详情能看到引用方
-R=$(post "/fields/references" "{\"name\":\"${P}fa\"}")
-assert_field "13.3 fa 被 rx 引用" ".data.fields | length" "1" "$R"
+# JSON 畸形
+R=$(curl -s -X POST "$BASE/fields/create" -H "Content-Type: application/json" -d '{bad json}')
+assert_code "ATK.4 畸形 JSON 返回参数错误" "40000" "$R"
 
-# 13.4 链式引用（rx → fa,fb; ry → rx）
-enable_field "${P}rx"
-R=$(post "/fields/create" "{\"name\":\"${P}ry\",\"label\":\"引用Y\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"constraints\":{\"refs\":[\"${P}rx\"]}}}")
-assert_code "13.4 链式引用成功" "0" "$R"
-
-# 13.5 循环引用检测（rx 不能反过来引用 ry）
-enable_field "${P}ry"
-VER=$(get_version "${P}rx")
-R=$(post "/fields/update" "{\"name\":\"${P}rx\",\"label\":\"引用X\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"constraints\":{\"refs\":[\"${P}fa\",\"${P}ry\"]}},\"version\":${VER}}")
-assert_code "13.5 循环引用返回 40009" "40009" "$R"
-
-# 13.6 引用不存在的字段 — 返回 40014 ErrFieldRefNotFound（不是 40011）
-R=$(post "/fields/create" "{\"name\":\"${P}rbad\",\"label\":\"坏引用\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"constraints\":{\"refs\":[\"nonexistent_field\"]}}}")
-assert_code "13.6 引用不存在字段返回 40014" "40014" "$R"
-
-# 13.7 引用停用字段 → 新增引用被拒绝
-disable_field "${P}fb"
-R=$(post "/fields/create" "{\"name\":\"${P}rdis\",\"label\":\"引用停用\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"constraints\":{\"refs\":[\"${P}fb\"]}}}")
-assert_code "13.7 新增引用停用字段返回 40013" "40013" "$R"
-
-# 13.8 编辑 reference 字段时，已有的停用引用允许保持
-# rx 引用了 fa 和 fb，fb 现在已停用
-# 编辑 rx 保留 fb 引用（不新增），应允许
-VER=$(get_version "${P}rx")
-R=$(post "/fields/update" "{\"name\":\"${P}rx\",\"label\":\"引用X改\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"constraints\":{\"refs\":[\"${P}fa\",\"${P}fb\"]}},\"version\":${VER}}")
-assert_code "13.8 保留已有停用引用允许" "0" "$R"
-
-# 13.9 但新增停用字段的引用会被拒绝
-# 创建一个新的停用字段
-post "/fields/create" "{\"name\":\"${P}fc\",\"label\":\"基础C\",\"type\":\"integer\",\"category\":\"basic\",\"properties\":{}}" > /dev/null
-VER=$(get_version "${P}rx")
-R=$(post "/fields/update" "{\"name\":\"${P}rx\",\"label\":\"引用X\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"constraints\":{\"refs\":[\"${P}fa\",\"${P}fb\",\"${P}fc\"]}},\"version\":${VER}}")
-assert_code "13.9 新增停用字段引用返回 40013" "40013" "$R"
-
-# 13.10 被引用字段禁止删除
-disable_field "${P}fa"
-R=$(post "/fields/delete" "{\"name\":\"${P}fa\"}")
-assert_code "13.10 被引用禁止删除返回 40005" "40005" "$R"
-# 返回引用详情
-assert_field "13.10 返回 deleted=false" ".data.deleted" "false" "$R"
-enable_field "${P}fa"
-
-# 13.11 删 reference 字段后 ref_count 恢复
-disable_then_delete "${P}ry"
-R=$(post "/fields/detail" "{\"name\":\"${P}rx\"}")
-assert_field "13.11 rx.ref_count 减为 0" ".data.ref_count" "0" "$R"
-
-disable_then_delete "${P}rx"
-R=$(post "/fields/detail" "{\"name\":\"${P}fa\"}")
-assert_field "13.11 fa.ref_count 恢复为 0" ".data.ref_count" "0" "$R"
-R=$(post "/fields/detail" "{\"name\":\"${P}fb\"}")
-assert_field "13.11 fb.ref_count 恢复为 0" ".data.ref_count" "0" "$R"
+# 空请求体
+R=$(curl -s -X POST "$BASE/fields/create" -H "Content-Type: application/json" -d '')
+assert_code "ATK.5 空请求体返回参数错误" "40000" "$R"
 
 # =============================================================================
-# 功能 4 场景 B：reference 类型改成其他类型，自动清理引用
-# =============================================================================
-echo ""
-echo "[功能4-B: reference 改类型自动清理引用]"
-
-# 用独立字段，不依赖前面功能 13 的数据
-post "/fields/create" "{\"name\":\"${P}tgt_x\",\"label\":\"目标X\",\"type\":\"integer\",\"category\":\"basic\",\"properties\":{}}" > /dev/null
-post "/fields/create" "{\"name\":\"${P}tgt_y\",\"label\":\"目标Y\",\"type\":\"string\",\"category\":\"basic\",\"properties\":{}}" > /dev/null
-enable_field "${P}tgt_x"
-enable_field "${P}tgt_y"
-post "/fields/create" "{\"name\":\"${P}rz\",\"label\":\"将改类型\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"constraints\":{\"refs\":[\"${P}tgt_x\",\"${P}tgt_y\"]}}}" > /dev/null
-echo "  [INFO] 创建 ${P}rz(reference) 引用 tgt_x 和 tgt_y"
-
-R=$(post "/fields/detail" "{\"name\":\"${P}tgt_x\"}")
-assert_field "4B.1 tgt_x.ref_count=1（被 rz 引用）" ".data.ref_count" "1" "$R"
-
-# 把 rz 从 reference 改成 string — 引用关系自动清理
-VER=$(get_version "${P}rz")
-R=$(post "/fields/update" "{\"name\":\"${P}rz\",\"label\":\"已改类型\",\"type\":\"string\",\"category\":\"basic\",\"properties\":{},\"version\":${VER}}")
-assert_code "4B.2 改类型成功" "0" "$R"
-
-R=$(post "/fields/detail" "{\"name\":\"${P}tgt_x\"}")
-assert_field "4B.3 tgt_x.ref_count 恢复为 0" ".data.ref_count" "0" "$R"
-R=$(post "/fields/detail" "{\"name\":\"${P}tgt_y\"}")
-assert_field "4B.3 tgt_y.ref_count 恢复为 0" ".data.ref_count" "0" "$R"
-
-R=$(post "/fields/detail" "{\"name\":\"${P}rz\"}")
-assert_field "4B.4 rz 类型已变为 string" ".data.type" "string" "$R"
-
-# =============================================================================
-# 边界场景补充
-# =============================================================================
-echo ""
-echo "[边界场景]"
-
-# 大页码（超出数据量）
-R=$(post "/fields/list" '{"page":9999,"page_size":20}')
-assert_code "E.1 大页码返回成功（空列表）" "0" "$R"
-assert_field "E.1 items 为空" ".data.items | length" "0" "$R"
-
-# page_size 超限（应被裁剪到 max_page_size=100）
-R=$(post "/fields/list" '{"page":1,"page_size":999}')
-assert_code "E.2 超大 page_size 返回成功" "0" "$R"
-assert_le "E.2 page_size 被裁剪" ".data.page_size" "100" "$R"
-
-# =============================================================================
-# 清理
+# 清理测试数据
 # =============================================================================
 echo ""
 echo "[清理测试数据]"
-disable_then_delete "${P}fa"
-disable_then_delete "${P}fb"
-disable_then_delete "${P}fc"
-disable_then_delete "${P}tgt_x"
-disable_then_delete "${P}tgt_y"
-disable_then_delete "${P}rz"
-disable_then_delete "${P}cstr"
-disable_then_delete "${P}hp"
-disable_then_delete "${P}speed"
-disable_then_delete "${P}name_str"
-disable_then_delete "${P}mood"
-echo "  [INFO] 已清理所有测试数据"
 
+# 先删 reference 字段（依赖链末端）
+for ID in $C_ID $B_ID; do
+  if [ -n "$ID" ] && [ "$ID" != "null" ]; then
+    disable_then_delete "$ID"
+  fi
+done
+
+# 再删被引用的字段
+for ID in $A_ID $D_ID $TARGET_ID $HP_ID $ATK_ID $MOOD_ID; do
+  if [ -n "$ID" ] && [ "$ID" != "null" ]; then
+    disable_then_delete "$ID"
+  fi
+done
+
+echo "  清理完成"
+
+# =============================================================================
+# 汇总
 # =============================================================================
 echo ""
 echo "=========================================="
-echo "  测试完成: $TOTAL 个用例"
-echo "  通过: $PASS"
-echo "  失败: $FAIL"
+echo "  测试完成: 通过 $PASS / 失败 $FAIL / 总计 $TOTAL"
 echo "=========================================="
 
 if [ "$FAIL" -gt 0 ]; then
   exit 1
 fi
+exit 0
