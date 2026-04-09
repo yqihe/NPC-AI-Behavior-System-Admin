@@ -57,11 +57,11 @@ const (
 	RefTypeField    = "field"    // reference 字段引用
 )
 
-// FieldRef 字段引用关系
+// FieldRef 字段引用关系（改用 ID 关联）
 type FieldRef struct {
-	FieldName string `json:"field_name" db:"field_name"`
-	RefType   string `json:"ref_type" db:"ref_type"`
-	RefName   string `json:"ref_name" db:"ref_name"`
+	FieldID int64  `json:"field_id" db:"field_id"`
+	RefType string `json:"ref_type" db:"ref_type"`
+	RefID   int64  `json:"ref_id" db:"ref_id"`
 }
 
 // FieldListQuery 列表查询参数
@@ -74,7 +74,7 @@ type FieldListQuery struct {
 	PageSize int    `json:"page_size"`
 }
 
-// CreateFieldRequest 创建字段请求
+// CreateFieldRequest 创建字段请求（无 ID）
 type CreateFieldRequest struct {
 	Name       string          `json:"name"`
 	Label      string          `json:"label"`
@@ -83,9 +83,9 @@ type CreateFieldRequest struct {
 	Properties json.RawMessage `json:"properties"`
 }
 
-// UpdateFieldRequest 编辑字段请求
+// UpdateFieldRequest 编辑字段请求（有 ID，无 name）
 type UpdateFieldRequest struct {
-	Name       string          `json:"name"`
+	ID         int64           `json:"id"`
 	Label      string          `json:"label"`
 	Type       string          `json:"type"`
 	Category   string          `json:"category"`
@@ -93,61 +93,31 @@ type UpdateFieldRequest struct {
 	Version    int             `json:"version"`
 }
 
-// NameRequest 通用的按 name 查询请求
-type NameRequest struct {
-	Name string `json:"name"`
+// IDRequest 通用的按 ID 查询请求
+type IDRequest struct {
+	ID int64 `json:"id"`
 }
 
 // ReferenceItem 引用详情中的单条引用方
 type ReferenceItem struct {
 	RefType string `json:"ref_type"` // "template" / "field"
-	RefName string `json:"ref_name"` // 引用方标识
+	RefID   int64  `json:"ref_id"`   // 引用方 ID
 	Label   string `json:"label"`    // 引用方中文名
 }
 
 // ReferenceDetail 字段引用详情
 type ReferenceDetail struct {
-	FieldName  string          `json:"field_name"`
+	FieldID    int64           `json:"field_id"`
 	FieldLabel string          `json:"field_label"`
 	Templates  []ReferenceItem `json:"templates"`
 	Fields     []ReferenceItem `json:"fields"`
 }
 
-// BatchDeleteRequest 批量删除请求
-type BatchDeleteRequest struct {
-	Names []string `json:"names"`
-}
-
-// BatchDeleteSkipped 批量删除中跳过的项
-type BatchDeleteSkipped struct {
-	Name   string `json:"name"`
-	Label  string `json:"label"`
-	Reason string `json:"reason"`
-}
-
-// BatchDeleteResult 批量删除结果
-type BatchDeleteResult struct {
-	Deleted []string              `json:"deleted"`
-	Skipped []BatchDeleteSkipped  `json:"skipped"`
-	Message string                `json:"message"`
-}
-
-// BatchCategoryRequest 批量修改分类请求
-type BatchCategoryRequest struct {
-	Names    []string `json:"names"`
-	Category string   `json:"category"`
-}
-
-// BatchCategoryResponse 批量修改分类响应
-type BatchCategoryResponse struct {
-	Affected int64 `json:"affected"`
-}
-
-// ToggleEnabledRequest 启用/停用请求
+// ToggleEnabledRequest 启用/停用请求（改用 ID）
 type ToggleEnabledRequest struct {
-	Name    string `json:"name"`
-	Enabled bool   `json:"enabled"`
-	Version int    `json:"version"`
+	ID      int64 `json:"id"`
+	Enabled bool  `json:"enabled"`
+	Version int   `json:"version"`
 }
 
 // FieldListData 字段列表数据（类型安全，用于缓存序列化/反序列化）
@@ -174,7 +144,7 @@ type CreateFieldResponse struct {
 	Name string `json:"name"`
 }
 
-// CheckNameRequest 唯一性校验请求
+// CheckNameRequest 唯一性校验请求（保留 name，创建前校验）
 type CheckNameRequest struct {
 	Name string `json:"name"`
 }
@@ -183,4 +153,11 @@ type CheckNameRequest struct {
 type CheckNameResult struct {
 	Available bool   `json:"available"`
 	Message   string `json:"message"`
+}
+
+// DeleteResult 删除结果
+type DeleteResult struct {
+	ID    int64  `json:"id"`
+	Name  string `json:"name"`
+	Label string `json:"label"`
 }
