@@ -92,7 +92,7 @@
 
 ---
 
-## T10: 约束面板 — Select + Reference (R8)
+## T10: 约束面板 — Select + Reference (R8) [x]
 
 **涉及文件**：
 - `frontend/src/components/FieldConstraintSelect.vue`（新建）
