@@ -29,6 +29,7 @@
 - **el-dialog 表单残留**：关闭���打开数据残留，需在 `@open`/`@close` 重置
 - **el-select v-model 类型**：选项 value 是数字，v-model 也必须是数字
 - **el-slider 精度**：step 默认 1，小数需显式 `:step="0.1"`
+- **ElMessage/ElMessageBox 样式缺失**：auto-import 插件只处理模板组件，`ElMessage`、`ElMessageBox`、`ElNotification` 是命令式 JS API，样式不会自动引入。必须在 `main.ts` 手动导入：`import 'element-plus/theme-chalk/el-message.css'` 等，否则弹窗不显示
 
 ## Axios / HTTP
 
@@ -37,16 +38,27 @@
 - **baseURL 环境差异**：dev 走 Vite proxy，prod 走 nginx。用 `VITE_API_BASE` 控制
 - **错误响应**：`error.response.data.error` 才是后端错误信���，`error.message` 是 Axios 自己的
 
+- **拦截器需携带业务错误码**：拦截器 reject 时给 Error 对象挂 `code` 属性（`err.code = code`），调用方 `.catch(err)` 才能按错误码做差异化处理（弹窗/红字/跳转）
+- **列表接口可能缺少字段**：列表接口返回精简数据（如不含 `version`），需要乐观锁的操作（toggle/update）必须先调 detail 获取完整数据再提交
+
 ## CSS / 布局
 
 - **scoped 穿透**：`<style scoped>` 覆盖 Element Plus 组件样式用 `:deep(.el-xxx)`
 - **flex 溢出**：子元素 `min-width: auto` 导致长文本不换行，设 `min-width: 0`
+- **禁止固定 px 宽度**：输入框/下拉框不要写 `width: 360px` 等固定值，用 `width: 100%` 或 `flex: 1` 让控件自适应容器。筛选栏多个控件并排用 `flex: 1` 等比分配
+- **opacity 影响子元素交互**：整行 `opacity: 0.5` 会让开关/按钮看起来不可点击。需要保留交互的列（开关、操作）不应被 opacity 覆盖，用选择器精确控制作用范围
 
 ## Vite 构建
 
 - **环境变量前缀**：只有 `VITE_` 前缀的变量暴露到客户端���码
 - **动态导入**：路由懒加载用显式路径 `() => import('../views/Xxx.vue')`
 - **proxy 只在 dev 生效**：prod 由 nginx 反代
+- **Docker 容器内 npm ci 网络超时**：Docker 容器 DNS 解析可能不稳定，导致 `npm ci` 下载依赖超时。解法：Docker Desktop 设置 DNS（`223.5.5.5`），或 Dockerfile 中 `npm config set registry https://registry.npmmirror.com`
+- **Docker nginx 无热更新**：Docker 前端容器用 nginx 托管静态文件，改代码必须 `docker compose up --build`。开发阶段建议本地 `npm run dev`（Vite dev server 有 HMR）
+
+## 前后端数据格式对齐
+
+- **前后端 JSON key 不一致**：前端 UI 用富对象（如 `ref_fields: [{id, name, label}]`），后端存精简格式（如 `refs: [13, 14]`）。提交时必须转换成后端格式，编辑加载时必须反向还原。建议在提交函数中统一做 `buildSubmitProperties()` 转换，不要在组件内散落转换逻辑
 
 ## BT 节点编辑器
 

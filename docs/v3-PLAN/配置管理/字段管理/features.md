@@ -1,8 +1,10 @@
 # 字段管理 — 已实现功能清单
 
+> **实现状态**：后端 API + 前端 UI 全部实现。
 > 字段是 ADMIN 内部的管理概念，定义"NPC 可以有什么属性"。全程只和 MySQL 打交道，不涉及 MongoDB。
 > 字段值最终通过 模板→NPC 打平写入 npc_templates 导出。
 > **所有操作标识使用主键 ID (BIGINT)，name 仅用于创建时写入和唯一性校验。**
+> **技术栈**：后端 Go，前端 Vue 3 + TypeScript + Element Plus + Vite。
 
 ---
 
