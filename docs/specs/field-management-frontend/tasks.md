@@ -82,7 +82,7 @@
 
 ---
 
-## T9: 约束面板 — Integer/String/Boolean (R8)
+## T9: 约束面板 — Integer/String/Boolean (R8) [x]
 
 **涉及文件**：
 - `frontend/src/components/FieldConstraintInteger.vue`（新建）
