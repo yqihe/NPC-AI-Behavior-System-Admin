@@ -22,7 +22,7 @@
 
 ---
 
-## T3: AppLayout 侧边栏组件 (R18)
+## T3: AppLayout 侧边栏组件 (R18) [x]
 
 **涉及文件**：
 - `frontend/src/components/AppLayout.vue`（新建）
