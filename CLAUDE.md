@@ -24,7 +24,7 @@
 - 日志：Go 标准库 `log/slog`
 
 **前端**：
-- 框架：Vue 3 + Element Plus
+- 框架：Vue 3 + TypeScript + Element Plus
 - 构建：Vite
 - 通信：Axios → REST API
 - 表单渲染：自研 SchemaForm（不使用第三方 JSON Schema 表单库）
