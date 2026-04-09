@@ -132,3 +132,25 @@ docker compose down             # 停止
 | 后端架构 | `architecture/backend-red-lines.md` | — |
 | UI/UX | `architecture/ui-red-lines.md` | — |
 | Skill 流程 | — | 对应的 `.claude/commands/*.md` |
+
+## Bash 集成测试脚本（Windows 环境）
+
+### 中文编码
+
+Windows 上 Git Bash 的 `curl -d "$var"` 在变量展开时会破坏 UTF-8 中文字节。必须用管道传输：
+
+```bash
+# 错误：中文会乱码
+curl -d "$body" ...
+
+# 正确：通过 stdin 管道传输，避免 shell 展开
+printf '%s' "$body" | curl --data-binary @- -H "Content-Type: application/json; charset=utf-8" ...
+```
+
+### jq 输出 CRLF
+
+Windows 上 `jq -r` 输出带 `\r`（CR），导致 bash 字符串比较失败。所有 assert 函数的 jq 输出必须 `| tr -d '\r'`。
+
+### Docker initdb.d
+
+`docker-entrypoint-initdb.d` 只在数据卷首次初始化时执行。修改迁移文件后必须手动执行或重建数据卷。
