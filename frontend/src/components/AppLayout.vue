@@ -29,7 +29,7 @@
   </el-container>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, h } from 'vue'
 import { useRoute } from 'vue-router'
 import { List } from '@element-plus/icons-vue'

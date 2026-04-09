@@ -47,20 +47,22 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 import { WarningFilled } from '@element-plus/icons-vue'
 
-const props = defineProps({
-  modelValue: { type: Object, default: () => ({}) },
-  restricted: { type: Boolean, default: false },
-})
+const props = defineProps<{
+  modelValue?: Record<string, unknown>
+  restricted?: boolean
+}>()
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits<{
+  'update:modelValue': [value: Record<string, unknown>]
+}>()
 
-const constraints = computed(() => props.modelValue || {})
+const constraints = computed(() => (props.modelValue || {}) as Record<string, unknown>)
 
-function update(key, val) {
+function update(key: string, val: string | number | null | undefined) {
   const next = { ...constraints.value }
   if (val === null || val === undefined || val === '') {
     delete next[key]

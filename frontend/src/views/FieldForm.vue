@@ -201,13 +201,16 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import type { FormInstance } from 'element-plus'
 import { ArrowLeft, Lock, WarningFilled, Loading, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { fieldApi } from '@/api/fields'
+import type { BizError } from '@/api/request'
 import { dictApi } from '@/api/dictionaries'
+import type { DictionaryItem } from '@/api/dictionaries'
 import FieldConstraintInteger from '@/components/FieldConstraintInteger.vue'
 import FieldConstraintString from '@/components/FieldConstraintString.vue'
 import FieldConstraintSelect from '@/components/FieldConstraintSelect.vue'
@@ -215,14 +218,14 @@ import FieldConstraintReference from '@/components/FieldConstraintReference.vue'
 
 const route = useRoute()
 const router = useRouter()
-const isCreate = route.meta.isCreate
+const isCreate = route.meta.isCreate as boolean
 
-const formRef = ref(null)
+const formRef = ref<FormInstance>()
 const submitting = ref(false)
-const nameStatus = ref('')  // '' | 'checking' | 'available' | 'taken'
+const nameStatus = ref<'' | 'checking' | 'available' | 'taken'>('')
 const nameMessage = ref('')
-const typeOptions = ref([])
-const categoryOptions = ref([])
+const typeOptions = ref<DictionaryItem[]>([])
+const categoryOptions = ref<DictionaryItem[]>([])
 const version = ref(0)
 const refCount = ref(0)
 
@@ -296,8 +299,8 @@ async function loadFieldDetail() {
     }
     version.value = data.version
     refCount.value = data.ref_count || 0
-  } catch (err) {
-    if (err.code === 40011) {
+  } catch (err: unknown) {
+    if ((err as BizError).code === 40011) {
       router.push('/fields')
     }
   }
@@ -335,7 +338,7 @@ function handleTypeChange() {
 // ---------- 提交 ----------
 
 async function handleSubmit() {
-  const valid = await formRef.value.validate().catch(() => false)
+  const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
 
   if (isCreate && nameStatus.value === 'taken') {
@@ -366,13 +369,14 @@ async function handleSubmit() {
       ElMessage.success('保存成功')
     }
     router.push('/fields')
-  } catch (err) {
-    if (err.code === 40010) {
+  } catch (err: unknown) {
+    const bizErr = err as BizError
+    if (bizErr.code === 40010) {
       ElMessageBox.alert('数据已被其他用户修改，请返回列表刷新后重试。', '版本冲突', { type: 'warning' })
     }
-    if (err.code === 40001 || err.code === 40002) {
+    if (bizErr.code === 40001 || bizErr.code === 40002) {
       nameStatus.value = 'taken'
-      nameMessage.value = err.message
+      nameMessage.value = bizErr.message
     }
   } finally {
     submitting.value = false

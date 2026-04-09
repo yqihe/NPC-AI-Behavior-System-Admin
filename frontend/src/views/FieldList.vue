@@ -191,21 +191,24 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
 import { fieldApi } from '@/api/fields'
+import type { FieldListItem, ReferenceItem } from '@/api/fields'
+import type { BizError } from '@/api/request'
 import { dictApi } from '@/api/dictionaries'
+import type { DictionaryItem } from '@/api/dictionaries'
 
 const router = useRouter()
 
 const loading = ref(false)
-const tableData = ref([])
+const tableData = ref<FieldListItem[]>([])
 const total = ref(0)
-const typeOptions = ref([])
-const categoryOptions = ref([])
+const typeOptions = ref<DictionaryItem[]>([])
+const categoryOptions = ref<DictionaryItem[]>([])
 
 const query = reactive({
   label: '',
@@ -221,8 +224,8 @@ const refDialog = reactive({
   loading: false,
   name: '',
   label: '',
-  templates: [],
-  fields: [],
+  templates: [] as ReferenceItem[],
+  fields: [] as ReferenceItem[],
 })
 
 // ---------- 数据加载 ----------
@@ -286,20 +289,20 @@ function handleReset() {
 
 // ---------- 行操作 ----------
 
-async function handleToggle(row, val) {
+async function handleToggle(row: FieldListItem, val: boolean) {
   try {
     await fieldApi.toggleEnabled(row.id, val, row.version)
     ElMessage.success(val ? '已启用' : '已禁用')
     fetchList()
   } catch (err) {
-    if (err.code === 40010) {
+    if ((err as BizError).code === 40010) {
       ElMessageBox.alert('数据已被其他用户修改，请刷新页面后重试。', '版本冲突', { type: 'warning' })
     }
     // 其他错误拦截器已 toast
   }
 }
 
-function handleEdit(row) {
+function handleEdit(row: FieldListItem) {
   if (row.enabled) {
     ElMessageBox.alert('请先禁用该字段，再进行编辑。', '提示', { type: 'warning' })
     return
@@ -307,7 +310,7 @@ function handleEdit(row) {
   router.push(`/fields/${row.id}/edit`)
 }
 
-async function handleDelete(row) {
+async function handleDelete(row: FieldListItem) {
   if (row.enabled) {
     ElMessageBox.alert('请先禁用该字段，再进行删除。', '提示', { type: 'warning' })
     return
@@ -328,16 +331,16 @@ async function handleDelete(row) {
     await fieldApi.delete(row.id)
     ElMessage.success('删除成功')
     fetchList()
-  } catch (err) {
+  } catch (err: unknown) {
     if (err === 'cancel') return
-    if (err.code === 40005) {
+    if ((err as BizError).code === 40005) {
       await handleShowRefs(row)
     }
     // 其他错误拦截器已 toast
   }
 }
 
-async function handleShowRefs(row) {
+async function handleShowRefs(row: FieldListItem) {
   refDialog.visible = true
   refDialog.loading = true
   refDialog.name = row.name
@@ -365,12 +368,12 @@ function resetRefDialog() {
 
 // ---------- 辅助 ----------
 
-function rowClassName({ row }) {
+function rowClassName({ row }: { row: FieldListItem }) {
   return row.enabled ? '' : 'row-disabled'
 }
 
-function typeBadgeType(type) {
-  const map = {
+function typeBadgeType(type: string) {
+  const map: Record<string, string> = {
     integer: '',
     float: '',
     string: 'success',
@@ -381,7 +384,7 @@ function typeBadgeType(type) {
   return map[type] || 'info'
 }
 
-function formatTime(str) {
+function formatTime(str: string) {
   if (!str) return ''
   const d = new Date(str)
   const pad = (n) => String(n).padStart(2, '0')

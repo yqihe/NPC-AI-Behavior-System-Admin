@@ -77,25 +77,41 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { WarningFilled, Plus, Close, Rank, View } from '@element-plus/icons-vue'
 import { fieldApi } from '@/api/fields'
+import type { FieldListItem } from '@/api/fields'
 
-const props = defineProps({
-  modelValue: { type: Object, default: () => ({}) },
-  restricted: { type: Boolean, default: false },
-  currentFieldId: { type: Number, default: 0 },
-})
+interface RefFieldItem {
+  id: number
+  name: string
+  label: string
+  type: string
+  type_label?: string
+}
 
-const emit = defineEmits(['update:modelValue'])
+interface RefConstraints {
+  ref_fields?: RefFieldItem[]
+  [key: string]: unknown
+}
 
-const constraints = computed(() => props.modelValue || {})
-const refFields = computed(() => constraints.value.ref_fields || [])
+const props = defineProps<{
+  modelValue?: RefConstraints
+  restricted?: boolean
+  currentFieldId?: number
+}>()
+
+const emit = defineEmits<{
+  'update:modelValue': [value: RefConstraints]
+}>()
+
+const constraints = computed((): RefConstraints => props.modelValue || {})
+const refFields = computed((): RefFieldItem[] => constraints.value.ref_fields || [])
 
 const showAddDropdown = ref(false)
-const addRefId = ref(null)
-const enabledFields = ref([])
+const addRefId = ref<number | null>(null)
+const enabledFields = ref<FieldListItem[]>([])
 
 // 加载可选字段（仅启用状态）
 async function loadEnabledFields() {
@@ -138,7 +154,7 @@ function addRef() {
   showAddDropdown.value = false
 }
 
-function removeRef(idx) {
+function removeRef(idx: number) {
   const newRefFields = refFields.value.filter((_, i) => i !== idx)
   emit('update:modelValue', { ...constraints.value, ref_fields: newRefFields })
 }

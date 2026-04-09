@@ -86,21 +86,35 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 import { WarningFilled, Plus, Delete, InfoFilled } from '@element-plus/icons-vue'
 
-const props = defineProps({
-  modelValue: { type: Object, default: () => ({}) },
-  restricted: { type: Boolean, default: false },
-})
+interface SelectOption {
+  value: string
+  label: string
+}
 
-const emit = defineEmits(['update:modelValue'])
+interface SelectConstraints {
+  options?: SelectOption[]
+  min_select?: number
+  max_select?: number
+  [key: string]: unknown
+}
 
-const constraints = computed(() => props.modelValue || {})
-const options = computed(() => constraints.value.options || [])
+const props = defineProps<{
+  modelValue?: SelectConstraints
+  restricted?: boolean
+}>()
 
-function emitUpdate(patch) {
+const emit = defineEmits<{
+  'update:modelValue': [value: SelectConstraints]
+}>()
+
+const constraints = computed((): SelectConstraints => props.modelValue || {})
+const options = computed((): SelectOption[] => constraints.value.options || [])
+
+function emitUpdate(patch: Partial<SelectConstraints>) {
   emit('update:modelValue', { ...constraints.value, ...patch })
 }
 
@@ -109,19 +123,19 @@ function addOption() {
   emitUpdate({ options: newOptions })
 }
 
-function removeOption(idx) {
+function removeOption(idx: number) {
   const newOptions = options.value.filter((_, i) => i !== idx)
   emitUpdate({ options: newOptions })
 }
 
-function updateOption(idx, key, val) {
+function updateOption(idx: number, key: keyof SelectOption, val: string) {
   const newOptions = options.value.map((opt, i) =>
     i === idx ? { ...opt, [key]: val } : opt,
   )
   emitUpdate({ options: newOptions })
 }
 
-function updateField(key, val) {
+function updateField(key: string, val: number | null | undefined) {
   const next = { ...constraints.value }
   if (val === null || val === undefined) {
     delete next[key]

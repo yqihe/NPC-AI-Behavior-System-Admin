@@ -1,6 +1,18 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 
+/** 后端统一响应格式 */
+export interface ApiResponse<T = unknown> {
+  code: number
+  data: T
+  message: string
+}
+
+/** 携带 code 的业务错误 */
+export interface BizError extends Error {
+  code: number
+}
+
 const request = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || '/api/v1',
   timeout: 10000,
@@ -9,10 +21,10 @@ const request = axios.create({
 // 响应拦截器：统一业务错误处理
 request.interceptors.response.use(
   (response) => {
-    const { code, message } = response.data
+    const { code, message } = response.data as ApiResponse
     if (code !== 0) {
       ElMessage.error(message || '操作失败')
-      const err = new Error(message)
+      const err = new Error(message) as BizError
       err.code = code
       return Promise.reject(err)
     }

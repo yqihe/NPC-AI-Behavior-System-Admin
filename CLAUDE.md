@@ -24,7 +24,7 @@
 - 日志：Go 标准库 `log/slog`
 
 **前端**：
-- 框架：Vue 3 + Element Plus
+- 框架：Vue 3 + TypeScript + Element Plus
 - 构建：Vite
 - 通信：Axios → REST API
 - 表单渲染：自研 SchemaForm（不使用第三方 JSON Schema 表单库）
@@ -132,6 +132,21 @@ ADMIN 和游戏服务端各存各的 BB Key，不走 API 互拉。ADMIN 的 Key 
 - commit message 格式：`类型(范围): 描述`
   - 类型：`feat` / `fix` / `test` / `refactor` / `docs` / `chore`
   - 范围：`backend/handler`、`frontend/views`、`backend/store` 等
+
+## Claude Code 权限模式
+
+每个 SKILL 对应推荐的权限模式，Claude 在调用 SKILL 前应提醒用户切换：
+
+| SKILL | 推荐模式 | 原因 |
+|-------|----------|------|
+| `/spec-create` | `plan` | 只读分析，不该写代码 |
+| `/spec-execute` | `auto` | 写代码，allow 列表自动执行 |
+| `/verify` | `auto` | 跑构建/测试命令 |
+| `/debug` | `auto` | 需要读写代码修复 |
+| `/integration` | `ask` | 跨项目操作，需确认每步 |
+| 普通对话 | `ask` | 讨论功能，避免误操作 |
+
+切换方式：`/mode auto` / `/mode plan` / `/mode ask`
 
 ## 详细文档
 
