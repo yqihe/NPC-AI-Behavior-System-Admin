@@ -29,7 +29,7 @@ T3 (keys)    ──┼──→ T4 (TemplateStore) ──→ T5 (TemplateCache) 
 
 ---
 
-## T1：定义模板错误码
+## T1：定义模板错误码 ✅
 
 **目标**：在 `errcode/codes.go` 追加 11 个模板管理错误码常量与对应中文消息。
 

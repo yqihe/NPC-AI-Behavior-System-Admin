@@ -32,6 +32,22 @@ const (
 	ErrFieldEditNotDisabled   = 40015 // 编辑前必须先停用
 )
 
+// --- 模板管理 410xx ---
+
+const (
+	ErrTemplateNameExists        = 41001 // 模板标识已存在（含软删除）
+	ErrTemplateNameInvalid       = 41002 // 模板标识格式不合法
+	ErrTemplateNotFound          = 41003 // 模板不存在
+	ErrTemplateNoFields          = 41004 // 未勾选任何字段
+	ErrTemplateFieldDisabled     = 41005 // 勾选了停用字段
+	ErrTemplateFieldNotFound     = 41006 // 勾选的字段不存在
+	ErrTemplateRefDelete         = 41007 // 被 NPC 引用，无法删除
+	ErrTemplateRefEditFields     = 41008 // 被 NPC 引用，无法编辑字段列表（含顺序/必填）
+	ErrTemplateDeleteNotDisabled = 41009 // 删除前必须先停用
+	ErrTemplateEditNotDisabled   = 41010 // 编辑前必须先停用
+	ErrTemplateVersionConflict   = 41011 // 版本冲突（乐观锁）
+)
+
 // --- 错误消息 ---
 
 var messages = map[int]string{
@@ -54,6 +70,18 @@ var messages = map[int]string{
 	ErrFieldDeleteNotDisabled: "请先停用该字段再删除",
 	ErrFieldRefDisabled:       "不能引用已停用的字段",
 	ErrFieldEditNotDisabled:   "请先停用该字段再编辑",
+
+	ErrTemplateNameExists:        "模板标识已存在",
+	ErrTemplateNameInvalid:       "模板标识格式不合法，需小写字母开头，仅允许 a-z、0-9、下划线",
+	ErrTemplateNotFound:          "模板不存在",
+	ErrTemplateNoFields:          "请至少勾选一个字段",
+	ErrTemplateFieldDisabled:     "勾选的字段已停用，请先在字段管理中启用",
+	ErrTemplateFieldNotFound:     "勾选的字段不存在",
+	ErrTemplateRefDelete:         "该模板正被 NPC 引用，无法删除",
+	ErrTemplateRefEditFields:     "该模板已被 NPC 引用，字段勾选与必填配置不可修改",
+	ErrTemplateDeleteNotDisabled: "请先停用该模板再删除",
+	ErrTemplateEditNotDisabled:   "请先停用该模板再编辑",
+	ErrTemplateVersionConflict:   "该模板已被其他人修改，请刷新后重试",
 }
 
 // Msg 获取错误码对应的默认消息
