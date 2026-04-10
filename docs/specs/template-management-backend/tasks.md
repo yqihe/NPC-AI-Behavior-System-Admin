@@ -112,7 +112,7 @@ T3 (keys)    ──┼──→ T4 (TemplateStore) ──→ T5 (TemplateCache) 
 
 ---
 
-## T5：TemplateCache（Redis 缓存层）
+## T5：TemplateCache（Redis 缓存层） ✅
 
 **目标**：实现模板的 Redis 缓存，**只缓存 templates 裸行**，不掺字段补全。
 
