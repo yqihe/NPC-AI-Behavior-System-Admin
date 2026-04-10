@@ -53,7 +53,7 @@
 |---|---|
 | Router | `POST /api/v1/fields/create` |
 | Handler | `FieldHandler.Create` — 校验 name 格式/长度、label、type、category、properties 非空 |
-| Service | `FieldService.Create` — 校验字典存在性 → name 唯一性 → reference 类型校验（存在性+启用+循环引用） → 写入 MySQL → 写入 field_refs + IncrRefCount → 清列表缓存 |
+| Service | `FieldService.Create` — 校验字典存在性 → name 唯一性 → reference 类型校验（存在性+启用+**禁止嵌套**+循环引用兜底） → 写入 MySQL → 写入 field_refs + IncrRefCount → 清列表缓存 |
 | Store | `FieldStore.Create` 返回 lastInsertId |
 
 ---
@@ -220,13 +220,29 @@
 
 ---
 
-## 功能 11：循环引用检测 + 引用关系维护
+## 功能 11：reference 字段引用约束与关系维护
 
-**场景 A — 在字段管理页创建 reference 类型字段时，要从下拉列表选择它引用哪些字段。** 下拉列表只展示启用的字段（走功能 1 的 `enabled=true` 筛选）。选好后，后端确认被引用的字段存在且是启用的，检查不会形成循环引用，然后记录引用关系并更新被引用字段的引用计数。
+**场景 A — 在字段管理页创建 reference 类型字段时，要从下拉列表选择它引用哪些 leaf 字段。** 下拉列表只展示**启用的非 reference 字段**（前端在功能 1 的 `enabled=true` 列表上再过滤掉 `type='reference'`）。选好后，后端做三层校验：被引用字段存在 + 启用 + **不是 reference 类型**，然后记录引用关系并更新被引用字段的引用计数。
 
-**场景 B — 在字段管理页编辑一个已有的 reference 类型字段，想加几个新引用或去掉几个旧引用。** 对于新增的引用，被引用字段必须是启用的，停用的不让加。但对于已有的引用，即使那个字段后来被停用了，也允许保持——不会强制管理员去掉它。这和"存量不动，增量拦截"是同一个原则。
+**场景 B — 在字段管理页编辑一个已有的 reference 类型字段，想加几个新引用或去掉几个旧引用。** 对于新增的引用，被引用字段必须是启用的且**不是 reference 类型**，停用或 reference 都不让加。但对于已有的引用，即使那个字段后来被停用了也允许保持——这是"存量不动，增量拦截"。
 
 **场景 C — 在字段管理页删除一个 reference 类型字段时，它之前引用的那些字段的引用计数要减回去。** 这在删除事务内自动完成。
+
+### 嵌套禁止规则（重要）
+
+**reference 字段只能引用 leaf 字段（integer / float / string / boolean / select），不能引用其他 reference 字段。** 这是一个硬约束，不允许任何例外。
+
+**为什么禁止嵌套：**
+- **语义清晰**：reference 是"快捷选择器"，不是抽象层。需要"分类的分类"时直接建一个更大的 reference 列出所有 leaf 字段，扁平直观。
+- **天然防环**：reference 链最多只有一层 → 不可能形成环 → 模板侧的弹层永远只有一层 popover。
+- **降低后端复杂度**：模板创建 / 字段引用展开 / 引用计数维护都不再需要递归。
+- **降低 UX 复杂度**：管理员看到的引用列表永远是 leaf 字段，不会点开一层又一层。
+
+**校验位置（前后端双保险）：**
+- 前端：`FieldConstraintReference.vue` 的 `availableFields` computed 在 `enabled=true` 字段列表上过滤掉 `type === 'reference'`
+- 后端：`FieldService.Create` / `Update` 的 reference 分支对每个新增 ref 校验 `f.Type != FieldTypeReference`，违反返回 `40016 ErrFieldRefNested`
+
+**循环引用检测的现状：** 嵌套禁止后，理论上不可能出现环。`detectCyclicRef` DFS 函数保留作为防御性兜底（对抗未来通过非常规途径写入的脏数据），运行成本可忽略。
 
 此功能内嵌在功能 2（创建）、功能 4（编辑）、功能 5（删除）的 Service 层中。
 
@@ -247,7 +263,7 @@
 |--------|---------|
 | 操作标识 | 主键 ID (BIGINT)，name 仅用于创建和唯一性校验 |
 | 统一响应格式 | `handler.WrapCtx` 泛型包装，返回 `{Code, Data, Message}` |
-| 错误码体系 | 15 个错误码（40001-40015），语义分离 |
+| 错误码体系 | 16 个错误码（40001-40016），语义分离 |
 | 缓存穿透防护 | 空值标记 `{"_null":true}`，未命中时也缓存 nil |
 | 缓存击穿防护 | `GetByID` 使用分布式锁 `TryLock(id)` + double-check |
 | 缓存雪崩防护 | TTL 加随机 jitter |
