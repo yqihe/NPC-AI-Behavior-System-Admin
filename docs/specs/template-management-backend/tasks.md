@@ -65,7 +65,7 @@ T3 (keys)    ──┼──→ T4 (TemplateStore) ──→ T5 (TemplateCache) 
 
 ---
 
-## T3：模板 Redis Key 函数
+## T3：模板 Redis Key 函数 ✅
 
 **目标**：在 `store/redis/keys.go` 追加模板相关 key 前缀和生成函数。
 
