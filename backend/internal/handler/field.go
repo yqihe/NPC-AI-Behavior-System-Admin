@@ -13,7 +13,9 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/service"
 )
 
-var namePattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+// identPattern 通用标识符正则：a-z 开头，仅 a-z0-9_
+// 所有配置类型（字段/模板等）的 name 共用此规则。
+var identPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // FieldHandler 字段管理业务处理
 type FieldHandler struct {
@@ -32,7 +34,7 @@ func (h *FieldHandler) checkName(name string) *errcode.Error {
 	if name == "" {
 		return errcode.Newf(errcode.ErrFieldNameInvalid, "字段标识不能为空")
 	}
-	if !namePattern.MatchString(name) {
+	if !identPattern.MatchString(name) {
 		return errcode.New(errcode.ErrFieldNameInvalid)
 	}
 	if len(name) > h.valCfg.FieldNameMaxLength {

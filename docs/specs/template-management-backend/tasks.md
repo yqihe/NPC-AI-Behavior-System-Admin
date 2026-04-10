@@ -207,7 +207,7 @@ T3 (keys)    ──┼──→ T4 (TemplateStore) ──→ T5 (TemplateCache) 
 
 ---
 
-## T8：TemplateHandler（8 个接口 + 跨模块编排）
+## T8：TemplateHandler（8 个接口 + 跨模块编排） ✅
 
 **目标**：实现模板管理的 HTTP handler，跨模块事务在这里开启。
 
