@@ -64,7 +64,9 @@ func main() {
 	fieldStore := storemysql.NewFieldStore(db)
 	fieldRefStore := storemysql.NewFieldRefStore(db)
 	dictStore := storemysql.NewDictionaryStore(db)
+	templateStore := storemysql.NewTemplateStore(db)
 	fieldCache := storeredis.NewFieldCache(rdb)
+	templateCache := storeredis.NewTemplateCache(rdb)
 
 	// DictCache（内存缓存，启动时从 MySQL 加载）
 	dictCache := cache.NewDictCache(dictStore)
@@ -75,16 +77,18 @@ func main() {
 	}
 	cancel2()
 
-	// Service
+	// Service（按"分层职责"硬规则：service 间无横向依赖）
 	fieldService := service.NewFieldService(fieldStore, fieldRefStore, fieldCache, dictCache, &cfg.Pagination)
+	templateService := service.NewTemplateService(templateStore, templateCache, &cfg.Pagination)
 
-	// Handler
-	fieldHandler := handler.NewFieldHandler(fieldService, &cfg.Validation)
+	// Handler（跨模块编排在 handler 层）
+	fieldHandler := handler.NewFieldHandler(fieldService, templateService, &cfg.Validation)
+	templateHandler := handler.NewTemplateHandler(db, templateService, fieldService, &cfg.Validation)
 	dictHandler := handler.NewDictionaryHandler(dictCache)
 
 	// Router
 	r := gin.Default()
-	router.Setup(r, fieldHandler, dictHandler)
+	router.Setup(r, fieldHandler, dictHandler, templateHandler)
 
 	// Server
 	srv := &http.Server{

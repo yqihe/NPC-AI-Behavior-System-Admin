@@ -8,7 +8,7 @@ import (
 )
 
 // Setup 注册所有路由
-func Setup(r *gin.Engine, fh *handler.FieldHandler, dh *handler.DictionaryHandler) {
+func Setup(r *gin.Engine, fh *handler.FieldHandler, dh *handler.DictionaryHandler, th *handler.TemplateHandler) {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -26,6 +26,19 @@ func Setup(r *gin.Engine, fh *handler.FieldHandler, dh *handler.DictionaryHandle
 		fields.POST("/references", handler.WrapCtx(fh.GetReferences))
 		fields.POST("/check-name", handler.WrapCtx(fh.CheckName))
 		fields.POST("/toggle-enabled", handler.WrapCtx(fh.ToggleEnabled))
+	}
+
+	// 模板管理（8 个接口）
+	templates := v1.Group("/templates")
+	{
+		templates.POST("/list", handler.WrapCtx(th.List))
+		templates.POST("/create", handler.WrapCtx(th.Create))
+		templates.POST("/detail", handler.WrapCtx(th.Get))
+		templates.POST("/update", handler.WrapCtx(th.Update))
+		templates.POST("/delete", handler.WrapCtx(th.Delete))
+		templates.POST("/check-name", handler.WrapCtx(th.CheckName))
+		templates.POST("/references", handler.WrapCtx(th.GetReferences))
+		templates.POST("/toggle-enabled", handler.WrapCtx(th.ToggleEnabled))
 	}
 
 	// 字典选项

@@ -264,7 +264,7 @@ T3 (keys)    ──┼──→ T4 (TemplateStore) ──→ T5 (TemplateCache) 
 
 ---
 
-## T10：装配链路（router + main.go）
+## T10：装配链路（router + main.go） ✅
 
 **目标**：把所有新组件接入 main.go 启动流程，注册路由。
 
