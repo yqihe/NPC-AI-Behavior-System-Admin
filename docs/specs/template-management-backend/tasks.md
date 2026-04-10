@@ -290,7 +290,7 @@ T3 (keys)    ──┼──→ T4 (TemplateStore) ──→ T5 (TemplateCache) 
 
 ---
 
-## T11：集成 smoke 测试
+## T11：集成 smoke 测试 ✅
 
 **目标**：用 bash 脚本端到端跑通 8 个接口，覆盖关键失败路径。
 
