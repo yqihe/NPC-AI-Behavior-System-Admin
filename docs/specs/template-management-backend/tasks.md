@@ -175,7 +175,7 @@ T3 (keys)    ──┼──→ T4 (TemplateStore) ──→ T5 (TemplateCache) 
 
 ---
 
-## T7：FieldService 扩展 5 个对外方法
+## T7：FieldService 扩展 5 个对外方法 ✅
 
 **目标**：在 `service/field.go` 追加 5 个跨模块方法 + 删除 GetReferences 内的占位 label 逻辑（已由用户手动完成）。
 

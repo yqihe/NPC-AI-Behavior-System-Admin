@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/yqihe/npc-ai-admin/backend/internal/cache"
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
@@ -516,6 +517,142 @@ func (s *FieldService) ToggleEnabled(ctx context.Context, req *model.ToggleEnabl
 
 	slog.Info("service.切换启用成功", "id", req.ID, "enabled", req.Enabled)
 	return nil
+}
+
+// ---- 跨模块对外方法（供 handler 跨模块编排调用） ----
+
+// ValidateFieldsForTemplate 校验字段列表对模板的可用性
+//
+// 用途：模板创建/编辑时由 handler 调用，校验勾选的 field_ids 全部存在 + 启用。
+// 返回：
+//   - errcode.ErrTemplateFieldNotFound (41006) — 任一字段不存在
+//   - errcode.ErrTemplateFieldDisabled (41005) — 任一字段已停用
+//   - nil — 全部通过
+//
+// 41005/41006 归在模板段位（41xxx），因为这两个错误由模板管理页消费，
+// 与字段管理自身的 40011/40013 语义不混用（go-red-lines）。
+func (s *FieldService) ValidateFieldsForTemplate(ctx context.Context, fieldIDs []int64) error {
+	if len(fieldIDs) == 0 {
+		return nil
+	}
+	fields, err := s.fieldStore.GetByIDs(ctx, fieldIDs)
+	if err != nil {
+		return fmt.Errorf("get fields by ids: %w", err)
+	}
+	foundMap := make(map[int64]model.Field, len(fields))
+	for _, f := range fields {
+		foundMap[f.ID] = f
+	}
+	for _, fid := range fieldIDs {
+		f, ok := foundMap[fid]
+		if !ok {
+			return errcode.Newf(errcode.ErrTemplateFieldNotFound, "字段 ID=%d 不存在", fid)
+		}
+		if !f.Enabled {
+			return errcode.Newf(errcode.ErrTemplateFieldDisabled, "字段 '%s' 已停用，请先在字段管理中启用", f.Name)
+		}
+	}
+	return nil
+}
+
+// AttachToTemplateTx 把字段列表挂到模板上（事务内）
+//
+// 用途：模板创建 / 编辑模板新增字段时由 handler 调用。
+// 行为：
+//   - 对每个 fieldID 写 field_refs(field_id, 'template', templateID)
+//   - 对每个 fieldID 调 fieldStore.IncrRefCountTx
+//
+// 返回：fieldIDs 副本，handler 在 commit 后用它清字段方 detail 缓存。
+func (s *FieldService) AttachToTemplateTx(ctx context.Context, tx *sqlx.Tx, templateID int64, fieldIDs []int64) ([]int64, error) {
+	if len(fieldIDs) == 0 {
+		return make([]int64, 0), nil
+	}
+	for _, fieldID := range fieldIDs {
+		if err := s.fieldRefStore.Add(ctx, tx, fieldID, model.RefTypeTemplate, templateID); err != nil {
+			return nil, fmt.Errorf("add field ref %d → template %d: %w", fieldID, templateID, err)
+		}
+		if err := s.fieldStore.IncrRefCountTx(ctx, tx, fieldID); err != nil {
+			return nil, fmt.Errorf("incr field %d ref_count: %w", fieldID, err)
+		}
+	}
+	affected := make([]int64, len(fieldIDs))
+	copy(affected, fieldIDs)
+	return affected, nil
+}
+
+// DetachFromTemplateTx 把字段列表从模板上卸下（事务内）
+//
+// 用途：模板删除 / 编辑模板移除字段时由 handler 调用。
+// 行为：
+//   - 对每个 fieldID 删 field_refs(field_id, 'template', templateID)
+//   - 对每个 fieldID 调 fieldStore.DecrRefCountTx
+//
+// 返回：fieldIDs 副本，handler 在 commit 后用它清字段方 detail 缓存。
+func (s *FieldService) DetachFromTemplateTx(ctx context.Context, tx *sqlx.Tx, templateID int64, fieldIDs []int64) ([]int64, error) {
+	if len(fieldIDs) == 0 {
+		return make([]int64, 0), nil
+	}
+	for _, fieldID := range fieldIDs {
+		if err := s.fieldRefStore.Remove(ctx, tx, fieldID, model.RefTypeTemplate, templateID); err != nil {
+			return nil, fmt.Errorf("remove field ref %d → template %d: %w", fieldID, templateID, err)
+		}
+		if err := s.fieldStore.DecrRefCountTx(ctx, tx, fieldID); err != nil {
+			return nil, fmt.Errorf("decr field %d ref_count: %w", fieldID, err)
+		}
+	}
+	affected := make([]int64, len(fieldIDs))
+	copy(affected, fieldIDs)
+	return affected, nil
+}
+
+// GetByIDsLite 批量查字段精简信息（跨模块）
+//
+// 用途：模板详情接口由 handler 调用拼装 TemplateFieldItem。
+// 行为：
+//   - 调 fieldStore.GetByIDs 批量取
+//   - service 层用 dictCache 翻译 CategoryLabel
+//   - 保持 fieldIDs 顺序对齐：缺失的位置返回 zero FieldLite{ID: 0}
+//     handler 拼装时识别 ID=0 跳过并 slog.Warn
+func (s *FieldService) GetByIDsLite(ctx context.Context, fieldIDs []int64) ([]model.FieldLite, error) {
+	result := make([]model.FieldLite, len(fieldIDs))
+	if len(fieldIDs) == 0 {
+		return result, nil
+	}
+	fields, err := s.fieldStore.GetByIDs(ctx, fieldIDs)
+	if err != nil {
+		return nil, fmt.Errorf("get fields by ids: %w", err)
+	}
+	foundMap := make(map[int64]model.Field, len(fields))
+	for _, f := range fields {
+		foundMap[f.ID] = f
+	}
+	for i, fid := range fieldIDs {
+		f, ok := foundMap[fid]
+		if !ok {
+			// 缺失：保持 zero value（ID=0），handler 识别后 warn + skip
+			continue
+		}
+		result[i] = model.FieldLite{
+			ID:            f.ID,
+			Name:          f.Name,
+			Label:         f.Label,
+			Type:          f.Type,
+			Category:      f.Category,
+			CategoryLabel: s.dictCache.GetLabel(model.DictGroupFieldCategory, f.Category),
+			Enabled:       f.Enabled,
+		}
+	}
+	return result, nil
+}
+
+// InvalidateDetails 批量清字段详情缓存
+//
+// 用途：模板写操作 commit 后由 handler 调用，因为模板写会改字段的 ref_count。
+// 不返回 error：缓存清理失败仅 slog.Error，不阻塞业务。
+func (s *FieldService) InvalidateDetails(ctx context.Context, fieldIDs []int64) {
+	for _, fid := range fieldIDs {
+		s.fieldCache.DelDetail(ctx, fid)
+	}
 }
 
 // ---- 约束收紧检查 ----
