@@ -432,6 +432,10 @@ func (s *FieldService) CheckName(ctx context.Context, name string) (*model.Check
 }
 
 // GetReferences 查询字段引用详情
+//
+// 分层职责：本方法只负责字段模块内的数据（field_refs 关系 + 字段自身 label），
+// 不查询模板表。模板 label 的填充由 handler 跨模块编排（调用 TemplateService）。
+// 返回的 Templates 数组中，每项 Label 字段为空，由 handler 负责补齐。
 func (s *FieldService) GetReferences(ctx context.Context, id int64) (*model.ReferenceDetail, error) {
 	field, err := s.getFieldOrNotFound(ctx, id)
 	if err != nil {
@@ -481,11 +485,11 @@ func (s *FieldService) GetReferences(ctx context.Context, id int64) (*model.Refe
 		}
 	}
 
+	// 模板引用：只填 ID，Label 留空由 handler 跨模块补齐
 	for _, tid := range templateIDs {
 		result.Templates = append(result.Templates, model.ReferenceItem{
 			RefType: model.RefTypeTemplate,
 			RefID:   tid,
-			Label:   fmt.Sprintf("模板#%d", tid), // TODO: 模板管理完成后 IN 查 templates 拿 label
 		})
 	}
 

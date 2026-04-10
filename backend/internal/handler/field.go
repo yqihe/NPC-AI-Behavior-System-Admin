@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"regexp"
 	"unicode/utf8"
@@ -177,6 +178,11 @@ func (h *FieldHandler) CheckName(ctx context.Context, req *model.CheckNameReques
 }
 
 // GetReferences 字段引用详情（按 ID）
+//
+// 跨模块编排：FieldService 只返回字段模块内的数据（templates 数组只有 ID），
+// handler 负责调用模板模块补齐 template label。
+// TODO: 模板管理模块上线后，改为调用 templateService.GetByIDsLite(templateIDs)
+//       批量取 label，替换下方的占位 fallback。
 func (h *FieldHandler) GetReferences(ctx context.Context, req *model.IDRequest) (*model.ReferenceDetail, error) {
 	if err := checkID(req.ID); err != nil {
 		return nil, err
@@ -184,7 +190,19 @@ func (h *FieldHandler) GetReferences(ctx context.Context, req *model.IDRequest) 
 
 	slog.Debug("handler.引用详情", "id", req.ID)
 
-	return h.fieldService.GetReferences(ctx, req.ID)
+	detail, err := h.fieldService.GetReferences(ctx, req.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 跨模块补齐 template label（当前 templateService 未上线，使用占位）
+	for i := range detail.Templates {
+		if detail.Templates[i].Label == "" {
+			detail.Templates[i].Label = fmt.Sprintf("模板#%d", detail.Templates[i].RefID)
+		}
+	}
+
+	return detail, nil
 }
 
 // ToggleEnabled 切换启用/停用（按 ID）
