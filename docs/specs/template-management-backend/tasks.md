@@ -83,7 +83,7 @@ T3 (keys)    ──┼──→ T4 (TemplateStore) ──→ T5 (TemplateCache) 
 
 ---
 
-## T4：TemplateStore（MySQL 表 DAO）
+## T4：TemplateStore（MySQL 表 DAO） ✅
 
 **目标**：实现 `templates` 表的所有 CRUD 方法。**只操作 templates 表，不读写其它表。**
 
