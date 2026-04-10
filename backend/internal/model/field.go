@@ -22,6 +22,20 @@ type Field struct {
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
 
+// FieldLite 给跨模块调用的字段精简结构
+//
+// 用途：模板管理详情接口由 handler 调 fieldService.GetByIDsLite 拿到，
+// 用于拼装 TemplateFieldItem。CategoryLabel 由 service 层翻译填充。
+type FieldLite struct {
+	ID            int64  `json:"id" db:"id"`
+	Name          string `json:"name" db:"name"`
+	Label         string `json:"label" db:"label"`
+	Type          string `json:"type" db:"type"`
+	Category      string `json:"category" db:"category"`
+	CategoryLabel string `json:"category_label" db:"-"` // service 层翻译
+	Enabled       bool   `json:"enabled" db:"enabled"`
+}
+
 // FieldListItem 列表页展示项（覆盖索引返回，不含 properties）
 type FieldListItem struct {
 	ID        int64     `json:"id" db:"id"`
