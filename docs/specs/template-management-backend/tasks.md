@@ -241,7 +241,7 @@ T3 (keys)    ──┼──→ T4 (TemplateStore) ──→ T5 (TemplateCache) 
 
 ---
 
-## T9：FieldHandler.GetReferences 替换占位 label
+## T9：FieldHandler.GetReferences 替换占位 label ✅
 
 **目标**：把用户当前用 `fmt.Sprintf("模板#%d", ...)` 兜底的占位逻辑替换成调 `templateService.GetByIDsLite`。
 

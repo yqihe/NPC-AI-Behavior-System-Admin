@@ -19,13 +19,22 @@ var identPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // FieldHandler 字段管理业务处理
 type FieldHandler struct {
-	fieldService *service.FieldService
-	valCfg       *config.ValidationConfig
+	fieldService    *service.FieldService
+	templateService *service.TemplateService // 跨模块编排：GetReferences 补 template label
+	valCfg          *config.ValidationConfig
 }
 
 // NewFieldHandler 创建 FieldHandler
-func NewFieldHandler(fieldService *service.FieldService, valCfg *config.ValidationConfig) *FieldHandler {
-	return &FieldHandler{fieldService: fieldService, valCfg: valCfg}
+func NewFieldHandler(
+	fieldService *service.FieldService,
+	templateService *service.TemplateService,
+	valCfg *config.ValidationConfig,
+) *FieldHandler {
+	return &FieldHandler{
+		fieldService:    fieldService,
+		templateService: templateService,
+		valCfg:          valCfg,
+	}
 }
 
 // ---- 前置校验（必填/格式/长度，不查 DB） ----
@@ -181,10 +190,8 @@ func (h *FieldHandler) CheckName(ctx context.Context, req *model.CheckNameReques
 
 // GetReferences 字段引用详情（按 ID）
 //
-// 跨模块编排：FieldService 只返回字段模块内的数据（templates 数组只有 ID），
-// handler 负责调用模板模块补齐 template label。
-// TODO: 模板管理模块上线后，改为调用 templateService.GetByIDsLite(templateIDs)
-//       批量取 label，替换下方的占位 fallback。
+// 跨模块编排：FieldService 只返回字段模块内的数据（templates 数组只有 RefID 不带 Label），
+// handler 调 templateService.GetByIDsLite 跨模块补齐 template label。
 func (h *FieldHandler) GetReferences(ctx context.Context, req *model.IDRequest) (*model.ReferenceDetail, error) {
 	if err := checkID(req.ID); err != nil {
 		return nil, err
@@ -197,10 +204,29 @@ func (h *FieldHandler) GetReferences(ctx context.Context, req *model.IDRequest) 
 		return nil, err
 	}
 
-	// 跨模块补齐 template label（当前 templateService 未上线，使用占位）
-	for i := range detail.Templates {
-		if detail.Templates[i].Label == "" {
-			detail.Templates[i].Label = fmt.Sprintf("模板#%d", detail.Templates[i].RefID)
+	// 跨模块补齐 template label
+	if len(detail.Templates) > 0 {
+		templateIDs := make([]int64, 0, len(detail.Templates))
+		for _, t := range detail.Templates {
+			templateIDs = append(templateIDs, t.RefID)
+		}
+		tplLites, err := h.templateService.GetByIDsLite(ctx, templateIDs)
+		if err != nil {
+			slog.Error("handler.补模板label失败", "error", err, "ids", templateIDs)
+			return nil, fmt.Errorf("get template lites: %w", err)
+		}
+		labelMap := make(map[int64]string, len(tplLites))
+		for _, t := range tplLites {
+			labelMap[t.ID] = t.Label
+		}
+		for i := range detail.Templates {
+			refID := detail.Templates[i].RefID
+			if label, ok := labelMap[refID]; ok {
+				detail.Templates[i].Label = label
+			} else {
+				// 引用的模板已被删除（理论上不应发生，因为字段被引用时模板不能删）
+				slog.Warn("handler.引用详情模板缺失", "field_id", req.ID, "template_id", refID)
+			}
 		}
 	}
 
