@@ -205,6 +205,19 @@
 
 此功能内嵌在功能 4（编辑字段）的 Service 层中。
 
+### 约束 key 命名契约（必须前后端严格对齐）
+
+`properties.constraints` 是无 schema 的 JSON RawMessage，DB 层不校验结构，命名靠前后端代码约定。**单一权威**为 seed 文件 `backend/cmd/seed/main.go` 中 `field_type` 字典每条记录的 `constraint_schema`。后端 `service.checkConstraintTightened` 和游戏服务端导出都直接读这些 key。前端 `frontend/src/components/FieldConstraint*.vue` 必须严格使用以下名称，**不得改成驼峰/下划线变体**——否则收紧检查（40007）静默失效。
+
+| 字段类型 | constraint key | 说明 |
+|---------|---------------|------|
+| integer | `min` / `max` / `step` | 最小值/最大值/步长 |
+| float | `min` / `max` / `precision` | 最小值/最大值/小数位数 |
+| string | `minLength` / `maxLength` / `pattern` | 最小长度/最大长度/正则 |
+| boolean | — | 无约束 |
+| select | `options` / `minSelect` / `maxSelect` | 选项数组（每项 `{value, label}`）/最少选/最多选 |
+| reference | `refs` | 被引用字段 ID 数组（前端 UI 用 `ref_fields` 富对象，提交前转 `refs`） |
+
 ---
 
 ## 功能 11：循环引用检测 + 引用关系维护

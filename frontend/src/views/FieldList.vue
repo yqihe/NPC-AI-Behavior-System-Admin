@@ -89,7 +89,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="引用数" width="80" align="center">
+        <el-table-column label="被引用数" width="80" align="center">
           <template #default="{ row }">
             <el-link
               v-if="row.ref_count > 0"
@@ -106,7 +106,7 @@
           <template #default="{ row }">
             <el-switch
               :model-value="row.enabled"
-              @change="(val) => handleToggle(row, val)"
+              @change="(val: string | number | boolean) => handleToggle(row, Boolean(val))"
             />
           </template>
         </el-table-column>
@@ -197,7 +197,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
 import { fieldApi } from '@/api/fields'
-import type { FieldListItem, ReferenceItem } from '@/api/fields'
+import type { FieldListItem, FieldListQuery, ReferenceItem } from '@/api/fields'
 import type { BizError } from '@/api/request'
 import { dictApi } from '@/api/dictionaries'
 import type { DictionaryItem } from '@/api/dictionaries'
@@ -210,7 +210,7 @@ const total = ref(0)
 const typeOptions = ref<DictionaryItem[]>([])
 const categoryOptions = ref<DictionaryItem[]>([])
 
-const query = reactive({
+const query = reactive<FieldListQuery>({
   label: '',
   type: '',
   category: '',
@@ -233,14 +233,14 @@ const refDialog = reactive({
 async function fetchList() {
   loading.value = true
   try {
-    const params = {
+    const params: FieldListQuery = {
       page: query.page,
       page_size: query.page_size,
     }
     if (query.label) params.label = query.label
     if (query.type) params.type = query.type
     if (query.category) params.category = query.category
-    if (query.enabled !== null && query.enabled !== '') {
+    if (query.enabled !== null && query.enabled !== undefined) {
       params.enabled = query.enabled
     }
     const res = await fieldApi.list(params)
@@ -399,7 +399,7 @@ function typeBadgeType(type: string) {
 function formatTime(str: string) {
   if (!str) return ''
   const d = new Date(str)
-  const pad = (n) => String(n).padStart(2, '0')
+  const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 </script>

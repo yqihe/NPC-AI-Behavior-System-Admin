@@ -13,12 +13,12 @@
         <div class="constraint-field">
           <label class="constraint-field-label">最小长度</label>
           <el-input-number
-            :model-value="constraints.min_length"
+            :model-value="constraints.minLength as number | undefined"
             :controls="false"
             :min="0"
             placeholder="不限"
             style="width: 100%"
-            @update:model-value="(v) => update('min_length', v)"
+            @update:model-value="(v: number | null | undefined) => update('minLength', v)"
           />
         </div>
       </el-col>
@@ -26,12 +26,12 @@
         <div class="constraint-field">
           <label class="constraint-field-label">最大长度</label>
           <el-input-number
-            :model-value="constraints.max_length"
+            :model-value="constraints.maxLength as number | undefined"
             :controls="false"
             :min="0"
             placeholder="不限"
             style="width: 100%"
-            @update:model-value="(v) => update('max_length', v)"
+            @update:model-value="(v: number | null | undefined) => update('maxLength', v)"
           />
         </div>
       </el-col>
@@ -39,9 +39,9 @@
     <div class="constraint-field">
       <label class="constraint-field-label">正则校验</label>
       <el-input
-        :model-value="constraints.pattern"
+        :model-value="constraints.pattern as string | undefined"
         placeholder="选填，如 ^[a-zA-Z\u4e00-\u9fa5]+$"
-        @update:model-value="(v) => update('pattern', v)"
+        @update:model-value="(v: string) => update('pattern', v)"
       />
     </div>
   </div>
