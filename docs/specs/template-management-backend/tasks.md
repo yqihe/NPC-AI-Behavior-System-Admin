@@ -138,7 +138,7 @@ T3 (keys)    ──┼──→ T4 (TemplateStore) ──→ T5 (TemplateCache) 
 
 ---
 
-## T6：TemplateService（模板模块业务逻辑）
+## T6：TemplateService（模板模块业务逻辑） ✅
 
 **目标**：实现 TemplateService。**只调用自己模块的 store/cache，不持有任何字段管理组件**。
 
