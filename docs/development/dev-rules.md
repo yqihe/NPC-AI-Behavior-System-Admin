@@ -1,5 +1,61 @@
 # 开发规则
 
+## 分层职责（硬性规定）
+
+**三层各司其职，禁止越界。**
+
+| 层 | 职责 | 禁止 |
+|---|---|---|
+| **store** | 只对自己管理的**单张表**做 CRUD。一个 store 文件 = 一张表 | 不允许在自己的方法里读写其它模块的表 |
+| **service** | 编排同模块内的多个 store/cache，处理同模块内的业务逻辑、事务、缓存 | 不允许直接调用其它模块的 store / cache / service |
+| **handler** | 校验请求格式 + **跨模块编排**：当一个接口需要协调多个模块（比如模板创建要写 templates + 写 field_refs + 改 fields.ref_count）时，handler 层负责调用多个 service 协同完成 | 不允许把业务逻辑写在 handler 里（handler 只做编排和校验） |
+
+**模块边界定义**：
+
+- **字段管理模块**：拥有 `fields`、`field_refs` 表，对应 `FieldStore`、`FieldRefStore`、`FieldService`
+- **模板管理模块**：拥有 `templates` 表，对应 `TemplateStore`、`TemplateService`
+- **字典模块**：拥有 `dictionaries` 表，对应 `DictionaryStore`、`DictCache`（只读查询，所有模块都可调用，视为基础设施）
+
+**典型违规与正确做法**：
+
+| 场景 | ❌ 违规 | ✅ 正确 |
+|---|---|---|
+| 模板创建要写 field_refs 和改 fields.ref_count | TemplateService 直接调 FieldRefStore.Add 和 FieldStore.IncrRefCountTx | Handler 调 TemplateService.Create + FieldService.AttachToTemplate（或类似的"模块对外接口"），跨模块事务在 handler 层开启 |
+| 详情接口要补字段精简列表 | TemplateService 直接调 FieldStore.GetByIDs | Handler 先调 TemplateService.GetByID 拿 fields JSON，再调 FieldService.GetByIDsLite 拿字段信息，handler 拼装结果返回 |
+| 字段引用详情要展示模板 label | FieldService 直接调 TemplateStore.GetByIDs | Handler 调 FieldService.GetReferences 拿 ID 列表，再调 TemplateService.GetByIDsLite 补 label |
+| 模板写操作要清字段方缓存 | TemplateService 持有 FieldCache 引用 | Handler 调 TemplateService 写完后再调 FieldService.InvalidateDetail(fieldIDs) |
+
+**跨模块事务处理**：
+
+handler 层负责跨模块事务时：
+
+- 由 handler 调用 `db.BeginTxx` 开启事务
+- 把 `*sqlx.Tx` 作为参数传给两个 service 的对应方法（service 方法签名要支持接受外部 tx）
+- handler 统一 `Commit` / `Rollback`
+- service 方法既要支持"自己开事务"也要支持"接受外部 tx"，前者用于纯单模块写，后者用于被 handler 编排
+
+**为什么这么严格**：
+
+1. **模块解耦**：service 互相不感知，删除一个模块只需删自己目录，不会破坏其它模块
+2. **测试单元化**：每个 service 单测只 mock 自己的 store，不需要 mock 其它模块
+3. **依赖方向清晰**：依赖图永远是 handler → service → store，不会出现 service ↔ service 的横向依赖
+4. **职责单一**：handler 是"用例编排者"，service 是"模块业务专家"，store 是"表 DAO"，每层只做一件事
+
+> **例外**：`DictCache` 是只读基础设施，可以被任意 service 直接调用（label 翻译是公共能力，不算业务跨模块）。
+
+**关于跨模块事务的成本**：
+
+ADMIN 是 HTTP 单体（不是微服务），所有模块在同一进程、同一 `*sqlx.DB`。handler 层开的跨模块事务在物理上就是一次普通的 MySQL `BEGIN ... COMMIT`，与单 service 内开事务的物理行为完全相同：
+
+- ❌ **不需要** 2PC / TCC / Saga / 补偿事务
+- ❌ **不存在** 协调者宕机 / in-doubt 事务 / 网络分区问题
+- ✅ `tx.Rollback()` 一行搞定失败回滚
+- ⚠️ 仅需注意两点（与单 service 事务一样）：
+  1. 事务内不做慢操作（HTTP 调用、长循环、跨库查询）
+  2. 多个 handler 路径锁多张表时保持一致的加锁顺序，防死锁
+
+**只有在跨进程 RPC 调用时**才需要分布式事务方案。我们这里不会出现。
+
 ## 需求处理流程（硬性规定）
 
 **任何新需求都必须先走 `/spec-create` 规划，不允许直接写代码。**
