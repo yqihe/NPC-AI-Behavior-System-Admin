@@ -229,7 +229,20 @@ const categoryOptions = ref<DictionaryItem[]>([])
 const version = ref(0)
 const refCount = ref(0)
 
-const form = reactive({
+interface FormState {
+  name: string
+  label: string
+  type: string
+  category: string
+  properties: {
+    description: string
+    expose_bb: boolean
+    default_value: unknown
+    constraints: Record<string, unknown>
+  }
+}
+
+const form = reactive<FormState>({
   name: '',
   label: '',
   type: '',

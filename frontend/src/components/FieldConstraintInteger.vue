@@ -13,11 +13,11 @@
         <div class="constraint-field">
           <label class="constraint-field-label">最小值</label>
           <el-input-number
-            :model-value="constraints.minimum"
+            :model-value="constraints.min as number | undefined"
             :controls="false"
             placeholder="不限"
             style="width: 100%"
-            @update:model-value="(v) => update('minimum', v)"
+            @update:model-value="(v: number | null | undefined) => update('min', v)"
           />
         </div>
       </el-col>
@@ -25,11 +25,11 @@
         <div class="constraint-field">
           <label class="constraint-field-label">最大值</label>
           <el-input-number
-            :model-value="constraints.maximum"
+            :model-value="constraints.max as number | undefined"
             :controls="false"
             placeholder="不限"
             style="width: 100%"
-            @update:model-value="(v) => update('maximum', v)"
+            @update:model-value="(v: number | null | undefined) => update('max', v)"
           />
         </div>
       </el-col>
@@ -37,12 +37,12 @@
         <div class="constraint-field">
           <label class="constraint-field-label">步长</label>
           <el-input-number
-            :model-value="constraints.step"
+            :model-value="constraints.step as number | undefined"
             :controls="false"
             :min="0"
             placeholder="默认 1"
             style="width: 100%"
-            @update:model-value="(v) => update('step', v)"
+            @update:model-value="(v: number | null | undefined) => update('step', v)"
           />
         </div>
       </el-col>

@@ -33,13 +33,13 @@
           :model-value="opt.value"
           placeholder="选项值"
           size="default"
-          @update:model-value="(v) => updateOption(idx, 'value', v)"
+          @update:model-value="(v: string) => updateOption(idx, 'value', v)"
         />
         <el-input
           :model-value="opt.label"
           placeholder="显示标签"
           size="default"
-          @update:model-value="(v) => updateOption(idx, 'label', v)"
+          @update:model-value="(v: string) => updateOption(idx, 'label', v)"
         />
         <el-icon class="del-icon" @click="removeOption(idx)"><Delete /></el-icon>
       </div>
@@ -54,12 +54,12 @@
         <div class="constraint-field">
           <label class="constraint-field-label">最少选择数</label>
           <el-input-number
-            :model-value="constraints.min_select"
+            :model-value="constraints.minSelect"
             :controls="false"
             :min="0"
             placeholder="默认 1"
             style="width: 100%"
-            @update:model-value="(v) => updateField('min_select', v)"
+            @update:model-value="(v: number | null | undefined) => updateField('minSelect', v)"
           />
         </div>
       </el-col>
@@ -67,12 +67,12 @@
         <div class="constraint-field">
           <label class="constraint-field-label">最多选择数</label>
           <el-input-number
-            :model-value="constraints.max_select"
+            :model-value="constraints.maxSelect"
             :controls="false"
             :min="0"
             placeholder="默认 1"
             style="width: 100%"
-            @update:model-value="(v) => updateField('max_select', v)"
+            @update:model-value="(v: number | null | undefined) => updateField('maxSelect', v)"
           />
         </div>
       </el-col>
@@ -97,8 +97,8 @@ interface SelectOption {
 
 interface SelectConstraints {
   options?: SelectOption[]
-  min_select?: number
-  max_select?: number
+  minSelect?: number
+  maxSelect?: number
   [key: string]: unknown
 }
 
