@@ -129,7 +129,7 @@ func (s *FieldService) Create(ctx context.Context, req *model.CreateFieldRequest
 		return 0, errcode.Newf(errcode.ErrFieldNameExists, "字段标识 '%s' 已存在", req.Name)
 	}
 
-	// reference 类型：校验引用字段存在性 + 启用状态 + 循环引用检测
+	// reference 类型：校验引用字段存在性 + 启用状态 + 禁止嵌套 reference
 	var refFieldIDs []int64
 	if req.Type == model.FieldTypeReference {
 		props, _ := parseProperties(req.Properties)
@@ -146,10 +146,13 @@ func (s *FieldService) Create(ctx context.Context, req *model.CreateFieldRequest
 				if !f.Enabled {
 					return 0, errcode.Newf(errcode.ErrFieldRefDisabled, "字段 '%s' 已停用，不能引用", f.Name)
 				}
+				if f.Type == model.FieldTypeReference {
+					return 0, errcode.Newf(errcode.ErrFieldRefNested, "字段 '%s' 是 reference 类型，禁止嵌套", f.Name)
+				}
 			}
+			// 嵌套已禁止 → reference 链最多只有一层 → 不可能形成环
+			// detectCyclicRef 保留为防御性兜底，覆盖未通过 service 层的旁路写入场景
 			if len(refFieldIDs) > 0 {
-				// 新建字段还没有 ID，用 name 做占位（不会冲突，因为 name 唯一）
-				// 只需确保被引用的字段链不形成环
 				if err := s.detectCyclicRef(ctx, 0, refFieldIDs); err != nil {
 					return 0, err
 				}
@@ -290,9 +293,15 @@ func (s *FieldService) Update(ctx context.Context, req *model.UpdateFieldRequest
 					if f == nil {
 						return errcode.Newf(errcode.ErrFieldRefNotFound, "引用的字段 ID=%d 不存在", refID)
 					}
-					// 只有新增的引用才检查启用状态
-					if !oldRefSet[refID] && !f.Enabled {
-						return errcode.Newf(errcode.ErrFieldRefDisabled, "字段 '%s' 已停用，不能新增引用", f.Name)
+					// 只有新增的引用才检查启用状态和嵌套限制
+					// 旧引用即使是 reference 类型也保留（理论上不存在，因为新增就被拦截了；防御历史脏数据）
+					if !oldRefSet[refID] {
+						if !f.Enabled {
+							return errcode.Newf(errcode.ErrFieldRefDisabled, "字段 '%s' 已停用，不能新增引用", f.Name)
+						}
+						if f.Type == model.FieldTypeReference {
+							return errcode.Newf(errcode.ErrFieldRefNested, "字段 '%s' 是 reference 类型，禁止嵌套", f.Name)
+						}
 					}
 				}
 				if err := s.detectCyclicRef(ctx, req.ID, newRefIDs); err != nil {

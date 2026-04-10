@@ -5,7 +5,6 @@
 | 文档 | 内容概括 | 何时查阅 |
 |------|----------|----------|
 | [README.md](v3-PLAN/README.md) | V3 功能总览（页面清单 + 通用功能 + 通用延后功能） | 了解全局规划时 |
-| [backend-guide.md](v3-PLAN/backend-guide.md) | 通用后端指南（Gin + MySQL/MongoDB/Redis 设计原则 + 常见问题） | 所有后端开发 |
 | [api-contract.md](v3-PLAN/api-contract.md) | ADMIN 与游戏服务端的导出 API 契约（5 个接口 + JSON 格式） | 开发导出接口 / 联调时 |
 
 ### 配置管理

@@ -1260,7 +1260,7 @@
                             {
                               "type": "text",
                               "id": "jev3d",
-                              "fill": "#606266",
+                              "fill": "#409EFF",
                               "content": "6",
                               "fontFamily": "Inter",
                               "fontSize": 13,
@@ -1503,7 +1503,7 @@
                             {
                               "type": "text",
                               "id": "STuWi",
-                              "fill": "#606266",
+                              "fill": "#409EFF",
                               "content": "2",
                               "fontFamily": "Inter",
                               "fontSize": 13,
@@ -1744,7 +1744,7 @@
                             {
                               "type": "text",
                               "id": "Ip4jj",
-                              "fill": "#606266",
+                              "fill": "#409EFF",
                               "content": "8",
                               "fontFamily": "Inter",
                               "fontSize": 13,
@@ -1986,7 +1986,7 @@
                             {
                               "type": "text",
                               "id": "ORqtJ",
-                              "fill": "#606266",
+                              "fill": "#409EFF",
                               "content": "3",
                               "fontFamily": "Inter",
                               "fontSize": 13,
@@ -2228,7 +2228,7 @@
                             {
                               "type": "text",
                               "id": "SDrfp",
-                              "fill": "#606266",
+                              "fill": "#409EFF",
                               "content": "5",
                               "fontFamily": "Inter",
                               "fontSize": 13,
@@ -3263,6 +3263,64 @@
                               "fontFamily": "Inter",
                               "fontSize": 12,
                               "fontWeight": "normal"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "6WI4j",
+                              "name": "nameValidOk",
+                              "gap": 4,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "icon_font",
+                                  "id": "UHHsw",
+                                  "name": "okIcon",
+                                  "width": 14,
+                                  "height": 14,
+                                  "iconFontName": "circle-check",
+                                  "iconFontFamily": "lucide",
+                                  "fill": "#67C23A"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "Kdk66",
+                                  "name": "okTxt",
+                                  "fill": "#67C23A",
+                                  "content": "该标识可以使用",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "vToGV",
+                              "name": "nameValidErr",
+                              "gap": 4,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "icon_font",
+                                  "id": "QPeMa",
+                                  "name": "errIcon",
+                                  "width": 14,
+                                  "height": 14,
+                                  "iconFontName": "circle-x",
+                                  "iconFontFamily": "lucide",
+                                  "fill": "#F56C6C"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "f2har",
+                                  "name": "errTxt",
+                                  "fill": "#F56C6C",
+                                  "content": "该标识已被使用（含已删除记录）",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
                             }
                           ]
                         }
@@ -11954,6 +12012,42 @@
                                       ]
                                     }
                                   ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "HGzXB",
+                              "name": "constWarn",
+                              "width": "fill_container",
+                              "fill": "#FDF6EC",
+                              "cornerRadius": 4,
+                              "gap": 6,
+                              "padding": [
+                                8,
+                                12
+                              ],
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "icon_font",
+                                  "id": "hpO0H",
+                                  "name": "constWarnIcon",
+                                  "width": 14,
+                                  "height": 14,
+                                  "iconFontName": "triangle-alert",
+                                  "iconFontFamily": "lucide",
+                                  "fill": "#E6A23C"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "ySfW8",
+                                  "name": "constWarnTxt",
+                                  "fill": "#E6A23C",
+                                  "content": "该字段已被引用，约束只能放宽不能收紧：最小值只能减小，最大值只能增大",
+                                  "fontFamily": "Inter",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
                                 }
                               ]
                             }

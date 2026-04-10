@@ -69,10 +69,10 @@
       </p>
     </div>
 
-    <!-- 循环引用警告 -->
+    <!-- 嵌套禁止说明 -->
     <div class="cycle-warn">
       <el-icon><WarningFilled /></el-icon>
-      引用其他 reference 字段时，系统自动检测循环引用
+      reference 字段只能引用 leaf 字段（基础类型），不能嵌套引用其他 reference 字段
     </div>
   </div>
 </template>
@@ -123,11 +123,11 @@ async function loadEnabledFields() {
   }
 }
 
-// 排除自身和已选字段
+// 排除自身、已选字段、以及 reference 类型（禁止嵌套）
 const availableFields = computed(() => {
   const selectedIds = new Set(refFields.value.map((f) => f.id))
   return enabledFields.value.filter(
-    (f) => f.id !== props.currentFieldId && !selectedIds.has(f.id),
+    (f) => f.id !== props.currentFieldId && !selectedIds.has(f.id) && f.type !== 'reference',
   )
 })
 
