@@ -207,7 +207,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance } from 'element-plus'
 import { ArrowLeft, Lock, WarningFilled, Loading, CircleCheck, CircleClose } from '@element-plus/icons-vue'
-import { fieldApi } from '@/api/fields'
+import { fieldApi, FIELD_ERR } from '@/api/fields'
 import type { BizError } from '@/api/request'
 import { dictApi } from '@/api/dictionaries'
 import type { DictionaryItem } from '@/api/dictionaries'
@@ -415,12 +415,22 @@ async function handleSubmit() {
     router.push('/fields')
   } catch (err: unknown) {
     const bizErr = err as BizError
-    if (bizErr.code === 40010) {
+    if (bizErr.code === FIELD_ERR.VERSION_CONFLICT) {
       ElMessageBox.alert('数据已被其他用户修改，请返回列表刷新后重试。', '版本冲突', { type: 'warning' })
+      return
     }
-    if (bizErr.code === 40001 || bizErr.code === 40002) {
+    if (bizErr.code === FIELD_ERR.NAME_EXISTS || bizErr.code === FIELD_ERR.NAME_INVALID) {
       nameStatus.value = 'taken'
       nameMessage.value = bizErr.message
+      return
+    }
+    if (bizErr.code === FIELD_ERR.REF_NESTED) {
+      ElMessage.error('不能引用 reference 类型字段（禁止嵌套），请选择普通字段')
+      return
+    }
+    if (bizErr.code === FIELD_ERR.REF_EMPTY) {
+      ElMessage.error('reference 字段必须至少选择一个目标字段')
+      return
     }
   } finally {
     submitting.value = false
