@@ -7,24 +7,26 @@
       <div class="sidebar-sep"></div>
       <el-menu
         :default-active="activeMenu"
+        :default-openeds="defaultOpeneds"
         background-color="#1D2B3A"
         text-color="#bfcbd9"
         active-text-color="#409EFF"
         router
       >
-        <el-menu-item-group>
+        <el-sub-menu index="group-config">
           <template #title>
-            <span class="menu-group-title">配置管理</span>
+            <el-icon class="group-icon"><Setting /></el-icon>
+            <span class="group-title">配置管理</span>
           </template>
           <el-menu-item index="/fields">
-            <el-icon><component :is="iconList" /></el-icon>
+            <el-icon><List /></el-icon>
             <span>字段管理</span>
           </el-menu-item>
           <el-menu-item index="/templates">
-            <el-icon><component :is="iconFiles" /></el-icon>
+            <el-icon><Files /></el-icon>
             <span>模板管理</span>
           </el-menu-item>
-        </el-menu-item-group>
+        </el-sub-menu>
       </el-menu>
     </el-aside>
     <el-main style="padding: 0; background: #F5F7FA; overflow: hidden">
@@ -36,18 +38,18 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { List, Files } from '@element-plus/icons-vue'
+import { List, Files, Setting } from '@element-plus/icons-vue'
 
 const route = useRoute()
-
-const iconList = List
-const iconFiles = Files
 
 const activeMenu = computed(() => {
   if (route.path === '/') return '/fields'
   const parts = route.path.split('/')
   return '/' + (parts[1] || '')
 })
+
+// 哪些分组默认展开（所有一级分组 index）
+const defaultOpeneds = ['group-config']
 </script>
 
 <style scoped>
@@ -70,26 +72,61 @@ const activeMenu = computed(() => {
   margin: 0;
 }
 
-.menu-group-title {
-  color: #8a9bae;
-  font-size: 12px;
+.group-icon {
+  color: #bfcbd9;
+  font-size: 18px;
+}
+
+.group-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e6e8eb;
+  letter-spacing: 0.5px;
 }
 
 :deep(.el-menu) {
   border-right: none;
 }
 
-:deep(.el-menu-item-group__title) {
-  padding: 16px 20px 8px 20px;
+/* sub-menu 一级分组标题栏 */
+:deep(.el-sub-menu__title) {
+  height: 52px;
+  line-height: 52px;
+  padding: 0 20px !important;
+  background: #17212D !important;
 }
 
+:deep(.el-sub-menu__title:hover) {
+  background: #1F2D3D !important;
+}
+
+:deep(.el-sub-menu .el-sub-menu__icon-arrow) {
+  color: #8a9bae;
+  right: 20px;
+}
+
+/* 二级菜单项 */
 :deep(.el-menu-item) {
-  height: 40px;
-  line-height: 40px;
+  height: 42px;
+  line-height: 42px;
+  padding-left: 44px !important;
+  font-size: 14px;
+}
+
+:deep(.el-menu-item .el-icon) {
+  font-size: 16px;
+}
+
+:deep(.el-menu-item:hover) {
+  background: #1F2D3D !important;
 }
 
 :deep(.el-menu-item.is-active) {
   background-color: #409EFF !important;
   color: #fff !important;
+}
+
+:deep(.el-menu-item.is-active .el-icon) {
+  color: #fff;
 }
 </style>
