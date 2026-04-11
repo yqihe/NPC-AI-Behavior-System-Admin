@@ -107,11 +107,46 @@ async function open(refField: FieldListItem, currentSelectedIds: number[]) {
   refFieldLabel.value = refField.label
   refFieldName.value = refField.name
   try {
+    // 后端持久化格式是 constraints.refs (number[])，不是富对象 ref_fields
+    // FieldForm.vue 只在 UI 本地状态下用 ref_fields，提交前转回 refs
     const res = await fieldApi.detail(refField.id)
     const constraints = (res.data?.properties?.constraints ?? {}) as {
-      ref_fields?: RefFieldItem[]
+      refs?: number[]
     }
-    const items = constraints.ref_fields ?? []
+    const refIds = constraints.refs ?? []
+    if (refIds.length === 0) {
+      subFields.value = []
+      return
+    }
+    // 并发拉每个子字段详情（reference 禁止嵌套，子字段必是 leaf，数量通常 < 10）
+    const details = await Promise.all(
+      refIds.map((id) =>
+        fieldApi
+          .detail(id)
+          .then((r) => r.data)
+          .catch(() => null),
+      ),
+    )
+    const items: RefFieldItem[] = []
+    for (let i = 0; i < refIds.length; i++) {
+      const d = details[i]
+      if (d) {
+        items.push({
+          id: d.id,
+          name: d.name,
+          label: d.label,
+          type: d.type,
+        })
+      } else {
+        // 罕见：子字段被硬删除，保留占位以便视觉呈现
+        items.push({
+          id: refIds[i],
+          name: `field_${refIds[i]}`,
+          label: `字段 ${refIds[i]}`,
+          type: 'unknown',
+        })
+      }
+    }
     subFields.value = items
     // 回勾：currentSelectedIds 与 subFields 的交集
     const subIdSet = new Set(items.map((f) => f.id))
