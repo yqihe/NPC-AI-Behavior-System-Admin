@@ -496,14 +496,19 @@ func (s *FieldService) ToggleEnabled(ctx context.Context, req *model.ToggleEnabl
 
 // ValidateFieldsForTemplate 校验字段列表对模板的可用性
 //
-// 用途：模板创建/编辑时由 handler 调用，校验勾选的 field_ids 全部存在 + 启用。
+// 用途：模板创建/编辑时由 handler 调用，校验勾选的 field_ids 全部存在 + 启用 + 非 reference。
 // 返回：
 //   - errcode.ErrTemplateFieldNotFound (41006) — 任一字段不存在
 //   - errcode.ErrTemplateFieldDisabled (41005) — 任一字段已停用
+//   - errcode.ErrTemplateFieldIsReference (41012) — 任一字段是 reference 类型
 //   - nil — 全部通过
 //
-// 41005/41006 归在模板段位（41xxx），因为这两个错误由模板管理页消费，
+// 41005/41006/41012 归在模板段位（41xxx），因为这些错误由模板管理页消费，
 // 与字段管理自身的 40011/40013 语义不混用（go-red-lines）。
+//
+// 禁 reference 的原因：reference 字段只是前端"快捷选择器"，模板侧只存展开后的 leaf
+// 字段 ID；允许 reference 进入模板 fields 会让 templates.fields JSON 与
+// "模板只存 leaf"的全局约定相悖，也会让 NPC 渲染/导出路径出现歧义。
 func (s *FieldService) ValidateFieldsForTemplate(ctx context.Context, fieldIDs []int64) error {
 	if len(fieldIDs) == 0 {
 		return nil
@@ -523,6 +528,9 @@ func (s *FieldService) ValidateFieldsForTemplate(ctx context.Context, fieldIDs [
 		}
 		if !f.Enabled {
 			return errcode.Newf(errcode.ErrTemplateFieldDisabled, "字段 '%s' 已停用，请先在字段管理中启用", f.Name)
+		}
+		if f.Type == model.FieldTypeReference {
+			return errcode.Newf(errcode.ErrTemplateFieldIsReference, "字段 '%s' 是 reference 类型，请展开其子字段后加入模板", f.Name)
 		}
 	}
 	return nil

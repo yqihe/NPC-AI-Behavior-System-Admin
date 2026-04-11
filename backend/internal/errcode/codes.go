@@ -48,6 +48,7 @@ const (
 	ErrTemplateDeleteNotDisabled = 41009 // 删除前必须先停用
 	ErrTemplateEditNotDisabled   = 41010 // 编辑前必须先停用
 	ErrTemplateVersionConflict   = 41011 // 版本冲突（乐观锁）
+	ErrTemplateFieldIsReference  = 41012 // 模板不能直接挂载 reference 类型字段
 )
 
 // --- 错误消息 ---
@@ -86,6 +87,7 @@ var messages = map[int]string{
 	ErrTemplateDeleteNotDisabled: "请先停用该模板再删除",
 	ErrTemplateEditNotDisabled:   "请先停用该模板再编辑",
 	ErrTemplateVersionConflict:   "该模板已被其他人修改，请刷新后重试",
+	ErrTemplateFieldIsReference:  "reference 类型字段不能直接加入模板，请点击 reference 字段选择其子字段",
 }
 
 // Msg 获取错误码对应的默认消息
