@@ -11,6 +11,7 @@
 - **omitempty 吞零值**：`severity: 0` 是合法值，带 `omitempty` 会丢失
 - **config 用 Raw 类型**：`{name, config}` 中 config 不反序列化为具体 struct，用 `bson.Raw`/`json.RawMessage` 透传
 - **bson canonical 模式**：`bson.MarshalExtJSON(raw, true, false)` 的 `canonical=true` 输出 `{"$numberInt":"80"}`，前端无法解析。给前端必须 `canonical=false`
+- **`json.RawMessage` 对 `null` 不变 nil**：客户端传 `"field": null` 时 `req.Field` 是 `[]byte("null")`（长度 4），**不是 nil**。`if req.Field == nil` 会漏掉 `null` / `[]` / `"foo"` / `123` / `true` 等所有非对象形状。对"必须是 JSON 对象"的 RawMessage 字段（典型如字段管理 `properties`），必须在 handler 层用 `bytes.TrimSpace` + 首字符判 `{` 的方式拦截，或在 service 层 `json.Unmarshal` 到具体结构后判空。`field-constraint-hardening` spec 的 atk11.6 就是踩的这个坑——`properties=[]` 原本能直接落库成 `[]` 坏数据
 
 ## HTTP Handler
 
@@ -46,6 +47,14 @@
 
 - **依赖方向不能倒置**：`store`（数据访问层）不应 import `cache`（缓存层）。如果 store 需要 cache 的东西（如 key 函数），说明那些东西放错了位置，应该移到 store 中
 - **导出可见性最小化**：只在包内使用的常量用小写（unexported）。比如 Redis version key 只在 `store/redis` 内部使用，不需要导出给外部
+
+## 业务校验规约
+
+- **新增 constraint key 必须同步更新 `checkConstraintTightened`**：字段管理的 `service/field.go:checkConstraintTightened` 实现了"被引用字段的约束只能放宽不能收紧"这个不变式，按字段类型分 case 校验。若字段类型新增 constraint 字段（比如未来加 `date` 类型的 `minDate/maxDate`，或给现有类型加 `step`/`precision`/`pattern` 之外的新 key），**必须同步在对应 case 中补一条"收紧判定"规则**。漏写会导致被引用字段可以静默收紧新约束，已有数据突然变非法——`field-constraint-hardening` spec 专门堵过 5 个这样的漏洞：`float.precision`、`string.pattern`、`select.minSelect/maxSelect`。判断流程：
+  1. 这个 key 代表"范围"还是"枚举"还是"格式"？
+  2. 放宽方向是什么？（数值变大/变小、集合增加、`pattern` 置空）
+  3. 在 `checkConstraintTightened` 对应 case 里写判定 + 返回 `ErrFieldRefTighten`
+  4. 在 `tests/api_test.sh` 的攻击段加一条 atk 用例，确认现在能拦
 
 ---
 

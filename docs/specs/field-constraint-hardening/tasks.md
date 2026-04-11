@@ -125,7 +125,7 @@
 
 ---
 
-## T6：`docs/v3-PLAN/配置管理/字段管理/features.md` 同步（R10）
+## T6：`docs/v3-PLAN/配置管理/字段管理/features.md` 同步（R10） ✅
 
 **文件**：
 - `docs/v3-PLAN/配置管理/字段管理/features.md`（唯一）
@@ -150,7 +150,7 @@
 
 ---
 
-## T7：`docs/development/` 陷阱沉淀（R10）
+## T7：`docs/development/` 陷阱沉淀（R10） ✅
 
 **文件**：
 - `docs/development/go-pitfalls.md`

@@ -20,6 +20,14 @@
 
 ---
 
+## 模块职责边界（分层硬规则）
+
+字段管理模块严格遵守"分层职责"硬规则，`FieldService` **只持有字段模块自己的 store/cache**（`FieldStore` / `FieldRefStore` / `FieldCache` / `DictCache`），不持有 `TemplateStore` / `TemplateCache`。跨模块的拼装（例如字段引用详情中补模板 label）由 `FieldHandler` 作为"用例编排者"调 `TemplateService.GetByIDsLite` 完成，Service 层之间互不依赖。
+
+对外，`FieldService` 暴露了一组跨模块方法（`ValidateFieldsForTemplate` / `AttachToTemplateTx` / `DetachFromTemplateTx` / `GetByIDsLite` / `InvalidateDetails`），供模板管理的 handler 在跨模块事务中调用——参见功能 12。
+
+---
+
 ## 功能 1：字段列表
 
 **场景 A — 在字段管理页，管理员要浏览所有字段。** 不传 enabled 筛选条件，启用和停用的字段都展示出来，管理员才能对停用字段做重新启用或删除操作。
@@ -28,13 +36,15 @@
 
 两个场景走同一个接口，靠 `enabled` 参数区分。支持按中文标签模糊搜索、字段类型/标签分类精确筛选、后端分页。列表项包含 `id` 字段，前端用 id 发起后续操作。
 
+Service 在返回列表前会用 `DictCache` 把每行的 `type` / `category` 翻译成 `type_label` / `category_label`，前端直接渲染，不再回查字典。
+
 **调用链路：**
 
 | 层 | 入口 |
 |---|---|
 | Router | `POST /api/v1/fields/list` |
-| Handler | `FieldHandler.List` — 分页参数默认值/上限校正 |
-| Service | `FieldService.List` — 查缓存 → 查 MySQL → 内存翻译 type_label/category_label → 写缓存 |
+| Handler | `FieldHandler.List` — 透传 query（分页默认值/上限校正在 Service 层做） |
+| Service | `FieldService.List` — 分页参数校正 → 查 Redis 列表缓存 → miss 时查 MySQL → 内存翻译 type_label/category_label → 写缓存 |
 | Store | `FieldCache.GetList` → `FieldStore.List`（覆盖索引） → `FieldCache.SetList` |
 
 ---
@@ -47,13 +57,15 @@
 
 字段标识（name）一旦创建不可修改（是唯一键），且含软删除记录也不能重复使用，防止历史数据混乱。
 
+Handler 层做格式/必填校验（name 符合 `^[a-z][a-z0-9_]*$`、长度上限、label 非空、type/category 非空、properties 非空）；Service 层做业务校验（字典存在性、name 唯一性、reference 类型的存在性 + 启用 + 循环引用检测）。
+
 **调用链路：**
 
 | 层 | 入口 |
 |---|---|
 | Router | `POST /api/v1/fields/create` |
 | Handler | `FieldHandler.Create` — 校验 name 格式/长度、label、type、category、properties 非空 |
-| Service | `FieldService.Create` — 校验字典存在性 → name 唯一性 → reference 类型校验（存在性+启用+循环引用） → 写入 MySQL → 写入 field_refs + IncrRefCount → 清列表缓存 |
+| Service | `FieldService.Create` — 字典存在性 → name 唯一性 → reference 类型校验（存在性+启用+循环引用） → 写入 MySQL → 写入 field_refs + IncrRefCount → 清列表缓存 |
 | Store | `FieldStore.Create` 返回 lastInsertId |
 
 ---
@@ -73,19 +85,21 @@
 | Router | `POST /api/v1/fields/detail` |
 | Handler | `FieldHandler.Get` — 校验 `id > 0` |
 | Service | `FieldService.GetByID` — 查 Redis detail 缓存 → 分布式锁防击穿 → double-check → 查 MySQL → 写缓存（含空标记防穿透） |
-| Store | `FieldCache.GetDetail(id)` → `TryLock(id)` → `FieldStore.GetByID(id)` → `FieldCache.SetDetail(id)` |
+| Store | `FieldCache.GetDetail(id)` → `TryLock(id, 3s)` → `FieldStore.GetByID(id)` → `FieldCache.SetDetail(id)` |
 
 ---
 
 ## 功能 4：编辑字段
 
-**场景 — 在字段管理页，管理员要修改字段的标签、类型、分类或约束。** 只有未启用状态才能编辑——启用中的字段已对外可见，允许随意编辑会导致引用方看到不稳定的配置。
+**场景 — 在字段管理页，管理员要修改字段的标签、类型、分类或约束。** 只有未启用状态才能编辑——启用中的字段已对外可见，允许随意编辑会导致引用方看到不稳定的配置。试图编辑启用中的字段返回 `40015 ErrFieldEditNotDisabled`。
 
 如果这个字段已经被模板或其他字段引用了（ref_count > 0），有两个硬约束：
-- 不能改类型。比如从"整数"改成"字符串"，已经引用它的模板里填的值全乱了。
-- 不能收紧约束。比如最大值从 100 改成 50，模板里已经填了 80 的值就不合法了。
+- **不能改类型**（`40006 ErrFieldRefChangeType`）。比如从"整数"改成"字符串"，已经引用它的模板里填的值全乱了。
+- **不能收紧约束**（`40007 ErrFieldRefTighten`）。比如最大值从 100 改成 50，模板里已经填了 80 的值就不合法了。
 
-编辑用乐观锁防止两个管理员同时改同一个字段互相覆盖。
+对于 reference 类型字段，编辑时对"新增的引用"校验存在性和启用状态；**对于已有引用，即使目标字段后来被停用也允许保留**——这和"存量不动，增量拦截"是同一个原则。另外会再做一次循环引用检测。如果类型从 reference 改成别的类型，Service 层会自动把它原先对其他字段的引用关系清掉。
+
+编辑用乐观锁防止两个管理员同时改同一个字段互相覆盖，版本冲突返回 `40010 ErrFieldVersionConflict`。
 
 **调用链路：**
 
@@ -93,7 +107,7 @@
 |---|---|
 | Router | `POST /api/v1/fields/update` |
 | Handler | `FieldHandler.Update` — 校验 `id > 0`、label、type、category、properties、version |
-| Service | `FieldService.Update` — 按 ID 查旧数据 → **校验 enabled=0** → 字典校验 → 类型变更/约束收紧检查 → reference 引用校验 → 乐观锁写入 → 同步引用关系 → 清缓存 |
+| Service | `FieldService.Update` — 字典校验 → 按 ID 查旧数据 → **校验 enabled=0** → 类型变更/约束收紧检查 → reference 引用校验 + 循环引用检测 → 乐观锁写入 → 同步引用关系（可能包含清空旧引用） → 清自身/受影响方/列表缓存 |
 | Store | `FieldStore.GetByID(id)` → `FieldStore.Update(req)` WHERE id=? AND version=? |
 
 ---
@@ -103,10 +117,10 @@
 **场景 — 在字段管理页，管理员要彻底移除一个不再需要的字段。**
 
 删除有两道门槛：
-1. 必须先停用。这是给管理员一个缓冲期——停用后观察一段时间，确认没有问题再删。
-2. 不能有引用。如果还有模板或其他字段在引用它，删不掉，接口会返回错误。
+1. **必须先停用**（`40012 ErrFieldDeleteNotDisabled`）。这是给管理员一个缓冲期——停用后观察一段时间，确认没有问题再删。
+2. **不能有引用**（`40005 ErrFieldRefDelete`）。如果还有模板或其他字段在引用它，删不掉。
 
-删除是软删除（标记 deleted=1），不是物理删除。如果这个字段本身是 reference 类型（引用了其他字段），删除时会自动清理它对其他字段的引用关系。
+删除是软删除（标记 deleted=1），不是物理删除。事务内用 `FOR SHARE` 重新检查引用关系以防 TOCTOU（先查后删之间被新引用挤进来）。如果这个字段本身是 reference 类型（引用了其他字段），删除时会在同一事务中 `FieldRefStore.RemoveBySource` 清掉它对其他字段的引用关系，并对每个被引用方 `DecrRefCountTx`。
 
 **调用链路：**
 
@@ -114,8 +128,8 @@
 |---|---|
 | Router | `POST /api/v1/fields/delete` |
 | Handler | `FieldHandler.Delete` — 校验 `id > 0` |
-| Service | `FieldService.Delete` — 按 ID 查 → 校验 enabled=0 → 事务内 FOR SHARE 检查引用 → 软删除 → 清理 reference 引用 + DecrRefCount → 清缓存 |
-| Store | `FieldStore.GetByID` → `FieldRefStore.HasRefsTx(tx, id)` FOR SHARE → `FieldStore.SoftDeleteTx(tx, id)` |
+| Service | `FieldService.Delete` — 按 ID 查 → 校验 enabled=0 → 事务内 FOR SHARE 检查引用 → 软删除 → 若自身是 reference 则 RemoveBySource + DecrRefCountTx → 清自身/受影响方/列表缓存 |
+| Store | `FieldStore.GetByID` → `FieldRefStore.HasRefsTx(tx, id)` FOR SHARE → `FieldStore.SoftDeleteTx(tx, id)` → `FieldRefStore.RemoveBySource(tx, 'field', id)` → `FieldStore.DecrRefCountTx(tx, targetID)` |
 
 ---
 
@@ -131,23 +145,25 @@
 |---|---|
 | Router | `POST /api/v1/fields/check-name` |
 | Handler | `FieldHandler.CheckName` — 校验 name 非空 |
-| Service | `FieldService.CheckName` — `FieldStore.ExistsByName(name)` 含软删除记录 |
+| Service | `FieldService.CheckName` — `FieldStore.ExistsByName(name)` 含软删除记录，返回 `{available, message}` |
 
 ---
 
-## 功能 7：字段引用详情
+## 功能 7：字段引用详情（跨模块编排）
 
 **场景 A — 在字段管理页，管理员想停用或删除某个字段之前，先看看谁在用它。** 接口返回两类引用方：哪些模板引用了它、哪些 reference 类型字段引用了它，附带引用方的中文名。
 
 **场景 B — 在字段管理页，删除接口返回"被引用无法删除"后，前端自动调用此接口展示引用详情，告诉管理员应该先去哪里解除引用。**
+
+**分层职责**：`FieldService.GetReferences` **只负责字段模块内的数据**——查 `field_refs` 关系、并用 `FieldStore.GetByIDs` 批量拿"被其他 reference 字段引用"这一类的 label。返回的 `Templates` 数组里每项只带 `RefID`，`Label` 留空。`FieldHandler.GetReferences` 拿到结果后再调 `TemplateService.GetByIDsLite` 跨模块批量拉模板 label，填回到每条 template 引用上。理论上引用方模板不可能缺失（因为字段被引用时模板不能被删），如果真的缺失 handler 层会 `slog.Warn` 并保留空 label。
 
 **调用链路：**
 
 | 层 | 入口 |
 |---|---|
 | Router | `POST /api/v1/fields/references` |
-| Handler | `FieldHandler.GetReferences` — 校验 `id > 0` |
-| Service | `FieldService.GetReferences` — 按 ID 查字段 → `FieldRefStore.GetByFieldID(id)` → 按 ref_type 分组 → `FieldStore.GetByIDs(ids)` 批量取 label |
+| Handler | `FieldHandler.GetReferences` — 校验 `id > 0` → 调 Service → 跨模块调 `templateService.GetByIDsLite` 补 template label |
+| Service | `FieldService.GetReferences` — 按 ID 查字段 → `FieldRefStore.GetByFieldID(id)` → 按 ref_type 分组 → `FieldStore.GetByIDs(fieldIDs)` 批量取 field label（template 只填 RefID） |
 
 ---
 
@@ -162,13 +178,15 @@
 
 停用一个被引用的字段是允许的。这是"存量不动，增量拦截"的设计：已经在用的不打扰，新的不让用。
 
+切换用乐观锁，版本冲突返回 `40010 ErrFieldVersionConflict`。
+
 **调用链路：**
 
 | 层 | 入口 |
 |---|---|
 | Router | `POST /api/v1/fields/toggle-enabled` |
 | Handler | `FieldHandler.ToggleEnabled` — 校验 `id > 0`、version > 0 |
-| Service | `FieldService.ToggleEnabled` — 按 ID 查字段 → 乐观锁更新 → 清缓存 |
+| Service | `FieldService.ToggleEnabled` — 按 ID 查字段 → 乐观锁更新 → 清自身 detail 缓存 + 列表缓存 |
 | Store | `FieldStore.ToggleEnabled(id, enabled, version)` WHERE id=? AND version=? |
 
 ---
@@ -177,7 +195,7 @@
 
 **场景 — 在字段管理页新建或编辑字段时，"字段类型"和"标签分类"的下拉选项不是前端写死的，而是从后端动态获取。** 这样运营团队可以随时在字典表里加新类型、新分类，不需要改代码重新部署。
 
-字典数据启动时从 MySQL 全量加载到内存，运行时直接读内存，不查表。
+字典数据启动时从 MySQL 全量加载到内存，运行时直接读内存，不查表。Service 层也用同一份 `DictCache` 做 type/category 的 label 翻译（功能 1/6/7 都会用到）。
 
 **调用链路：**
 
@@ -196,14 +214,27 @@
 
 问题是：模板里可能已经有人填了 80。如果允许改成 50，那 80 就超出范围了，数据就不一致了。
 
-所以被引用时，约束只能放宽不能收紧：
-- 数值类型：最小值只能往小改，最大值只能往大改
-- 字符串：最小长度只能往小改，最大长度只能往大改
-- 下拉选项：只能加新选项，不能删旧选项
+所以被引用时，约束只能放宽不能收紧，违反规则返回 `40007 ErrFieldRefTighten`：
+- **integer**：`min` 只能往小改、`max` 只能往大改
+- **float**：`min` 只能往小改、`max` 只能往大改、**`precision` 只能往大改**（降低 precision 会截断已存数据）
+- **string**：`minLength` 只能往小改、`maxLength` 只能往大改、**`pattern` 只能移除不能新增/变更**（按下表判定）
+- **select**：**`minSelect` 只能往小改、`maxSelect` 只能往大改**、`options` 只能加新选项不能删旧选项（按 value 比对）
 
-没有被引用的字段不受此限制，随便改。
+**pattern 判定表**：
 
-此功能内嵌在功能 4（编辑字段）的 Service 层中。
+| old | new | 结果 | 原因 |
+|---|---|---|---|
+| `""` | `""` | 允许 | 未变 |
+| `""` | `"^x$"` | 拒绝 40007 | 新增 pattern：旧数据可能不匹配 |
+| `"^x$"` | `"^x$"` | 允许 | 未变 |
+| `"^x$"` | `"^y$"` | 拒绝 40007 | pattern 变化：旧数据可能不匹配新 |
+| `"^x$"` | `""` | 允许 | 移除 pattern = 放宽 |
+
+没有被引用的字段（`ref_count == 0`）不受此限制，随便改。boolean 类型无约束所以不检查；reference 类型的 `refs` 收紧由功能 11 的 `validateReferenceRefs` 单独处理（禁止嵌套 / 存在 / 启用 / 无循环），不在 `checkConstraintTightened` 内。
+
+**不做**：`integer.step` 变更当前放行（step 语义不是"范围约束"，产品决策未定）。
+
+此功能内嵌在功能 4（编辑字段）的 Service 层 `checkConstraintTightened` 中。
 
 ### 约束 key 命名契约（必须前后端严格对齐）
 
@@ -220,15 +251,45 @@
 
 ---
 
-## 功能 11：循环引用检测 + 引用关系维护
+## 功能 11：reference 字段引用校验 + 引用关系维护
 
-**场景 A — 在字段管理页创建 reference 类型字段时，要从下拉列表选择它引用哪些字段。** 下拉列表只展示启用的字段（走功能 1 的 `enabled=true` 筛选）。选好后，后端确认被引用的字段存在且是启用的，检查不会形成循环引用，然后记录引用关系并更新被引用字段的引用计数。
+**场景 A — 在字段管理页创建 reference 类型字段时，要从下拉列表选择它引用哪些字段。** 下拉列表只展示启用的**非 reference**字段（走功能 1 的 `enabled=true` 筛选）。提交时，Service 的 `validateReferenceRefs` 依次做 5 条校验：
 
-**场景 B — 在字段管理页编辑一个已有的 reference 类型字段，想加几个新引用或去掉几个旧引用。** 对于新增的引用，被引用字段必须是启用的，停用的不让加。但对于已有的引用，即使那个字段后来被停用了，也允许保持——不会强制管理员去掉它。这和"存量不动，增量拦截"是同一个原则。
+| # | 规则 | 错误码 |
+|---|---|---|
+| 1 | `refs` 不能为空 | `40017 ErrFieldRefEmpty` |
+| 2 | 每个目标字段必须存在 | `40014 ErrFieldRefNotFound` |
+| 3 | 新增的目标字段必须启用 | `40013 ErrFieldRefDisabled` |
+| 4 | **新增的目标字段不能是 reference 类型**（禁止嵌套） | `40016 ErrFieldRefNested` |
+| 5 | 不能形成循环引用 | `40009 ErrFieldCyclicRef` |
 
-**场景 C — 在字段管理页删除一个 reference 类型字段时，它之前引用的那些字段的引用计数要减回去。** 这在删除事务内自动完成。
+校验通过后写入 `field_refs` 并对每个被引用字段 `IncrRefCount`。
 
-此功能内嵌在功能 2（创建）、功能 4（编辑）、功能 5（删除）的 Service 层中。
+**为什么禁止嵌套**：模板管理的前端设计假设 reference 字段只有"一层"——点开 popover 看到的子字段必然是 leaf（integer/float/string/boolean/select）。如果允许 `refB.refs = [refA]`，模板编辑页的 popover 会看到"子字段是另一个 reference"这种嵌套结构，要么递归展开要么放弃扁平化假设，成本很高。在字段管理层直接禁止嵌套是最简单的解法。
+
+**场景 B — 在字段管理页编辑一个已有的 reference 类型字段，想加几个新引用或去掉几个旧引用。** 对于**新增**的引用，目标必须启用且不能是 reference 类型（规则 3/4）；但对于**已有**的引用（在旧 `refs` 集合中），即使那个字段后来被停用、或历史上就是嵌套的 reference，也允许保留不拦截。这是"存量不动，增量拦截"原则的体现。Service 层用 `oldRefSet` 集合区分"新增"与"已有"，只有新增的才走严格校验。
+
+**场景 C — 在字段管理页删除一个 reference 类型字段时，它之前引用的那些字段的引用计数要减回去。** 这在删除事务内由 `RemoveBySource` + `DecrRefCountTx` 自动完成。
+
+**⚠️ 已知小瑕疵**：Create 时 `fieldStore.Create`（主记录）和 `syncFieldRefs`（引用关系同步）**不在同一个事务里**——主记录先 insert，引用关系再单独开 tx 写。极端情况下主记录成功而引用关系失败时会出现不一致。Update 路径也有类似问题。待后续重构为统一事务（字段模块的历史设计选择，在模板管理跨模块事务接入时会一起抽齐）。
+
+此功能内嵌在功能 2（创建）、功能 4（编辑）、功能 5（删除）的 Service 层 `validateReferenceRefs` / `detectCyclicRef` / `syncFieldRefs` / `parseRefFieldIDs` 中。
+
+---
+
+## 功能 12：跨模块对外接口（给模板管理调用）
+
+为了让模板管理 handler 能在跨模块事务中操作字段模块的数据，`FieldService` 暴露了以下对外方法（都不持有 `TemplateService` / `TemplateCache`，严格单向依赖）：
+
+| 方法 | 用途 | 事务归属 |
+|------|------|---------|
+| `ValidateFieldsForTemplate(ctx, fieldIDs)` | 模板创建/编辑时校验被勾选字段全部存在 + 启用。任一不存在返回 `41006 ErrTemplateFieldNotFound`，任一停用返回 `41005 ErrTemplateFieldDisabled` | 事务外预校验 |
+| `AttachToTemplateTx(ctx, tx, templateID, fieldIDs)` | 在外部 tx 内对每个 field 写入 `field_refs(field_id, 'template', templateID)` + `IncrRefCountTx`，返回受影响的 fieldIDs 供 handler 清缓存 | 外部 tx |
+| `DetachFromTemplateTx(ctx, tx, templateID, fieldIDs)` | 在外部 tx 内对每个 field 删除 `field_refs` 行 + `DecrRefCountTx`，返回受影响的 fieldIDs | 外部 tx |
+| `GetByIDsLite(ctx, fieldIDs)` | 给模板详情接口拼装 `TemplateFieldItem` 用。按 fieldIDs 顺序返回 `[]FieldLite`，缺失的位置留 `FieldLite{ID:0}`（handler 识别后 `slog.Warn` 并跳过）；CategoryLabel 由本方法用 DictCache 翻译填充 | 无 tx |
+| `InvalidateDetails(ctx, fieldIDs)` | 模板写操作 commit 后由 handler 调用（因为模板写会改字段的 ref_count），批量清 detail 缓存，不返回 error | 无 tx |
+
+**重要原则**：`41005` / `41006` 这两个错误码归在模板段位（41xxx），因为它们**由模板管理页消费**，与字段管理自身的 `40011 ErrFieldNotFound` / `40013 ErrFieldRefDisabled` 语义不混用。
 
 ---
 
@@ -247,22 +308,47 @@
 |--------|---------|
 | 操作标识 | 主键 ID (BIGINT)，name 仅用于创建和唯一性校验 |
 | 统一响应格式 | `handler.WrapCtx` 泛型包装，返回 `{Code, Data, Message}` |
-| 错误码体系 | 15 个错误码（40001-40015），语义分离 |
-| 缓存穿透防护 | 空值标记 `{"_null":true}`，未命中时也缓存 nil |
-| 缓存击穿防护 | `GetByID` 使用分布式锁 `TryLock(id)` + double-check |
+| 错误码体系 | 15 个字段段错误码（40001-40015），语义分离 |
+| 缓存穿透防护 | 空值标记，`FieldCache.SetDetail` 对 nil field 也写缓存 |
+| 缓存击穿防护 | `GetByID` 使用分布式锁 `TryLock(id, 3s)` + double-check |
 | 缓存雪崩防护 | TTL 加随机 jitter |
-| 缓存批量失效 | 列表缓存版本号，INCR 即失效 |
+| 缓存批量失效 | 列表缓存版本号，`InvalidateList` 即失效 |
 | 缓存类型安全 | 列表缓存使用 `FieldListData`（`[]FieldListItem`） |
 | 缓存降级 | Redis 不可用时直接穿透到 MySQL |
-| 缓存 Key | `fields:detail:{id}`、`fields:lock:{id}`（改用 ID） |
-| 乐观锁 | `UPDATE ... WHERE version = ?`，rows=0 返回版本冲突 |
+| 缓存 Key | `fields:detail:{id}`、`fields:lock:{id}`、列表缓存版本号 key |
+| 乐观锁 | `UPDATE ... WHERE version = ?`，rows=0 返回 `ErrVersionConflict` → 40010 |
 | 软删除 | `deleted=1`，所有查询过滤 `WHERE deleted=0` |
-| 引用计数 | `ref_count` 冗余字段，事务内原子维护 |
-| TOCTOU 防护 | 删除在事务内 `FOR SHARE` 重新检查引用 |
+| 引用计数 | `ref_count` 冗余字段，事务内原子维护（`IncrRefCountTx` / `DecrRefCountTx`） |
+| TOCTOU 防护 | 删除在事务内 `FOR SHARE` 重新检查 `field_refs` |
 | 覆盖索引 | `idx_list` 列表查询不回表 |
-| 输入校验分层 | Handler 做格式校验（ID>0/name 正则/label 长度），Service 做业务校验（存在性/启用状态/引用） |
-| 编辑限制 | 只有未启用状态才能编辑（40015 ErrFieldEditNotDisabled） |
-| 常量管理 | 字段类型、Redis key、TTL、引用类型 统一为常量，不硬编码 |
+| 输入校验分层 | Handler 做格式校验（ID>0/name 正则/label 长度/必填/`properties` JSON 对象形状），Service 做业务校验（存在性/启用状态/引用/循环/嵌套/收紧） |
+| 编辑限制 | 只有未启用状态才能编辑（`40015 ErrFieldEditNotDisabled`） |
+| 跨模块边界 | `FieldService` 只持有自身 store/cache；跨模块拼装由 Handler 编排；跨模块事务由模板 handler 开 tx 后调 `*Tx` 方法 |
+| 常量管理 | 字段类型、Redis key、TTL、引用类型统一为常量（`FieldTypeReference` / `RefTypeTemplate` / `RefTypeField` 等） |
+
+---
+
+## 错误码速查（字段段 40001-40017）
+
+| 错误码 | 常量 | 含义 |
+|--------|------|------|
+| 40001 | ErrFieldNameExists | 字段标识已存在（含软删除） |
+| 40002 | ErrFieldNameInvalid | 字段标识格式不合法 |
+| 40003 | ErrFieldTypeNotFound | 字段类型不存在 |
+| 40004 | ErrFieldCategoryNotFound | 标签分类不存在 |
+| 40005 | ErrFieldRefDelete | 被引用无法删除 |
+| 40006 | ErrFieldRefChangeType | 被引用无法修改类型 |
+| 40007 | ErrFieldRefTighten | 被引用无法收紧约束（涵盖 min/max/minLength/maxLength/precision/pattern/minSelect/maxSelect/options 删除） |
+| 40008 | ErrFieldBBKeyInUse | BB Key 被行为树引用（预留，未接入） |
+| 40009 | ErrFieldCyclicRef | 循环引用 |
+| 40010 | ErrFieldVersionConflict | 乐观锁版本冲突 |
+| 40011 | ErrFieldNotFound | 字段不存在 |
+| 40012 | ErrFieldDeleteNotDisabled | 删除前必须先停用 |
+| 40013 | ErrFieldRefDisabled | 不能引用已停用的字段 |
+| 40014 | ErrFieldRefNotFound | 引用的字段不存在 |
+| 40015 | ErrFieldEditNotDisabled | 编辑前必须先停用 |
+| **40016** | **ErrFieldRefNested** | **reference 字段禁止嵌套引用** |
+| **40017** | **ErrFieldRefEmpty** | **reference 字段 `refs` 不能为空** |
 
 ---
 
@@ -270,7 +356,6 @@
 
 | 限制 | 说明 | 计划 |
 |------|------|------|
-| Create + syncFieldRefs 非原子 | reference 字段创建与引用关系同步在不同事务中，极端情况可能不一致 | 模板管理上线时统一重构为事务内操作 |
-| 通用 ListData.Items 为 any | HTTP 响应层仍用 `ListData{Items: any}`，仅缓存层做了类型安全 | 未来可泛型化 ListData |
+| Create + syncFieldRefs 非原子 | reference 字段主记录和 `field_refs` 同步不在同一事务中，极端情况可能不一致（Create/Update 都是这样） | 后续重构为统一事务 |
+| 通用 ListData.Items 为 any | HTTP 响应层仍用 `ListData{Items: any}`，仅缓存层做了类型安全（`FieldListData`） | 未来可泛型化 ListData |
 | BB Key 校验未对接 | 错误码 40008 已定义，但 expose_bb 变更检查待 BT 模块提供接口 | BT 模块开发时对接 |
-| 模板 label 占位 | 引用详情中模板引用的 label 用占位值 | 模板管理完成后补全 |
