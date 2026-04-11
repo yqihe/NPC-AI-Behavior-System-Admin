@@ -49,7 +49,7 @@
 
 ---
 
-## T3：service 层抽离 `validateReferenceRefs` 并接入 Create/Update（R1, R2, R3, R4 → atk1.2, atk7.1）
+## T3：service 层抽离 `validateReferenceRefs` 并接入 Create/Update（R1, R2, R3, R4 → atk1.2, atk7.1） ✅
 
 **文件**：
 - `backend/internal/service/field.go`（唯一）

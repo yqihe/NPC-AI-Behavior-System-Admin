@@ -130,31 +130,16 @@ func (s *FieldService) Create(ctx context.Context, req *model.CreateFieldRequest
 		return 0, errcode.Newf(errcode.ErrFieldNameExists, "字段标识 '%s' 已存在", req.Name)
 	}
 
-	// reference 类型：校验引用字段存在性 + 启用状态 + 循环引用检测
+	// reference 类型：通过 validateReferenceRefs 统一校验
+	// 规则：非空 + 目标存在 + 目标启用 + 目标非 reference（禁嵌套） + 无循环
 	var refFieldIDs []int64
 	if req.Type == model.FieldTypeReference {
 		props, _ := parseProperties(req.Properties)
 		if props != nil {
 			refFieldIDs = parseRefFieldIDs(props.Constraints)
-			for _, refID := range refFieldIDs {
-				f, err := s.fieldStore.GetByID(ctx, refID)
-				if err != nil {
-					return 0, fmt.Errorf("check ref field %d: %w", refID, err)
-				}
-				if f == nil {
-					return 0, errcode.Newf(errcode.ErrFieldRefNotFound, "引用的字段 ID=%d 不存在", refID)
-				}
-				if !f.Enabled {
-					return 0, errcode.Newf(errcode.ErrFieldRefDisabled, "字段 '%s' 已停用，不能引用", f.Name)
-				}
-			}
-			if len(refFieldIDs) > 0 {
-				// 新建字段还没有 ID，用 name 做占位（不会冲突，因为 name 唯一）
-				// 只需确保被引用的字段链不形成环
-				if err := s.detectCyclicRef(ctx, 0, refFieldIDs); err != nil {
-					return 0, err
-				}
-			}
+		}
+		if err := s.validateReferenceRefs(ctx, 0, refFieldIDs, nil); err != nil {
+			return 0, err
 		}
 	}
 
@@ -266,40 +251,28 @@ func (s *FieldService) Update(ctx context.Context, req *model.UpdateFieldRequest
 		}
 	}
 
-	// reference 类型：循环引用检测 + 新增引用启用检查
+	// reference 类型：通过 validateReferenceRefs 统一校验
+	// 规则：非空 + 目标存在 + 新增 ref 必须启用非 reference + 无循环
+	// 已有 ref（在 oldRefSet 中）不重新校验启用/嵌套，保持"存量不动"
 	if req.Type == model.FieldTypeReference {
 		newProps, _ := parseProperties(req.Properties)
+		var newRefIDs []int64
 		if newProps != nil {
-			newRefIDs := parseRefFieldIDs(newProps.Constraints)
-			if len(newRefIDs) > 0 {
-				// 计算旧引用集合（已有的停用字段可保留）
-				oldRefSet := make(map[int64]bool)
-				if old.Type == model.FieldTypeReference {
-					oldProps, _ := parseProperties(old.Properties)
-					if oldProps != nil {
-						for _, rid := range parseRefFieldIDs(oldProps.Constraints) {
-							oldRefSet[rid] = true
-						}
-					}
-				}
-
-				for _, refID := range newRefIDs {
-					f, err := s.fieldStore.GetByID(ctx, refID)
-					if err != nil {
-						return fmt.Errorf("check ref field %d: %w", refID, err)
-					}
-					if f == nil {
-						return errcode.Newf(errcode.ErrFieldRefNotFound, "引用的字段 ID=%d 不存在", refID)
-					}
-					// 只有新增的引用才检查启用状态
-					if !oldRefSet[refID] && !f.Enabled {
-						return errcode.Newf(errcode.ErrFieldRefDisabled, "字段 '%s' 已停用，不能新增引用", f.Name)
-					}
-				}
-				if err := s.detectCyclicRef(ctx, req.ID, newRefIDs); err != nil {
-					return err
+			newRefIDs = parseRefFieldIDs(newProps.Constraints)
+		}
+		// 旧 ref 集合（仅旧类型也是 reference 时才有意义）
+		var oldRefSet map[int64]bool
+		if old.Type == model.FieldTypeReference {
+			oldRefSet = make(map[int64]bool)
+			oldProps, _ := parseProperties(old.Properties)
+			if oldProps != nil {
+				for _, rid := range parseRefFieldIDs(oldProps.Constraints) {
+					oldRefSet[rid] = true
 				}
 			}
+		}
+		if err := s.validateReferenceRefs(ctx, req.ID, newRefIDs, oldRefSet); err != nil {
+			return err
 		}
 	}
 
@@ -772,6 +745,50 @@ func parseRefFieldIDs(constraints json.RawMessage) []int64 {
 		return nil
 	}
 	return c.Refs
+}
+
+// validateReferenceRefs 校验 reference 字段的 refs 业务规则
+//
+// currentID: 正在创建/编辑的字段 ID（Create 传 0）
+// newRefIDs: 新的 refs 列表
+// oldRefSet: 旧 refs 集合（Create 或旧类型非 reference 时传 nil）
+//
+// 规则：
+//  1. newRefIDs 不能为空 → 40017 ErrFieldRefEmpty
+//  2. 每个 refID 必须存在 → 40014 ErrFieldRefNotFound
+//  3. 对新增的 refID（不在 oldRefSet 中）：
+//     - 必须启用 → 40013 ErrFieldRefDisabled
+//     - 不能是 reference 类型（禁止嵌套） → 40016 ErrFieldRefNested
+//  4. 末尾检测循环引用 → 40009 ErrFieldCyclicRef
+//
+// 存量不动：已有的 ref 即使后来被停用或目标类型变成 reference 也保留，
+// 只有新增/替换产生的新 ref 才走严格校验。nil oldRefSet 等价于"所有 ref 都是新增"。
+func (s *FieldService) validateReferenceRefs(ctx context.Context, currentID int64, newRefIDs []int64, oldRefSet map[int64]bool) error {
+	if len(newRefIDs) == 0 {
+		return errcode.New(errcode.ErrFieldRefEmpty)
+	}
+	for _, refID := range newRefIDs {
+		f, err := s.fieldStore.GetByID(ctx, refID)
+		if err != nil {
+			return fmt.Errorf("check ref field %d: %w", refID, err)
+		}
+		if f == nil {
+			return errcode.Newf(errcode.ErrFieldRefNotFound, "引用的字段 ID=%d 不存在", refID)
+		}
+		if oldRefSet[refID] {
+			continue // 存量不动
+		}
+		if !f.Enabled {
+			return errcode.Newf(errcode.ErrFieldRefDisabled, "字段 '%s' 已停用，不能引用", f.Name)
+		}
+		if f.Type == model.FieldTypeReference {
+			return errcode.Newf(errcode.ErrFieldRefNested, "字段 '%s' 是 reference 类型，不允许嵌套引用", f.Name)
+		}
+	}
+	if err := s.detectCyclicRef(ctx, currentID, newRefIDs); err != nil {
+		return err
+	}
+	return nil
 }
 
 // detectCyclicRef 检测循环引用（DFS）
