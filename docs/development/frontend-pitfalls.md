@@ -30,6 +30,7 @@
 - **el-select v-model 类型**：选项 value 是数字，v-model 也必须是数字
 - **el-slider 精度**：step 默认 1，小数需显式 `:step="0.1"`
 - **ElMessage/ElMessageBox 样式缺失**：auto-import 插件只处理模板组件，`ElMessage`、`ElMessageBox`、`ElNotification` 是命令式 JS API，样式不会自动引入。必须在 `main.ts` 手动导入：`import 'element-plus/theme-chalk/el-message.css'` 等，否则弹窗不显示
+- **多级侧栏必须用 `el-sub-menu` 而不是 `el-menu-item-group`**：`el-menu-item-group` 只是一个静态分组标题 + 子项容器，**不支持点击折叠/展开**。看起来能用，但当子模块增加到 5+ 个时侧栏会被撑爆没有收起机制。多级菜单必须用 `el-sub-menu`（原生支持折叠、展开箭头、`default-openeds` 初始展开），一级组名用 `#title` slot 定义大号加粗字样，二级项用 `el-menu-item` 缩进展示
 
 ## Axios / HTTP
 
@@ -59,6 +60,7 @@
 ## 前后端数据格式对齐
 
 - **前后端 JSON key 不一致**：前端 UI 用富对象（如 `ref_fields: [{id, name, label}]`），后端存精简格式（如 `refs: [13, 14]`）。提交时必须转换成后端格式，编辑加载时必须反向还原。建议在提交函数中统一做 `buildSubmitProperties()` 转换，不要在组件内散落转换逻辑
+- **富对象转换的唯一边界只在 FieldForm.vue**：`ref_fields` 富对象数组是 `FieldForm.vue` 的**本地 UI 状态**，只在 `loadFieldDetail`（后端 `refs: number[]` → UI `ref_fields: [{id,name,...}]`）和 `buildSubmitProperties`（提交前反向）这两个点处理。**其他任何组件读字段 detail 时都必须读 `properties.constraints.refs`**（后端权威格式 `number[]`），绝不能假设 API 返回富对象。典型反模式：模板管理的 `TemplateRefPopover` 首版假设 detail 返回 `ref_fields`，结果 popover 永远空白；正确做法是读 `refs` 后并发 `Promise.all` 拉每个子字段 detail 拿元数据
 - **约束 key 名称必须与 seed 中 `constraint_schema` 完全一致**：字段管理的 properties.constraints 是无 schema 的 `JSON RawMessage`，前端写什么 key 后端就存什么 key。但后端的"约束收紧检查"（如 `service.checkConstraintTightened` 通过 `oldMap["min"]` 读取）和游戏服务端的导出契约都依赖 seed 中 `constraint_schema` 定义的 canonical 名。如果前端组件用了不同写法（如 `minimum`/`min_length`/`min_select`），收紧检查会**静默失效**——编译能过、保存能成功、测试也跑通，唯独硬约束（40007）永远不触发。**修复**：所有约束面板的 key 必须严格对齐 seed 中的命名（`min`/`max`/`step`/`minLength`/`maxLength`/`pattern`/`minSelect`/`maxSelect`/`options`/`refs`），不要随手改成驼峰或下划线
 - **JSON RawMessage 字段是"哑契约"**：MongoDB/MySQL 中存 JSON 列时，结构由代码两端约定，没有 DB 层面校验。任何"前端写 → 后端读"或"后端写 → 服务端读"的 JSON 子结构都必须有一份**单一权威**（最佳：seed 文件中的 `constraint_schema`），前后端都引用这份权威而不是各自硬编码
 
@@ -66,7 +68,7 @@
 
 - **Vite build 不跑 vue-tsc**：`vite build` 只做 transpile，不做类型检查。所以 `src` 里堆满了 TS2339/TS7006 错误也能成功打包，bug 只会在运行时崩溃或在 IDE 里飘红。**强制规则**：CI 必须先跑 `vue-tsc --noEmit` 再 `vite build`；本地提交前用 `npx vue-tsc --noEmit` 验一遍
 - **`reactive({...})` 不写显式泛型会被推断成"字面量类型"**：`reactive({ enabled: null, page: 1 })` 推出来的类型是 `{ enabled: null; page: number }`，后续 `query.enabled = true` 直接 TS2322。同理 `params = { page, page_size }` 后再赋 `params.label = ...` 也会 TS2339。**修复**：所有需要后续赋值新字段或赋值更宽类型的对象，必须用 `reactive<FormState>({...})` 或 `const params: FieldListQuery = { ... }` 显式带上接口类型
-- **`@update:model-value="(v) => ..."` 在 strict 模式下隐式 any**：Element Plus 组件的 `update:modelValue` 事件类型推断不友好，箭头函数参数必须显式声明（`(v: number | null | undefined) => ...`）
+- **`@update:model-value` / `@change` 回调在 strict 模式下隐式 any**：Element Plus 组件的事件类型推断不友好，箭头函数参数必须显式声明。覆盖所有写法：`@update:modelValue="(v: number | null) => ..."`、`el-switch @change="(v: string | number | boolean) => ..."`、`el-checkbox @change="(v: string | number | boolean) => ..."`、`el-slider @change="(v: number | number[]) => ..."`。漏注解会 TS7006 — vue-tsc 会在 T 任务收尾前拦住，漏了就要回炉
 
 ## BT 节点编辑器
 
