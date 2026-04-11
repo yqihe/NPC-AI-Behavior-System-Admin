@@ -1,9 +1,10 @@
 # 字段管理 — 已实现功能清单
 
-> **实现状态**：后端 API + 前端 UI 全部实现。
+> **实现状态**：**后端 + 前端全部落地**（集成测试 199/199 通过 + 前端 FieldList/FieldForm/5 个约束面板/EnabledGuardDialog 集成完整）。
+> 本文档是「用户场景 → 校验 → 调用链」的按功能展开说明；架构层的文件组织 / 缓存策略 / 跨模块对外接口见 `backend.md`，前端状态流 / 组件树 / 错误码处理见 `frontend.md`。
 > 字段是 ADMIN 内部的管理概念，定义"NPC 可以有什么属性"。全程只和 MySQL 打交道，不涉及 MongoDB。字段值最终通过"模板 → NPC"打平写入 `npc_templates` 集合导出。
 > **所有操作标识使用主键 ID (BIGINT)，`name` 仅用于创建时写入和唯一性校验。**
-> **技术栈**：后端 Go（gin + sqlx + slog），前端 Vue 3 + TypeScript + Element Plus + Vite。
+> **技术栈**：后端 Go（gin + sqlx + slog），前端 Vue 3.5 + TypeScript strict + Element Plus + Vite。
 
 ---
 
@@ -297,6 +298,8 @@ Service 层使用 Cache-Aside + 分布式锁 + 空标记三件套：
 **场景 C — 在字段管理页删除一个 reference 类型字段时，它之前引用的那些字段的引用计数要减回去。** 这在删除事务内由 `RemoveBySource` + `DecrRefCountTx` 自动完成（功能 5）。
 
 **循环检测**：`detectCyclicRef` 用 DFS 遍历 `currentID → newRefIDs → 每个 ref 的 refs → ...`，将 `currentID` 预先标记为已访问；遇到重复 ID 即返回 `40009`。
+
+**前端双重防御**：`frontend/src/components/FieldConstraintReference.vue` 的 `loadEnabledFields` 在拿到启用字段列表后追加 `f.type !== 'reference'` 过滤，下拉从源头不再展示其他 reference 字段，用户不会误选；后端 `validateReferenceRefs` 的 `40016 ErrFieldRefNested` 作为兜底。`FieldForm.vue` 捕获 `40016` / `40017` 给出本地化中文 `ElMessage`（`FIELD_ERR.REF_NESTED` / `REF_EMPTY` 常量表见 `api/fields.ts`）。
 
 ### ⚠️ 已知小瑕疵：主记录与引用关系非原子
 

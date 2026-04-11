@@ -76,6 +76,27 @@ export interface CheckNameResult {
   message: string
 }
 
+// 字段管理段错误码（40001-40017，与 backend/internal/errcode/codes.go 保持一致）
+export const FIELD_ERR = {
+  NAME_EXISTS:         40001,
+  NAME_INVALID:        40002,
+  TYPE_NOT_FOUND:      40003,
+  CATEGORY_NOT_FOUND:  40004,
+  REF_DELETE:          40005,
+  REF_CHANGE_TYPE:     40006,
+  REF_TIGHTEN:         40007,
+  BB_KEY_IN_USE:       40008,
+  CYCLIC_REF:          40009,
+  VERSION_CONFLICT:    40010,
+  NOT_FOUND:           40011,
+  DELETE_NOT_DISABLED: 40012,
+  REF_DISABLED:        40013,
+  REF_NOT_FOUND:       40014,
+  EDIT_NOT_DISABLED:   40015,
+  REF_NESTED:          40016,
+  REF_EMPTY:           40017,
+} as const
+
 export const fieldApi = {
   list: (params: FieldListQuery) =>
     request.post('/fields/list', params) as Promise<ApiResponse<ListData<FieldListItem>>>,

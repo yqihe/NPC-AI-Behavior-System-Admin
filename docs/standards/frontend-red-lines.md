@@ -23,6 +23,7 @@
 
 - **禁止**前后端各自在代码里硬编码 JSON RawMessage 的子 key 名。所有写入 `properties` / `constraints` / `extra` 等无 schema JSON 列的子结构必须有**单一权威**（如 seed 中的 `constraint_schema`），前后端都引用这份权威
 - **禁止**用驼峰/下划线/全小写变体重命名 key（`minLength` ≠ `min_length` ≠ `minimum_length`）。DB 层不会报错，但收紧检查、导出契约、跨端读取会全部静默失效
+- **禁止**在非表单组件里假设字段 detail 返回富对象。UI 富对象（如 `ref_fields: [{id, name, label}]`）只存在于 **编辑表单组件**（`FieldForm.vue`）的本地 state，只在 `loadFieldDetail` 转入、`buildSubmitProperties` 转出。**任何非表单组件读字段 detail 时必须读 `refs: number[]`**（后端权威），再自行并发拉子字段元数据。反模式：模板的 reference popover 假设 `ref_fields` 直接返回 → popover 永远空白
 
 ## 禁止跳过类型检查就上线
 

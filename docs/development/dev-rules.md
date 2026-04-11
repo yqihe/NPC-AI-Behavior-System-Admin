@@ -204,6 +204,8 @@ docker compose down             # 停止
 | UI/UX | `architecture/ui-red-lines.md` | — |
 | Skill 流程 | — | 对应的 `.claude/commands/*.md` |
 
+**写新脚本/组件前必须先查文档**：新写一个 bash seed 脚本 / 新建一个 Vue 组件 / 新写一个 handler 之前，先翻这份表里对应领域的 pitfalls + red-lines 文档。反模式案例：`tests/seed_data.sh` 首版直接写 `curl -d "$body"`，忽略了 `dev-rules.md` 「Bash 集成测试脚本（Windows 环境）」章节明确写的 "必须用 stdin 管道"，导致中文全部变成 U+FFFD replacement character，等到发现乱码又走 upsert 修复重跑，浪费一整轮。**已写在文档里的坑重复踩 = 没看文档**。
+
 ## Bash 集成测试脚本（Windows 环境）
 
 ### 中文编码

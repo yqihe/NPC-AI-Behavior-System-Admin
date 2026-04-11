@@ -25,6 +25,26 @@ const router = createRouter({
       component: () => import('@/views/FieldForm.vue'),
       meta: { title: '编辑字段', isCreate: false },
     },
+    {
+      path: '/templates',
+      name: 'template-list',
+      component: () => import('@/views/TemplateList.vue'),
+      meta: { title: '模板管理' },
+    },
+    {
+      path: '/templates/create',
+      name: 'template-create',
+      component: () => import('@/views/TemplateForm.vue'),
+      props: { mode: 'create' },
+      meta: { title: '新建模板' },
+    },
+    {
+      path: '/templates/:id/edit',
+      name: 'template-edit',
+      component: () => import('@/views/TemplateForm.vue'),
+      props: (route) => ({ mode: 'edit', id: Number(route.params.id) }),
+      meta: { title: '编辑模板' },
+    },
   ],
 })
 

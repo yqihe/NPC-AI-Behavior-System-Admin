@@ -1,68 +1,55 @@
-# 模板管理 — 来自字段管理的集成注意事项
+# 模板管理 — 来自字段管理的集成注意事项（历史存档）
 
-> 字段管理模块已实现，模板管理开发时需注意以下集成点。
-
----
-
-## 1. field_refs 引用关系维护
-
-模板勾选字段时，必须在 `field_refs` 表中写入引用关系，同时维护字段的 `ref_count` 冗余计数。
-
-### 创建/编辑模板（勾选字段变更时）
-
-```
-事务内操作：
-1. FieldRefStore.RemoveByRef(tx, "template", templateName)  // 清除旧引用
-2. 对每个新勾选的字段:
-   FieldRefStore.Add(tx, {FieldName, RefType: "template", RefName: templateName})
-3. 维护 ref_count:
-   - 被移除的字段: FieldStore.DecrRefCount(tx, fieldName)
-   - 被新增的字段: FieldStore.IncrRefCount(tx, fieldName)
-```
-
-### 删除模板
-
-```
-事务内操作：
-1. affectedFields := FieldRefStore.RemoveByRef(tx, "template", templateName)
-2. 对每个 affectedField:
-   FieldStore.DecrRefCount(tx, fieldName)
-```
-
-### 关键约束
-
-- `ref_count > 0` 的字段**禁止修改类型**（字段管理已实现此检查）
-- `ref_count > 0` 的字段**禁止删除**（字段管理已实现此检查）
-- 模板管理只需正确维护引用关系，约束由字段管理自动执行
-
-### 字段启用/禁用状态约束
-
-字段管理新增了三态生命周期（启用 / 禁用 / 已删除），模板管理必须遵守：
-
-- **新增引用**：只能引用 `enabled=1` 的字段，否则字段管理返回 `40013 ErrFieldRefDisabled`
-- **已有引用**：模板已引用的字段被禁用后，**引用关系保留不动**（"存量不变、增量阻断"）
-- **模板展示**：列出模板字段时，建议标注已禁用字段的状态（灰色 / 警告图标），提示运营人员
-- **导出过滤**：导出给游戏服务端时，需判断字段是否仍处于启用状态
+> **⚠ 本文档已历史存档**，不再作为开发参考。模板管理的跨模块集成在 V3 实现期已全部落地，与字段管理之间的所有约定都在 service/handler 层通过明确的接口固化。
 
 ---
 
-## 2. 引用详情中的模板 label
+## 历史背景
 
-字段管理的 `GetReferences` API 返回引用方信息时，模板引用的 label 当前是占位值（直接用 name）。
+V3 重写期间，字段管理模块先落地（2026-Q1），随后模板管理进入实现期（2026-Q2）。为了让两个模块解耦地并行开发，当时写下了一份「集成注意事项」说明模板管理开发时必须遵守的跨模块约定（field_refs 维护、enabled 约束、reference 展开等）。
 
-模板管理完成后需要：
-- 提供 `TemplateStore.GetByNames(ctx, names)` 批量查 label 的方法
-- 或者在字段 service 中注入模板 store，补全模板的中文标签
-
-**代码位置**：`backend/internal/service/field.go` 第 331-337 行，有 `// TODO` 标记。
+模板管理完成后，这些约定都已通过代码落实，不再需要 prose 文档作为开发提醒。
 
 ---
 
-## 3. reference 类型字段展开
+## 当前真实文档来源
 
-模板勾选 reference 类型字段时，需要递归展开为实际字段列表：
-- reference 字段本身不产生数据
-- 其引用的字段直接打平到模板的字段列表中
-- 展开时自动去重
+| 关注点 | 当前权威文档 |
+|---|---|
+| 字段管理对外接口清单（`ValidateFieldsForTemplate` / `AttachToTemplateTx` / `DetachFromTemplateTx` / `GetByIDsLite` / `InvalidateDetails`） | `../字段管理/backend.md` 「跨模块对外接口」章节 + `../字段管理/features.md` 功能 12 |
+| 模板侧跨模块事务编排完整步骤（Create / Update / Delete 的 tx 流程） | `backend.md` 「跨模块事务编排（Handler 层）」章节 |
+| 字段 `ref_count` 维护语义 | `features.md` 功能 2 / 功能 4 / 功能 5 的「后端跨模块事务流程」 |
+| enabled 状态约束（停用字段的"存量不动、增量拦截"）| `features.md` 功能 4 「字段启用/停用状态约束」+ 「与字段管理的集成回顾」第 3 条 |
+| reference 类型字段禁嵌套 + 模板扁平化约束 | `features.md` 功能 8 + `features.md` 「与字段管理的集成回顾」第 7 条 + 错误码 41012 |
+| 引用详情补模板 label 的跨模块路径 | `features.md` 功能 11 「跨模块对外接口」+ `../字段管理/features.md` 功能 7 |
+| 错误码归属约定（41005 / 41006 / 41012 归在模板段位）| `features.md` 「错误码」表 + 「与字段管理的集成回顾」第 6 条 + `backend.md` 错误码抛出层 |
+| 分层硬规则（Service 之间零依赖，跨模块由 Handler 编排）| `../../../development/dev-rules.md` 「分层职责」章节 |
 
-reference 字段的引用列表存储在 `properties.constraints` 的 JSON 中（待字段管理补全循环引用检测后确定具体格式）。
+---
+
+## 当初的三条核心约定 + 落地验证
+
+| 当初约定 | 实际落地 |
+|---|---|
+| 创建 / 编辑模板时事务内维护 `field_refs` 与 `fields.ref_count` | `TemplateHandler.Create / Update / Delete` 通过 `h.db.BeginTxx` 开事务，传 `*sqlx.Tx` 给 `templateService.*Tx` + `fieldService.Attach/Detach*Tx`，commit 后分别清两方缓存 |
+| 字段引用详情的 template label 补全 | `FieldHandler.GetReferences` 调 `templateService.GetByIDsLite(templateIDs)` 批量补 label，`FieldService.GetReferences` 内部只填 RefID 留 Label 空 |
+| reference 类型字段的展开语义 | `FieldService.ValidateFieldsForTemplate` 直接拒绝 `f.Type == FieldTypeReference` → 41012，模板 `req.fields` 永远只含 leaf ID；前端 `TemplateRefPopover` 负责把 reference 字段 → 子字段 ID 展平后去重合并到 `selectedIds` |
+
+---
+
+## 历史遗留 TODO 已全部清零
+
+- ✅ `FieldStore.GetByNames / IncrRefCount / DecrRefCount` → 已重构为 ID 版本（`GetByIDs / IncrRefCountTx / DecrRefCountTx`）
+- ✅ `field_refs` schema 用 BIGINT 代替 VARCHAR（见 `../字段管理/backend.md` 数据表定义）
+- ✅ `FieldService.GetReferences` 中的 `// TODO 补模板 label` 已通过 handler 层跨模块调用消除
+- ✅ reference 字段展开契约已由字段管理 feature 11 + 错误码 41016 (禁嵌套) / 41017 (refs 非空) + 40009 (循环检测) 明确固化
+
+---
+
+**维护约定**：如果未来字段管理 / 模板管理之间新增跨模块接口，**不要**再新建一份 INTEGRATION_NOTE 文档。直接：
+
+1. 更新 `../字段管理/backend.md` 或 `backend.md` 的「跨模块对外接口」章节
+2. 更新对应 features.md 的调用链说明
+3. 在 `docs/development/dev-rules.md` 的「分层职责」补一条例外（如果有）
+
+单一权威胜过散落 prose。
