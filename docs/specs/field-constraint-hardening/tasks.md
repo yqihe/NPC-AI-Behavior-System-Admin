@@ -78,7 +78,7 @@
 
 ---
 
-## T4：service 层 `checkConstraintTightened` 补齐 select / float / string 覆盖（R6, R7, R8 → atk3/4/6）
+## T4：service 层 `checkConstraintTightened` 补齐 select / float / string 覆盖（R6, R7, R8 → atk3/4/6） ✅
 
 **文件**：
 - `backend/internal/service/field.go`（唯一）

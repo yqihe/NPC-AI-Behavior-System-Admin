@@ -682,6 +682,14 @@ func checkConstraintTightened(fieldType string, oldConstraints, newConstraints j
 				return errcode.Newf(errcode.ErrFieldRefTighten, "最大值从 %v 收紧为 %v，请先移除引用", oldMax, newMax)
 			}
 		}
+		// float 专属：precision 只能变大，变小会截断已存数据
+		if fieldType == "float" {
+			if oldPrec, ok := getFloat(oldMap["precision"]); ok {
+				if newPrec, ok2 := getFloat(newMap["precision"]); ok2 && newPrec < oldPrec {
+					return errcode.Newf(errcode.ErrFieldRefTighten, "precision 从 %v 降低为 %v，请先移除引用", oldPrec, newPrec)
+				}
+			}
+		}
 
 	case "string":
 		if oldMinLen, ok := getFloat(oldMap["minLength"]); ok {
@@ -693,6 +701,17 @@ func checkConstraintTightened(fieldType string, oldConstraints, newConstraints j
 			if newMaxLen, ok2 := getFloat(newMap["maxLength"]); ok2 && newMaxLen < oldMaxLen {
 				return errcode.Newf(errcode.ErrFieldRefTighten, "最大长度从 %v 收紧为 %v，请先移除引用", oldMaxLen, newMaxLen)
 			}
+		}
+		// pattern 变化判定：
+		//   old=""   new=""    → 允许（未变）
+		//   old=""   new="^x$" → 拒绝（新增 pattern，旧数据可能不匹配）
+		//   old=P    new=P     → 允许（未变）
+		//   old=P    new=Q     → 拒绝（pattern 变化）
+		//   old=P    new=""    → 允许（移除 pattern = 放宽）
+		oldPat := getStringFromRaw(oldMap["pattern"])
+		newPat := getStringFromRaw(newMap["pattern"])
+		if newPat != "" && newPat != oldPat {
+			return errcode.Newf(errcode.ErrFieldRefTighten, "pattern 从 %q 变更为 %q，可能使已有数据失效，请先移除引用", oldPat, newPat)
 		}
 
 	case "select":
@@ -709,9 +728,32 @@ func checkConstraintTightened(fieldType string, oldConstraints, newConstraints j
 				}
 			}
 		}
+		// minSelect 只能变小，maxSelect 只能变大
+		if oldMinSel, ok := getFloat(oldMap["minSelect"]); ok {
+			if newMinSel, ok2 := getFloat(newMap["minSelect"]); ok2 && newMinSel > oldMinSel {
+				return errcode.Newf(errcode.ErrFieldRefTighten, "minSelect 从 %v 收紧为 %v，请先移除引用", oldMinSel, newMinSel)
+			}
+		}
+		if oldMaxSel, ok := getFloat(oldMap["maxSelect"]); ok {
+			if newMaxSel, ok2 := getFloat(newMap["maxSelect"]); ok2 && newMaxSel < oldMaxSel {
+				return errcode.Newf(errcode.ErrFieldRefTighten, "maxSelect 从 %v 收紧为 %v，请先移除引用", oldMaxSel, newMaxSel)
+			}
+		}
 	}
 
 	return nil
+}
+
+// getStringFromRaw 从 json.RawMessage 提取字符串值，失败返回空串
+func getStringFromRaw(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return ""
+	}
+	return s
 }
 
 func parseSelectOptions(raw json.RawMessage) []string {
