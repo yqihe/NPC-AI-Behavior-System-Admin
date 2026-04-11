@@ -7,47 +7,101 @@ set -euo pipefail
 API="${1:-http://localhost:9821/api/v1}"
 
 post() {
-  curl -sS -X POST "$API$1" -H "Content-Type: application/json" -d "$2"
+  # 通过 stdin + --data-binary 传 body，避免 Windows Git Bash argv cp936 转换破坏 UTF-8
+  # 与 tests/api_test.sh 第 123 行保持一致的写法
+  printf '%s' "$2" | curl -sS -X POST "$API$1" \
+    -H "Content-Type: application/json; charset=utf-8" \
+    --data-binary @-
+}
+
+find_field_id_by_name() {
+  post "/fields/list" '{"page":1,"page_size":200}' \
+    | jq -r ".data.items[] | select(.name==\"$1\") | .id" | head -n1
+}
+
+find_template_id_by_name() {
+  post "/templates/list" '{"page":1,"page_size":200}' \
+    | jq -r ".data.items[] | select(.name==\"$1\") | .id" | head -n1
 }
 
 create_field() {
   local name="$1" label="$2" type="$3" category="$4" props="$5"
-  local body
+  local body code id
   body=$(post "/fields/create" "{\"name\":\"$name\",\"label\":\"$label\",\"type\":\"$type\",\"category\":\"$category\",\"properties\":$props}")
-  local code id
   code=$(echo "$body" | jq -r '.code')
-  if [[ "$code" == "0" ]]; then
-    id=$(echo "$body" | jq -r '.data.id')
-    echo "$id"
-  elif [[ "$code" == "40001" ]]; then
-    # 已存在，查 id
-    post "/fields/list" "{\"label\":\"$label\",\"page\":1,\"page_size\":50}" \
-      | jq -r ".data.items[] | select(.name==\"$name\") | .id" | head -n1
-  else
-    echo "  [WARN] create field $name failed: $body" >&2
-    return 1
-  fi
+  case "$code" in
+    0)
+      echo "$body" | jq -r '.data.id'
+      ;;
+    40001)
+      # 已存在 → update 修正 label / properties（适用于旧脚本乱码数据的修复路径）
+      id=$(find_field_id_by_name "$name")
+      if [[ -z "$id" || "$id" == "null" ]]; then
+        echo "  [WARN] field $name exists but not in list" >&2
+        return 1
+      fi
+      local detail ver enabled
+      detail=$(post "/fields/detail" "{\"id\":$id}")
+      ver=$(echo "$detail" | jq -r '.data.version')
+      enabled=$(echo "$detail" | jq -r '.data.enabled')
+      # update 要求 enabled=false
+      if [[ "$enabled" == "true" ]]; then
+        post "/fields/toggle-enabled" "{\"id\":$id,\"enabled\":false,\"version\":$ver}" > /dev/null
+        ver=$((ver + 1))
+      fi
+      post "/fields/update" "{\"id\":$id,\"label\":\"$label\",\"type\":\"$type\",\"category\":\"$category\",\"properties\":$props,\"version\":$ver}" > /dev/null
+      echo "$id"
+      ;;
+    *)
+      echo "  [WARN] create field $name failed: $body" >&2
+      return 1
+      ;;
+  esac
 }
 
 enable_field() {
   local id="$1"
-  local ver
-  ver=$(post "/fields/detail" "{\"id\":$id}" | jq -r '.data.version')
+  local detail ver enabled
+  detail=$(post "/fields/detail" "{\"id\":$id}")
+  ver=$(echo "$detail" | jq -r '.data.version')
+  enabled=$(echo "$detail" | jq -r '.data.enabled')
+  if [[ "$enabled" == "true" ]]; then
+    return 0
+  fi
   post "/fields/toggle-enabled" "{\"id\":$id,\"enabled\":true,\"version\":$ver}" > /dev/null
 }
 
 create_template() {
   local name="$1" label="$2" desc="$3" fields_json="$4"
-  local body code
+  local body code id
   body=$(post "/templates/create" "{\"name\":\"$name\",\"label\":\"$label\",\"description\":\"$desc\",\"fields\":$fields_json}")
   code=$(echo "$body" | jq -r '.code')
-  if [[ "$code" == "0" ]]; then
-    echo "  [OK] template $name created id=$(echo "$body" | jq -r '.data.id')"
-  elif [[ "$code" == "41001" ]]; then
-    echo "  [SKIP] template $name already exists"
-  else
-    echo "  [WARN] create template $name failed: $body" >&2
-  fi
+  case "$code" in
+    0)
+      echo "  [OK] template $name created id=$(echo "$body" | jq -r '.data.id')"
+      ;;
+    41001)
+      # 已存在 → update 修正 label / description / fields
+      id=$(find_template_id_by_name "$name")
+      if [[ -z "$id" || "$id" == "null" ]]; then
+        echo "  [WARN] template $name exists but not in list" >&2
+        return 1
+      fi
+      local detail ver enabled
+      detail=$(post "/templates/detail" "{\"id\":$id}")
+      ver=$(echo "$detail" | jq -r '.data.version')
+      enabled=$(echo "$detail" | jq -r '.data.enabled')
+      if [[ "$enabled" == "true" ]]; then
+        post "/templates/toggle-enabled" "{\"id\":$id,\"enabled\":false,\"version\":$ver}" > /dev/null
+        ver=$((ver + 1))
+      fi
+      post "/templates/update" "{\"id\":$id,\"label\":\"$label\",\"description\":\"$desc\",\"fields\":$fields_json,\"version\":$ver}" > /dev/null
+      echo "  [OK] template $name updated id=$id"
+      ;;
+    *)
+      echo "  [WARN] create template $name failed: $body" >&2
+      ;;
+  esac
 }
 
 echo ">> seeding fields..."
