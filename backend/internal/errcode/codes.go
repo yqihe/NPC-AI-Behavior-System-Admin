@@ -30,6 +30,8 @@ const (
 	ErrFieldDeleteNotDisabled = 40012 // 删除前必须先停用
 	ErrFieldRefDisabled       = 40013 // 不能引用已停用的字段
 	ErrFieldEditNotDisabled   = 40015 // 编辑前必须先停用
+	ErrFieldRefNested         = 40016 // reference 字段禁止嵌套引用
+	ErrFieldRefEmpty          = 40017 // reference 字段 refs 不能为空
 )
 
 // --- 模板管理 410xx ---
@@ -70,6 +72,8 @@ var messages = map[int]string{
 	ErrFieldDeleteNotDisabled: "请先停用该字段再删除",
 	ErrFieldRefDisabled:       "不能引用已停用的字段",
 	ErrFieldEditNotDisabled:   "请先停用该字段再编辑",
+	ErrFieldRefNested:         "不能引用 reference 类型字段，禁止嵌套",
+	ErrFieldRefEmpty:          "reference 字段必须至少引用一个目标字段",
 
 	ErrTemplateNameExists:        "模板标识已存在",
 	ErrTemplateNameInvalid:       "模板标识格式不合法，需小写字母开头，仅允许 a-z、0-9、下划线",
