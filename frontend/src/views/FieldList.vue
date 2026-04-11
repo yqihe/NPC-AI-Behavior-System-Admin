@@ -147,6 +147,9 @@
       </div>
     </div>
 
+    <!-- 启用守卫弹窗（编辑/删除启用中字段的拦截） -->
+    <EnabledGuardDialog ref="guardRef" @refresh="fetchList" />
+
     <!-- 引用详情弹窗 -->
     <el-dialog
       v-model="refDialog.visible"
@@ -196,6 +199,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
+import EnabledGuardDialog from '@/components/EnabledGuardDialog.vue'
 import { fieldApi } from '@/api/fields'
 import type { FieldListItem, FieldListQuery, ReferenceItem } from '@/api/fields'
 import type { BizError } from '@/api/request'
@@ -209,6 +213,7 @@ const tableData = ref<FieldListItem[]>([])
 const total = ref(0)
 const typeOptions = ref<DictionaryItem[]>([])
 const categoryOptions = ref<DictionaryItem[]>([])
+const guardRef = ref<InstanceType<typeof EnabledGuardDialog> | null>(null)
 
 const query = reactive<FieldListQuery>({
   label: '',
@@ -316,7 +321,7 @@ async function handleToggle(row: FieldListItem, val: boolean) {
 
 function handleEdit(row: FieldListItem) {
   if (row.enabled) {
-    ElMessageBox.alert('请先禁用该字段，再进行编辑。', '提示', { type: 'warning' })
+    guardRef.value?.open({ action: 'edit', entityType: 'field', entity: row })
     return
   }
   router.push(`/fields/${row.id}/edit`)
@@ -324,7 +329,7 @@ function handleEdit(row: FieldListItem) {
 
 async function handleDelete(row: FieldListItem) {
   if (row.enabled) {
-    ElMessageBox.alert('请先禁用该字段，再进行删除。', '提示', { type: 'warning' })
+    guardRef.value?.open({ action: 'delete', entityType: 'field', entity: row })
     return
   }
   if (row.ref_count > 0) {

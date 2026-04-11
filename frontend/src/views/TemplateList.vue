@@ -222,7 +222,7 @@ async function handleToggle(row: TemplateListItem, val: boolean) {
 
 function handleEdit(row: TemplateListItem) {
   if (row.enabled) {
-    guardRef.value?.open('edit', row)
+    guardRef.value?.open({ action: 'edit', entityType: 'template', entity: row })
     return
   }
   router.push(`/templates/${row.id}/edit`)
@@ -230,7 +230,7 @@ function handleEdit(row: TemplateListItem) {
 
 async function handleDelete(row: TemplateListItem) {
   if (row.enabled) {
-    guardRef.value?.open('delete', row)
+    guardRef.value?.open({ action: 'delete', entityType: 'template', entity: row })
     return
   }
   if (row.ref_count > 0) {

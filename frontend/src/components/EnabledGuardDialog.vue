@@ -1,49 +1,62 @@
 <template>
   <el-dialog
     v-model="visible"
-    :title="title"
+    :show-close="true"
     width="480px"
     :close-on-click-modal="false"
+    append-to-body
     @close="onClose"
   >
-    <div class="guard-content">
+    <template #header>
       <div class="guard-header">
-        <el-icon class="warn-icon"><WarningFilled /></el-icon>
-        <div class="guard-title">
-          <h3>{{ title }}</h3>
-          <p class="guard-template">{{ template?.label }} ({{ template?.name }})</p>
+        <div class="guard-header-icon">
+          <el-icon><WarningFilled /></el-icon>
+        </div>
+        <span class="guard-header-title">{{ title }}</span>
+      </div>
+    </template>
+
+    <div class="guard-body">
+      <p class="guard-lead">{{ leadText }}</p>
+      <p class="guard-reason">{{ reasonText }}</p>
+
+      <!-- 编辑：操作步骤 -->
+      <div v-if="action === 'edit'" class="guard-box">
+        <div class="guard-box-label">操作步骤</div>
+        <div class="guard-box-line">1. 在列表中点击该{{ entityTypeLabel }}的「启用」开关停用它</div>
+        <div class="guard-box-line">2. 完成编辑后再次启用</div>
+      </div>
+
+      <!-- 删除：前置条件 -->
+      <div v-else class="guard-box">
+        <div class="guard-box-label">删除前置条件</div>
+        <div class="guard-cond guard-cond-fail">
+          <el-icon><CircleCloseFilled /></el-icon>
+          <span>{{ entityTypeLabel }}已停用</span>
+        </div>
+        <div
+          class="guard-cond"
+          :class="refCountPass ? 'guard-cond-pass' : 'guard-cond-fail'"
+        >
+          <el-icon>
+            <CircleCheckFilled v-if="refCountPass" />
+            <CircleCloseFilled v-else />
+          </el-icon>
+          <span>
+            没有{{ refTargetLabel }}在使用该{{ entityTypeLabel }}（当前被引用：{{ entity?.ref_count ?? 0 }}）
+          </span>
         </div>
       </div>
-      <p class="guard-reason">{{ reasonText }}</p>
-      <div v-if="action === 'edit'" class="guard-steps">
-        <div class="steps-label">操作步骤</div>
-        <ol>
-          <li>在列表中点击该模板的「启用」开关停用它</li>
-          <li>完成编辑后再次启用</li>
-        </ol>
-      </div>
-      <div v-else class="guard-conditions">
-        <div class="steps-label">删除前置条件</div>
-        <ul class="conditions-list">
-          <li class="cond-fail">
-            <el-icon><CircleCloseFilled /></el-icon>
-            <span>模板已停用</span>
-          </li>
-          <li :class="template && template.ref_count === 0 ? 'cond-pass' : 'cond-fail'">
-            <el-icon v-if="template && template.ref_count === 0"><CircleCheckFilled /></el-icon>
-            <el-icon v-else><CircleCloseFilled /></el-icon>
-            <span>
-              没有 NPC 在使用该模板（当前被引用：{{ template?.ref_count ?? 0 }}）
-            </span>
-          </li>
-        </ul>
-      </div>
     </div>
+
     <template #footer>
-      <el-button @click="visible = false">知道了</el-button>
-      <el-button type="warning" :loading="acting" @click="onActOnce">
-        立即停用
-      </el-button>
+      <div class="guard-footer">
+        <el-button @click="visible = false">知道了</el-button>
+        <el-button type="warning" :loading="acting" @click="onActOnce">
+          <el-icon v-if="!acting" class="btn-icon"><SwitchButton /></el-icon>
+          立即停用
+        </el-button>
+      </div>
     </template>
   </el-dialog>
 </template>
@@ -56,58 +69,101 @@ import {
   WarningFilled,
   CircleCheckFilled,
   CircleCloseFilled,
+  SwitchButton,
 } from '@element-plus/icons-vue'
+import { fieldApi, FIELD_ERR } from '@/api/fields'
 import { templateApi, TEMPLATE_ERR } from '@/api/templates'
-import type { TemplateListItem } from '@/api/templates'
 import type { BizError } from '@/api/request'
 
 type GuardAction = 'edit' | 'delete'
+type EntityType = 'field' | 'template'
+
+interface GuardEntity {
+  id: number
+  name: string
+  label: string
+  ref_count: number
+}
 
 const router = useRouter()
 const visible = ref(false)
 const acting = ref(false)
 const action = ref<GuardAction>('edit')
-const template = ref<TemplateListItem | null>(null)
+const entityType = ref<EntityType>('template')
+const entity = ref<GuardEntity | null>(null)
+
+const entityTypeLabel = computed(() =>
+  entityType.value === 'field' ? '字段' : '模板',
+)
+
+// 删除前置条件中「没有 X 在使用」这个 X 的文案
+const refTargetLabel = computed(() =>
+  entityType.value === 'field' ? '模板或字段' : 'NPC',
+)
+
+const refCountPass = computed(() => (entity.value?.ref_count ?? 0) === 0)
 
 const title = computed(() =>
-  action.value === 'edit' ? '无法编辑模板' : '无法删除模板',
+  action.value === 'edit'
+    ? `无法编辑${entityTypeLabel.value}`
+    : `无法删除${entityTypeLabel.value}`,
 )
 
-const reasonText = computed(() =>
-  action.value === 'edit'
-    ? '启用中模板对 NPC 管理页可见，允许任意修改可能导致策划在配置不稳定时选用。请先停用该模板后再进行编辑。'
-    : '删除是不可恢复的操作，先停用可以提供一个观察期，确认无误后再删除。',
-)
+const leadText = computed(() => {
+  const verb = action.value === 'edit' ? '编辑' : '删除'
+  return `该${entityTypeLabel.value}当前处于启用状态，无法直接${verb}。`
+})
+
+const reasonText = computed(() => {
+  if (action.value === 'edit') {
+    return entityType.value === 'field'
+      ? '已启用的字段对模板与其他字段可见，允许任意修改可能导致引用方看到不稳定的配置。请先停用，再进入编辑。'
+      : '已启用的模板对 NPC 管理页可见，允许任意修改可能导致策划在配置不稳定时选用。请先停用，再进入编辑。'
+  }
+  return '删除是不可恢复的操作。先停用可以提供一个观察期 — 确认下线没有问题，再执行删除。'
+})
 
 const emit = defineEmits<{
   refresh: []
 }>()
 
-function open(act: GuardAction, tpl: TemplateListItem) {
-  action.value = act
-  template.value = tpl
+function open(opts: {
+  action: GuardAction
+  entityType: EntityType
+  entity: GuardEntity
+}) {
+  action.value = opts.action
+  entityType.value = opts.entityType
+  entity.value = opts.entity
   visible.value = true
 }
 
 function onClose() {
-  template.value = null
+  entity.value = null
   acting.value = false
 }
 
 async function onActOnce() {
-  if (!template.value) return
+  if (!entity.value) return
   acting.value = true
+  const id = entity.value.id
   try {
-    // 列表接口不返回 version，先 detail 拿最新 version
-    const detailRes = await templateApi.detail(template.value.id)
-    const version = detailRes.data.version
-    await templateApi.toggleEnabled(template.value.id, false, version)
+    if (entityType.value === 'field') {
+      const detail = await fieldApi.detail(id)
+      await fieldApi.toggleEnabled(id, false, detail.data.version)
+    } else {
+      const detail = await templateApi.detail(id)
+      await templateApi.toggleEnabled(id, false, detail.data.version)
+    }
     ElMessage.success('已停用')
 
     if (action.value === 'edit') {
-      const id = template.value.id
       visible.value = false
-      router.push(`/templates/${id}/edit`)
+      const path =
+        entityType.value === 'field'
+          ? `/fields/${id}/edit`
+          : `/templates/${id}/edit`
+      router.push(path)
     } else {
       // 删除场景：不自动触发删除，请父组件刷新列表让用户再点一次「删除」
       visible.value = false
@@ -115,8 +171,12 @@ async function onActOnce() {
     }
   } catch (err) {
     const bizErr = err as BizError
-    if (bizErr.code === TEMPLATE_ERR.VERSION_CONFLICT) {
-      ElMessage.warning('该模板已被其他人修改，请刷新后重试')
+    const conflictCode =
+      entityType.value === 'field'
+        ? FIELD_ERR.VERSION_CONFLICT
+        : TEMPLATE_ERR.VERSION_CONFLICT
+    if (bizErr.code === conflictCode) {
+      ElMessage.warning(`该${entityTypeLabel.value}已被其他人修改，请刷新后重试`)
       emit('refresh')
       visible.value = false
     }
@@ -130,36 +190,43 @@ defineExpose({ open })
 </script>
 
 <style scoped>
-.guard-content {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
 .guard-header {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  align-items: center;
+  gap: 8px;
 }
 
-.warn-icon {
+.guard-header-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  background: #FDF6EC;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: #E6A23C;
-  font-size: 28px;
+  font-size: 14px;
   flex-shrink: 0;
-  margin-top: 2px;
 }
 
-.guard-title h3 {
+.guard-header-title {
   font-size: 16px;
   font-weight: 600;
   color: #303133;
-  margin: 0 0 4px 0;
 }
 
-.guard-template {
-  font-size: 12px;
-  color: #909399;
+.guard-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.guard-lead {
+  font-size: 14px;
+  font-weight: 500;
+  color: #303133;
   margin: 0;
+  line-height: 1.6;
 }
 
 .guard-reason {
@@ -167,54 +234,59 @@ defineExpose({ open })
   color: #606266;
   line-height: 1.6;
   margin: 0;
-  padding-left: 40px;
 }
 
-.guard-steps,
-.guard-conditions {
-  background: #FDF6EC;
-  border-left: 3px solid #E6A23C;
+.guard-box {
+  background: #F5F7FA;
+  border: 1px solid #E4E7ED;
   border-radius: 4px;
-  padding: 12px 14px;
-  margin-left: 40px;
-}
-
-.steps-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: #E6A23C;
-  margin-bottom: 6px;
-}
-
-.guard-steps ol {
-  margin: 0;
-  padding-left: 18px;
-  font-size: 13px;
-  color: #606266;
-  line-height: 1.8;
-}
-
-.conditions-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+  padding: 12px 16px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
-.conditions-list li {
+.guard-box-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #909399;
+  margin-bottom: 2px;
+}
+
+.guard-box-line {
+  font-size: 12px;
+  color: #606266;
+  line-height: 1.6;
+}
+
+.guard-cond {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 13px;
+  line-height: 1.6;
 }
 
-.cond-fail {
+.guard-cond .el-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.guard-cond-fail {
   color: #F56C6C;
 }
 
-.cond-pass {
+.guard-cond-pass {
   color: #67C23A;
+}
+
+.guard-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.btn-icon {
+  margin-right: 4px;
 }
 </style>

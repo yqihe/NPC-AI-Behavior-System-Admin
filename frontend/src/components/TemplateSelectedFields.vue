@@ -37,22 +37,27 @@
           />
         </template>
       </el-table-column>
-      <el-table-column label="排序" width="110" align="center">
+      <el-table-column label="排序" width="90" align="center">
         <template #default="{ $index }: { $index: number }">
-          <el-button
-            text
-            :disabled="disabled || $index === 0"
-            @click="moveUp($index)"
-          >
-            ↑
-          </el-button>
-          <el-button
-            text
-            :disabled="disabled || $index === selectedFields.length - 1"
-            @click="moveDown($index)"
-          >
-            ↓
-          </el-button>
+          <div class="sort-cell">
+            <span
+              class="sort-btn"
+              :class="{ 'sort-btn-disabled': disabled || $index === 0 }"
+              @click="moveUp($index)"
+            >
+              <el-icon><ArrowUp /></el-icon>
+            </span>
+            <span
+              class="sort-btn"
+              :class="{
+                'sort-btn-disabled':
+                  disabled || $index === selectedFields.length - 1,
+              }"
+              @click="moveDown($index)"
+            >
+              <el-icon><ArrowDown /></el-icon>
+            </span>
+          </div>
         </template>
       </el-table-column>
     </el-table>
@@ -60,7 +65,7 @@
 </template>
 
 <script setup lang="ts">
-import { WarningFilled } from '@element-plus/icons-vue'
+import { WarningFilled, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import type { TemplateFieldItem } from '@/api/templates'
 
 const props = defineProps<{
@@ -120,5 +125,38 @@ function moveDown(index: number) {
 
 :deep(.row-field-disabled) {
   opacity: 0.55;
+}
+
+.sort-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+
+.sort-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: #409EFF;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.15s;
+}
+
+.sort-btn .el-icon {
+  font-size: 14px;
+}
+
+.sort-btn:hover {
+  background: #ECF5FF;
+}
+
+.sort-btn-disabled {
+  color: #C0C4CC;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 </style>
