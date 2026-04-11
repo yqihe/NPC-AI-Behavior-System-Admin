@@ -1,256 +1,297 @@
 # 字段管理 — 前端设计
 
-> **实现状态**：已全部实现（Vue 3 + TypeScript + Element Plus）。
-> 代码位于 `frontend/src/views/FieldList.vue`、`frontend/src/views/FieldForm.vue`、`frontend/src/components/FieldConstraint*.vue`。
-> 通用前端规范见 [frontend-guide.md](../../frontend-guide.md)。
-> 本文档只记录字段管理特有的 UI 设计。
-> 视觉稿见 `docs/v3-PLAN/mockups.pen`（Pencil 格式），frame 名以「字段管理」开头。
+> **实现状态**：已全部落地，Vue 3.5 + TypeScript strict + Element Plus + Vite。
+> 代码位于 `frontend/src/{views,components,api}/`。
+> 通用前端规范 / 陷阱 / 红线见 `docs/development/frontend-pitfalls.md` 与 `docs/standards/frontend-red-lines.md`。
+> 本文档只记录字段管理特有的 UI 设计与实现事实，不重复通用规范。
 
 ---
 
-## 页面结构
+## 文件清单
 
-字段管理包含 **2 个页面** + **1 个弹窗** + **5 组约束面板**：
-
-| 页面/组件 | mockup frame 名 | 路由/触发 |
-|-----------|-----------------|-----------|
-| 字段列表页 | 字段管理 | `/fields` |
-| 新建/编辑页 | 字段管理 - 新建字段 / 编辑字段 / 编辑受限状态 | `/fields/create`、`/fields/:id/edit` |
-| 引用详情弹窗 | 字段管理 - 引用详情弹窗 | 列表页点击引用数触发 |
-| 约束面板（5 种类型） | 约束 - integer / string / boolean / select / reference | 嵌入新建/编辑页的「约束配置」区域 |
+```
+frontend/src/
+├── api/
+│   ├── fields.ts                        # 8 个 API 函数 + FIELD_ERR 常量表（40001-40017）+ 全部类型定义
+│   ├── dictionaries.ts                  # DictionaryItem 列表接口（field_type / field_category）
+│   └── request.ts                       # axios 实例 + 响应拦截器 + BizError 语义
+├── views/
+│   ├── FieldList.vue                    # 列表页：筛选 / 分页 / toggle / 编辑删除守卫 / 引用详情
+│   └── FieldForm.vue                    # 新建/编辑共用：类型切换 / 约束面板动态加载 / refs↔ref_fields 转换
+├── components/
+│   ├── FieldConstraintInteger.vue       # integer / float 共用：min / max / step / precision
+│   ├── FieldConstraintString.vue        # string：minLength / maxLength / pattern 正则
+│   ├── FieldConstraintSelect.vue        # select：options + minSelect / maxSelect
+│   ├── FieldConstraintReference.vue     # reference：ref_fields 富对象列表 + 过滤掉 reference 类型
+│   ├── EnabledGuardDialog.vue           # 启用守卫（字段 + 模板共用，entityType: 'field' | 'template'）
+│   └── AppLayout.vue                    # 侧栏（el-sub-menu 可折叠分组）+ router-view
+└── router/index.ts                      # /fields / /fields/create / /fields/:id/edit
+```
 
 ---
 
-## 页面 1：字段列表
+## 组件树
 
-### 顶部栏
+```
+FieldList.vue
+  ├─ EnabledGuardDialog.vue        (启用守卫，与模板管理共用同一组件)
+  └─ el-dialog 内嵌引用详情        (templates + fields 两个表格)
 
-左侧：页面标题「字段管理」 + 「标签管理」链接（跳转字典管理页筛选 field_category）。
-右侧：「+ 新建字段」主按钮。
+FieldForm.vue
+  ├─ FieldConstraintInteger.vue    (按 form.type 动态加载)
+  ├─ FieldConstraintString.vue
+  ├─ FieldConstraintSelect.vue
+  └─ FieldConstraintReference.vue
+```
+
+依赖方向单向向下：`views → components → api → request`；components 之间通过 `v-model` / `update:modelValue` 传递，不互相 import。
+
+---
+
+## 类型契约（与后端对齐）
+
+```ts
+interface FieldListItem {
+  id: number
+  name: string
+  label: string
+  type: string
+  category: string
+  ref_count: number
+  enabled: boolean
+  created_at: string
+  type_label: string       // 由 DictCache 翻译，前端直接渲染
+  category_label: string   // 同上
+  version: number          // 列表接口实际不返回（见 FieldList 的 toggle 先 detail 模式）
+}
+
+interface FieldProperties {
+  description?: string
+  expose_bb: boolean
+  default_value?: unknown
+  constraints?: Record<string, unknown>   // 无 schema RawMessage，前端按 type 解释
+}
+
+interface FieldDetail {
+  id, name, label, type, category
+  properties: FieldProperties
+  ref_count, enabled, version
+  created_at, updated_at
+}
+
+const FIELD_ERR = { NAME_EXISTS: 40001, ..., REF_NESTED: 40016, REF_EMPTY: 40017 } as const
+```
+
+**约束 key 单一权威**：所有 `FieldConstraint*.vue` 写入的 `constraints[key]` 必须严格对齐后端 seed `constraint_schema`（见 `backend.md` 约束 key 契约表）。前端改 key 名会让后端 `checkConstraintTightened` **静默失效**。
+
+---
+
+## FieldList 交互
 
 ### 筛选栏
 
-| 控件 | 类型 | placeholder | 对应 API 参数 | 说明 |
-|------|------|-------------|--------------|------|
-| 中文标签 | 文本输入框 | 请输入中文标签 | `label` | 模糊搜索 |
-| 字段类型 | 下拉选择 | 选择类型 | `type` | 选项从 `POST /api/v1/dictionaries` group=field_type 获取 |
-| 标签分类 | 下拉选择 | 选择标签 | `category` | 选项从 `POST /api/v1/dictionaries` group=field_category 获取 |
-| 状态 | 下拉选择 | 选择状态 | `enabled` | 固定选项：全部 / 启用 / 停用 |
-| 搜索 | 主按钮 | — | — | 提交筛选 |
-| 重置 | 次按钮 | — | — | 清空所有筛选条件，重新加载第一页 |
+| 控件 | 类型 | API 参数 | 选项来源 |
+|---|---|---|---|
+| 中文标签 | `el-input` | `label` (模糊) | — |
+| 字段类型 | `el-select` | `type` | `dictApi.list('field_type')` 启动时拉一次 |
+| 标签分类 | `el-select` | `category` | `dictApi.list('field_category')` 同上 |
+| 状态 | `el-select` | `enabled` (三态) | 固定 `[启用, 停用]`，`null` = 全部 |
 
-### 数据表格
+### 表格列
 
-调用 `POST /api/v1/fields/list`，后端分页。
+| 列 | 字段 | 渲染 |
+|---|---|---|
+| ID | `id` | 纯文本 |
+| 标识符 | `name` | 加粗文本 |
+| 中文标签 | `label` | 纯文本 |
+| 类型 | `type_label` | `el-tag`，颜色由类型映射（reference 用 danger 红）|
+| 分类 | `category_label` | `el-tag` type=info 灰 |
+| 被引用数 | `ref_count` | 蓝色 `el-link`，点击拉引用详情弹窗（value=0 时灰色不可点）|
+| 启用 | `enabled` | `el-switch` |
+| 创建时间 | `created_at` | `YYYY-MM-DD HH:mm:ss` |
+| 操作 | — | `编辑` `删除` 文字链接 |
 
-| 列 | 字段 | 宽度 | 渲染 |
-|----|------|------|------|
-| ID | `id` | 自适应 | 纯文本 |
-| 字段名 | `name` | 自适应 | 加粗文本 |
-| 中文标签 | `label` | 自适应 | 纯文本 |
-| 类型 | `type` | 自适应 | 彩色 badge（颜色由 type_label 映射） |
-| 标签分类 | `category` | 自适应 | 彩色 badge（颜色由 category_label 映射） |
-| 引用数 | `ref_count` | 自适应 | **蓝色下划线链接**；点击调用 `POST /api/v1/fields/references` 打开引用详情弹窗 |
-| 状态 | `enabled` | 自适应 | Toggle 开关（绿色=启用，灰色=停用） |
-| 创建时间 | `created_at` | 自适应 | 格式 `YYYY-MM-DD HH:mm` |
-| 操作 | — | 自适应 | 「编辑」「删除」文字链接 |
+**停用行视觉**：`:row-class-name` 返回 `row-disabled`，CSS `:deep(.row-disabled td:not(:nth-last-child(-n+3)))` 让除 启用/创建时间/操作 三列外整行 `opacity: 0.5`，保证操作列高亮可点。
 
-**行样式**：停用字段（enabled=0）数据列 `opacity: 0.5`，启用开关和操作按钮列保持正常不受透明度影响。
+### 行交互
 
-### 分页
+| 操作 | 逻辑 |
+|---|---|
+| **toggle 启用** | `ElMessageBox.confirm` → **先 `fieldApi.detail(id)` 拿最新 version**（列表接口不返回）→ `toggleEnabled(id, val, version)` → 成功 refetch；40010 版本冲突 `ElMessageBox.alert` 提示刷新 |
+| **编辑** | `row.enabled === true` → `guardRef.open({action:'edit', entityType:'field', entity:row})`（**前端拦截，不发请求**）；已停用直接 `router.push('/fields/${id}/edit')` |
+| **删除** | `row.enabled === true` → 守卫弹窗同上；已停用且 `ref_count > 0` → 自动打开引用详情 + warning toast；已停用且 `ref_count === 0` → `ElMessageBox.confirm` → `delete API` → 成功 refetch；捕获 40005 时自动打开引用详情（兜底 race condition） |
+| **被引用数链接** | `ref_count > 0` 时打开引用详情对话框，渲染 `templates[]` + `fields[]` 两张表格（后者是 reference 类型字段引用它时的反向关系） |
 
-底部分页器，左侧显示「共 N 条」，右侧页码按钮。
+### 引用详情弹窗
 
-### 操作行为
-
-#### Toggle 开关（启用/停用）
-
-- 点击后弹出确认弹窗：启用说明「启用后可被模板引用」，禁用说明「已有引用不受影响」
-- 确认后先调 `POST /api/v1/fields/detail` 获取最新 `version`（列表接口不返回 version）
-- 再调 `POST /api/v1/fields/toggle-enabled`，传 `{ id, enabled: !currentEnabled, version }`
-- 成功：刷新列表数据
-- 失败 40010（版本冲突）：提示「数据已被其他人修改，请刷新后重试」
-
-#### 编辑按钮
-
-- 启用状态点击：弹窗提示「请先停用该字段再编辑」（对应错误码 40015），**不跳转**
-- 停用状态点击：跳转 `/fields/:id/edit`
-
-#### 删除按钮
-
-- 启用状态点击：弹窗提示「请先停用该字段再删除」（对应错误码 40012）
-- 有引用（ref_count > 0）点击：弹窗提示「该字段正被引用，无法删除」（对应错误码 40005），同时自动调用 references 接口展示引用详情弹窗
-- 可删除时：二次确认弹窗「确定删除字段 "{label}" 吗？删除后不可恢复。」→ 调用 `POST /api/v1/fields/delete`
-
-> **设计决策**：编辑/删除按钮始终可见可点击，点击后根据状态弹窗提示，而非提前隐藏或禁用。这样运营人员能完整看到所有操作入口，通过弹窗了解当前不可操作的原因。
+- 调 `fieldApi.references(id)` 拿 `ReferenceDetail { templates, fields }`
+- 两个 `el-table`：
+  - **模板引用**：展示 `label` / ref_type（后端 handler 跨模块调 `templateService.GetByIDsLite` 补齐 label）
+  - **字段引用**：展示 reference 类型字段的 `label`
+- 任一为空时显示 `<p class="ref-empty">暂无XX引用</p>`
 
 ---
 
-## 页面 2：新建字段
+## FieldForm 状态流
 
-从列表页点击「+ 新建字段」进入。顶部有「← 返回」链接回列表页。
+### 核心状态
 
-### 表单字段
+```ts
+const form = reactive({
+  name, label, type, category,
+  properties: {
+    description: '',
+    expose_bb: false,
+    default_value: null as unknown,
+    constraints: {} as Record<string, unknown>,
+  },
+})
+const version = ref(1)
+const refCount = ref(0)
+const nameStatus = ref<'' | 'checking' | 'available' | 'taken'>('')
+```
 
-| 字段 | 控件类型 | 必填 | 说明 |
-|------|---------|------|------|
-| 字段标识 | 文本输入框 | * | placeholder「如 health、attack_power」；**blur 时实时校验唯一性** |
-| 中文标签 | 文本输入框 | * | placeholder「如 生命值、攻击力」 |
-| 描述说明 | 多行文本框 | 否 | placeholder「描述该字段的作用和用途（选填）」 |
-| 字段类型 | 下拉选择 | * | 选项从字典 group=field_type 获取；**选择后动态渲染约束面板** |
-| 标签分类 | 下拉选择 | * | 选项从字典 group=field_category 获取 |
-| 默认值 | 动态控件 | 否 | 根据已选字段类型渲染对应输入控件；未选类型时提示「选择类型后自动展示对应输入」 |
-| 暴露 BB Key | 单选按钮 | 否 | 是 / 否，默认「否」 |
-| 约束配置 | 动态面板 | 否 | 根据已选字段类型渲染，未选类型时显示空占位 |
+### 加载编辑页：`loadFieldDetail`
 
-底部按钮：「取消」返回列表、「保存」提交。
+1. `fieldApi.detail(id)` 拿 `FieldDetail`
+2. 基本字段回填 `form.{name,label,type,category}`
+3. `form.properties.{description,expose_bb,default_value}` 回填
+4. **reference 类型的关键转换**：后端 `constraints.refs: number[]` → UI `constraints.ref_fields: [{id,name,label,type,type_label}]`（对每个 refID 调 `fieldApi.detail` 拿元数据，失败则 fallback `{id, name: 'field_${id}', label: '字段${id}', type: 'unknown'}`）
+5. 非 reference 类型：`constraints` 原样回填
+6. `version.value = data.version`，`refCount.value = data.ref_count`
 
-### 字段标识实时校验
+### 提交：`buildSubmitProperties` + `handleSubmit`
 
-输入框 blur 时调用 `POST /api/v1/fields/check-name`：
+```ts
+function buildSubmitProperties() {
+  const props = { ...form.properties, constraints: { ...form.properties.constraints } }
+  if (form.type === 'reference') {
+    // UI 富对象 ref_fields → 后端 refs: number[]
+    const refFields = props.constraints.ref_fields as Array<{id:number}> | undefined
+    if (refFields) {
+      props.constraints.refs = refFields.map(f => f.id)
+      delete props.constraints.ref_fields   // 不发给后端
+    }
+  }
+  return props
+}
+```
 
-| 校验结果 | UI 反馈 |
-|---------|---------|
-| 格式不合法 | 红色提示：由 Handler 层正则 `^[a-z][a-z0-9_]*$` 前端预校验 |
-| 已被使用（含已删除记录） | 红色图标 + 红色文字「该标识已被使用（含已删除记录）」 |
-| 可以使用 | 绿色图标 + 绿色文字「该标识可以使用」 |
+**这是 `ref_fields` ↔ `refs` 双向转换的唯一边界**。其他任何组件读字段 detail 时**必须读 `refs`**（后端权威），绝不能假设 API 返回 `ref_fields`（见 `frontend-pitfalls.md` 的明文红线）。
 
-提示信息显示在输入框下方的格式提示之后。
+### 类型切换：`handleTypeChange`
 
-### 新建默认状态
+类型变更时清空 `form.properties.constraints = {}` + `form.properties.default_value = null`，防止旧类型的约束数据污染新类型的面板（例如从 integer 切到 string 后残留 `min/max`）。
 
-新建的字段默认 `enabled=0`（未启用），提交后返回列表页。管理员可反复编辑确认无误后再手动启用。
+### 唯一性校验：`checkNameUnique`
 
----
+blur 触发，仅 create 模式有效：
 
-## 页面 3：编辑字段
+```
+'' → 'checking' → 'available' | 'taken'
+```
 
-从列表页点击停用字段的「编辑」进入。顶部有「← 返回」链接回列表页。
+失败时 `nameStatus='taken'` + `nameMessage` 红字提示下方。
 
-### 与新建页的差异
+### 错误码处理：`handleSubmit.catch`
 
-| 字段 | 差异 |
-|------|------|
-| 字段标识 | **只读**，灰底 + lock 图标 + 黄色提示「字段标识创建后不可修改」 |
-| 其他字段 | 回填当前值，可编辑 |
+```ts
+} catch (err: unknown) {
+  const bizErr = err as BizError
+  if (bizErr.code === FIELD_ERR.VERSION_CONFLICT) {
+    ElMessageBox.alert('数据已被其他用户修改，请返回列表刷新后重试。', '版本冲突', { type: 'warning' })
+    return
+  }
+  if (bizErr.code === FIELD_ERR.NAME_EXISTS || bizErr.code === FIELD_ERR.NAME_INVALID) {
+    nameStatus.value = 'taken'
+    nameMessage.value = bizErr.message
+    return
+  }
+  if (bizErr.code === FIELD_ERR.REF_NESTED) {
+    ElMessage.error('不能引用 reference 类型字段（禁止嵌套），请选择普通字段')
+    return
+  }
+  if (bizErr.code === FIELD_ERR.REF_EMPTY) {
+    ElMessage.error('reference 字段必须至少选择一个目标字段')
+    return
+  }
+  // 其他错误走 request 拦截器默认 toast
+}
+```
 
-编辑提交时传 `version` 字段用于乐观锁。
-
-### 受限编辑状态（ref_count > 0）
-
-当字段被模板或其他字段引用时，编辑页自动进入受限模式，增加以下限制提示：
-
-| 受限字段 | UI 表现 |
-|---------|---------|
-| 字段类型 | 灰底 + lock 图标，下方黄色警告条「该字段已被 N 个模板引用，无法修改类型」（错误码 40006） |
-| 暴露 BB Key | 单选按钮半透明（opacity 0.4），下方黄色警告条「该 Key 正被 N 棵行为树使用，无法关闭」（错误码 40008） |
-| 约束配置 | 正常展示可编辑，但下方黄色警告条「该字段已被引用，约束只能放宽不能收紧：最小值只能减小，最大值只能增大」（错误码 40007） |
-
-> **判断逻辑**：进入编辑页时调用 `POST /api/v1/fields/detail` 获取 `ref_count`，若 > 0 则渲染受限模式。
-
----
-
-## 弹窗：引用详情
-
-从列表页点击引用数链接触发，调用 `POST /api/v1/fields/references`。
-
-### 布局
-
-- 标题栏：「引用详情 — {label} ({name})」 + 关闭按钮
-- 模板引用区：副标题「模板引用（N 个模板引用了该字段）：」 + 表格（模板名称 | 模板分类）
-- 字段引用区：副标题「字段引用（N 个 reference 字段引用了该字段）：」 + 表格（字段名 | 中文标签）
-
-任一区域无数据时显示空状态文案。
-
----
-
-## 约束面板（5 种类型）
-
-选择字段类型后，「约束配置」区域动态渲染对应面板。
-
-### integer / float — 数值约束
-
-| 控件 | 类型 | 说明 |
-|------|------|------|
-| 最小值 | 数字输入框 | 选填 |
-| 最大值 | 数字输入框 | 选填 |
-| 步长 | 数字输入框 | 选填 |
-
-三个输入框水平排列。
-
-### string — 文本约束
-
-| 控件 | 类型 | 说明 |
-|------|------|------|
-| 最小长度 | 数字输入框 | 选填 |
-| 最大长度 | 数字输入框 | 选填 |
-| 正则校验 | 文本输入框 | 选填，placeholder「选填，如 ^[a-zA-Z\u4e00-\u9fa5]+$」 |
-
-最小/最大长度水平排列，正则单独一行。
-
-### boolean — 无约束
-
-显示灰色提示「布尔类型无需约束配置」。
-
-### select — 选择约束
-
-| 控件 | 类型 | 说明 |
-|------|------|------|
-| 选项列表 | 动态表格 | 列：值 (value) + 标签 (label) + 删除按钮；顶部「+ 添加选项」 |
-| 最少选择数 | 数字输入框 | 选填 |
-| 最多选择数 | 数字输入框 | 选填 |
-
-底部绿色提示：「min=1, max=1 为单选；max>1 为多选。默认值自动取第一个选项。」
-
-### reference — 引用约束
-
-| 控件 | 类型 | 说明 |
-|------|------|------|
-| 引用字段列表 | 动态列表 | 每项显示：拖拽手柄 + 类型 badge + 字段名 + 中文标签 + 删除按钮；顶部「+ 添加引用」 |
-| 展开预览 | 折叠区域 | 标题「展开预览（模板勾选时实际包含的字段）」，列出打平后的所有字段 |
-
-添加引用时弹出字段选择下拉，只显示 `enabled=true` 的字段（调用 `POST /api/v1/fields/list` 传 `enabled=true`），排除自身和已选字段。
-
-底部黄色警告：「引用其他 reference 字段时，系统自动检测循环引用」。
-
-**数据格式转换**：前端用 `ref_fields: [{id, name, label, type}]` 富对象便于展示，后端存 `refs: [13, 14]` 纯 ID 数组。提交时 `buildSubmitProperties()` 转换 `ref_fields→refs`，编辑加载时反向还原 `refs→ref_fields`（逐个查 detail 获取完整信息）。
+> 40015（启用中禁止编辑）不会走到 form 这一层——列表的 `EnabledGuardDialog` 已经前端拦截。40006/40007（被引用禁改类型/收紧约束）和 40011（不存在）走默认 toast。
 
 ---
 
-## API 调用清单
+## FieldConstraintReference.vue 特殊性
 
-| 用户操作 | 调用接口 | 时机 |
-|---------|---------|------|
-| 进入列表页 | `fields/list` + `dictionaries` (field_type, field_category) | 页面加载 |
-| 筛选/翻页 | `fields/list` | 点击搜索/翻页 |
-| 点击引用数 | `fields/references` | 点击蓝色链接 |
-| Toggle 开关 | `fields/toggle-enabled` | 点击开关 |
-| 点击编辑 | 前端校验 enabled 状态 → 跳转编辑页 → `fields/detail` + `dictionaries` | 页面加载 |
-| 点击删除 | 前端校验 → `fields/delete` | 确认删除 |
-| 进入新建页 | `dictionaries` (field_type, field_category) | 页面加载 |
-| 输入字段标识后 blur | `fields/check-name` | 输入框失焦 |
-| 提交新建 | `fields/create` | 点击保存 |
-| 提交编辑 | `fields/update` | 点击保存 |
-| reference 类型添加引用 | `fields/list` (enabled=true) | 点击添加引用 |
+### 双重过滤
+
+`loadEnabledFields()` 从 `fieldApi.list({enabled: true, page_size: 1000})` 拿到全部启用字段后**追加一道过滤**：
+
+```ts
+enabledFields.value = (res.data?.items || []).filter(f => f.type !== 'reference')
+```
+
+用户看到的下拉列表永远不包含其他 reference 字段，和后端 `validateReferenceRefs` 的 40016 形成**双重防御**（前端过滤做 UX，后端兜底做真校验）。
+
+### 富对象列表模式
+
+内部状态：`modelValue.ref_fields: RefFieldItem[]`，每项带 `{id, name, label, type, type_label}` 供展示。
+
+```
+添加引用 → el-select 从 availableFields（enabled 字段 - 自身 - 已选）选一个
+         → 深拷贝该字段的元数据到 ref_fields 尾部
+         → emit('update:modelValue', { ...constraints, ref_fields: newRefFields })
+
+移除引用 → splice 并 emit
+```
+
+`availableFields` 计算属性：排除 `currentFieldId`（防自引用）+ 排除已选 ID（防重复）+ 已经过类型过滤（只有 leaf）。
+
+> **只有这个组件持有富对象格式**。提交时 `FieldForm.buildSubmitProperties` 转回 `refs: number[]`。
 
 ---
 
-## 错误码 → UI 反馈映射
+## 错误码前端映射
 
-| 错误码 | 常量 | UI 反馈方式 |
-|--------|------|------------|
-| 40001 | ErrFieldNameExists | 字段标识输入框下红色提示「该标识已被使用」 |
-| 40002 | ErrFieldNameInvalid | 字段标识输入框下红色提示「格式不合法：小写字母开头，仅允许 a-z、0-9、下划线」 |
-| 40003 | ErrFieldTypeNotFound | 全局 Message 提示 |
-| 40004 | ErrFieldCategoryNotFound | 全局 Message 提示 |
-| 40005 | ErrFieldRefDelete | 弹窗「该字段正被引用，无法删除」+ 自动打开引用详情弹窗 |
-| 40006 | ErrFieldRefChangeType | 编辑页字段类型区域黄色警告（受限模式已展示） |
-| 40007 | ErrFieldRefTighten | 全局 Message 提示「已有数据可能超出新约束范围，约束只能放宽」 |
-| 40008 | ErrFieldBBKeyInUse | 编辑页 BB Key 区域黄色警告（受限模式已展示） |
-| 40009 | ErrFieldCyclicRef | 全局 Message 提示「检测到循环引用，请调整引用关系」 |
-| 40010 | ErrFieldVersionConflict | 弹窗「数据已被其他人修改，请刷新后重试」 |
-| 40011 | ErrFieldNotFound | 跳转回列表页 + Message 提示「字段不存在或已被删除」 |
-| 40012 | ErrFieldDeleteNotDisabled | 弹窗「请先停用该字段再删除」 |
-| 40013 | ErrFieldRefDisabled | 全局 Message 提示「不能引用已停用的字段」 |
-| 40014 | ErrFieldRefNotFound | 全局 Message 提示「引用的字段不存在」 |
-| 40015 | ErrFieldEditNotDisabled | 弹窗「请先停用该字段再编辑」 |
+`api/fields.ts` 的 `FIELD_ERR` 常量表（40001-40017）是所有 catch 分支的引用源。常量表从 `backend/internal/errcode/codes.go` 逐行复制，避免硬编码数字。手工校对一致性，不做自动生成。
+
+---
+
+## 与 EnabledGuardDialog 的集成
+
+字段和模板共用一个 `EnabledGuardDialog` 组件（`components/EnabledGuardDialog.vue`），通过 `entityType` 参数切换 API 调度与文案：
+
+```ts
+guardRef.value?.open({
+  action: 'edit' | 'delete',
+  entityType: 'field',
+  entity: row,   // { id, name, label, ref_count }
+})
+```
+
+组件内部：
+
+- `edit` 场景：`立即停用` 按钮先 `fieldApi.detail(id)` 拿 version，再 `fieldApi.toggleEnabled(id, false, version)`，成功后 `router.push('/fields/${id}/edit')`
+- `delete` 场景：停用后 emit `refresh` 让父组件 refetch 列表，**不自动触发删除**（避免连锁误操作）
+- 40010 版本冲突：warning toast + emit refresh + 关闭弹窗
+
+视觉统一：橙色 24×24 圆角图标 header + 加粗 lead + 灰色 reason + 灰底 `#F5F7FA` 步骤/条件区 + 「知道了」outline + 「立即停用」橙底主按钮（SwitchButton 图标）。详见 `docs/architecture/ui-red-lines.md` 「禁止危险操作引导不一致」红线。
+
+---
+
+## 字段选择卡复用（给模板管理）
+
+字段管理本身不需要字段选择卡。但 `FieldConstraintReference` 的"从启用字段里多选"模式和模板管理的 `TemplateFieldPicker` 是同类问题的两种解法：
+
+- `FieldConstraintReference`：单个 `el-select` + 添加列表，适合 reference 字段少量（1-10 个）选择
+- `TemplateFieldPicker`：按 category 分组的 3 列网格 + popover，适合模板选 20+ 字段
+
+模板的实现见 `../模板管理/frontend.md`。
+
+---
+
+## 详细 UI 描述
+
+每个页面 / 组件的完整 mockup 对照（字段顺序、间距、颜色）见同目录下 `features.md` 的"功能 X"章节。本文档只覆盖实现事实与状态流。

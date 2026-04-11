@@ -1,9 +1,10 @@
 # 字段管理 — 已实现功能清单
 
-> **实现状态**：后端 API + 前端 UI 全部实现。
+> **实现状态**：**后端 + 前端全部落地**（集成测试 199/199 通过 + 前端 FieldList/FieldForm/5 个约束面板/EnabledGuardDialog 集成完整）。
+> 本文档是「用户场景 → 校验 → 调用链」的按功能展开说明；架构层的文件组织 / 缓存策略 / 跨模块对外接口见 `backend.md`，前端状态流 / 组件树 / 错误码处理见 `frontend.md`。
 > 字段是 ADMIN 内部的管理概念，定义"NPC 可以有什么属性"。全程只和 MySQL 打交道，不涉及 MongoDB。字段值最终通过"模板 → NPC"打平写入 `npc_templates` 集合导出。
 > **所有操作标识使用主键 ID (BIGINT)，`name` 仅用于创建时写入和唯一性校验。**
-> **技术栈**：后端 Go（gin + sqlx + slog），前端 Vue 3 + TypeScript + Element Plus + Vite。
+> **技术栈**：后端 Go（gin + sqlx + slog），前端 Vue 3.5 + TypeScript strict + Element Plus + Vite。
 
 ---
 
