@@ -106,7 +106,7 @@
 
 ---
 
-## T5：tests/api_test.sh 断言微调（R9）
+## T5：tests/api_test.sh 断言微调（R9） ✅
 
 **文件**：
 - `tests/api_test.sh`（唯一）
