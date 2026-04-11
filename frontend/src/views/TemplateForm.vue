@@ -277,14 +277,16 @@ onMounted(async () => {
         rmap[f.field_id] = f.required
       }
       requiredMap.value = rmap
-      fieldPool.value = fieldsRes.data?.items || []
+      // 后端返回 id DESC，字段选择卡展示按创建顺序正序（旧在前），排一次 id ASC
+      fieldPool.value = [...(fieldsRes.data?.items || [])].sort((a, b) => a.id - b.id)
     } else {
       const fieldsRes = await fieldApi.list({
         enabled: true,
         page: 1,
         page_size: 1000,
       })
-      fieldPool.value = fieldsRes.data?.items || []
+      // 后端返回 id DESC，字段选择卡展示按创建顺序正序（旧在前），排一次 id ASC
+      fieldPool.value = [...(fieldsRes.data?.items || [])].sort((a, b) => a.id - b.id)
     }
   } catch (err) {
     const bizErr = err as BizError
