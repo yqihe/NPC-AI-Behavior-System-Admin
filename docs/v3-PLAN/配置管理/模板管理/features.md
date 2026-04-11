@@ -1,6 +1,6 @@
 # 模板管理 — 已实现功能清单
 
-> **实现状态**：后端 API 全部实现（8 个接口 + 跨模块事务编排 + 12 个错误码）；前端 UI 实现中。
+> **实现状态**：**后端 + 前端全部实现**（后端 199/199 集成测试通过 + 8 个接口 + 跨模块事务编排 + 12 个错误码；前端 8 个新文件 + 2 个挂载点改动，参见 `docs/specs/field-template-frontend-sync`）。
 > 模板是 ADMIN 内部的管理概念，把字段组合成"可复用的配置方案"。NPC 创建时选一个模板填值。模板只和 MySQL 打交道，不涉及 MongoDB——MongoDB 数据由 NPC 配置层产生。
 > **所有操作标识使用主键 ID (BIGINT)，`name` 仅用于创建时写入和唯一性校验。**
 > **技术栈**：后端 Go（gin + sqlx + slog），前端 Vue 3 + TypeScript + Element Plus + Vite。

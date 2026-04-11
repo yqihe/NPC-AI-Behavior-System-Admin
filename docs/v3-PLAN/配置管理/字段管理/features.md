@@ -298,6 +298,8 @@ Service 层使用 Cache-Aside + 分布式锁 + 空标记三件套：
 
 **循环检测**：`detectCyclicRef` 用 DFS 遍历 `currentID → newRefIDs → 每个 ref 的 refs → ...`，将 `currentID` 预先标记为已访问；遇到重复 ID 即返回 `40009`。
 
+**前端双重防御**：`frontend/src/components/FieldConstraintReference.vue` 的 `loadEnabledFields` 在拿到启用字段列表后追加 `f.type !== 'reference'` 过滤，下拉从源头不再展示其他 reference 字段，用户不会误选；后端 `validateReferenceRefs` 的 `40016 ErrFieldRefNested` 作为兜底。`FieldForm.vue` 捕获 `40016` / `40017` 给出本地化中文 `ElMessage`（`FIELD_ERR.REF_NESTED` / `REF_EMPTY` 常量表见 `api/fields.ts`）。
+
 ### ⚠️ 已知小瑕疵：主记录与引用关系非原子
 
 Create 时 `FieldStore.Create`（主记录）和 `syncFieldRefs`（引用关系同步）**不在同一个事务里**——主记录先 INSERT，`syncFieldRefs` 再单独开 tx 写。Update 路径同理。极端情况下主记录成功而引用关系失败时会出现不一致。待后续重构为统一事务。
