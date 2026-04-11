@@ -20,6 +20,10 @@
             <el-icon><component :is="iconList" /></el-icon>
             <span>字段管理</span>
           </el-menu-item>
+          <el-menu-item index="/templates">
+            <el-icon><component :is="iconFiles" /></el-icon>
+            <span>模板管理</span>
+          </el-menu-item>
         </el-menu-item-group>
       </el-menu>
     </el-aside>
@@ -30,13 +34,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h } from 'vue'
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { List } from '@element-plus/icons-vue'
+import { List, Files } from '@element-plus/icons-vue'
 
 const route = useRoute()
 
 const iconList = List
+const iconFiles = Files
 
 const activeMenu = computed(() => {
   if (route.path === '/') return '/fields'
