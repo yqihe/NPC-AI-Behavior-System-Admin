@@ -28,7 +28,7 @@
 
 ---
 
-## T2：handler 层 `properties` 形状校验（R5 → atk11.6）
+## T2：handler 层 `properties` 形状校验（R5 → atk11.6） ✅
 
 **文件**：
 - `backend/internal/handler/field.go`（唯一）

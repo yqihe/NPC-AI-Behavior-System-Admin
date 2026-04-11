@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -76,6 +78,20 @@ func checkID(id int64) *errcode.Error {
 	return nil
 }
 
+// checkPropertiesShape 校验 properties 原始字节必须是 JSON 对象（首字符 '{'）。
+// 防御客户端传 null / [] / "foo" / 123 / true 这类非对象形状；
+// json.RawMessage 对 `null` 不会变 nil，是 []byte("null")，所以需要单独拦。
+func checkPropertiesShape(raw json.RawMessage) *errcode.Error {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return errcode.Newf(errcode.ErrBadRequest, "properties 不能为空")
+	}
+	if trimmed[0] != '{' {
+		return errcode.Newf(errcode.ErrBadRequest, "properties 必须是 JSON 对象")
+	}
+	return nil
+}
+
 func checkVersion(version int) *errcode.Error {
 	if version <= 0 {
 		return errcode.Newf(errcode.ErrBadRequest, "版本号不合法")
@@ -110,8 +126,8 @@ func (h *FieldHandler) Create(ctx context.Context, req *model.CreateFieldRequest
 	if err := checkRequired(req.Category, "标签分类"); err != nil {
 		return nil, err
 	}
-	if req.Properties == nil {
-		return nil, errcode.Newf(errcode.ErrBadRequest, "properties 不能为空")
+	if err := checkPropertiesShape(req.Properties); err != nil {
+		return nil, err
 	}
 
 	slog.Debug("handler.创建字段", "name", req.Name, "type", req.Type, "category", req.Category)
@@ -149,8 +165,8 @@ func (h *FieldHandler) Update(ctx context.Context, req *model.UpdateFieldRequest
 	if err := checkRequired(req.Category, "标签分类"); err != nil {
 		return nil, err
 	}
-	if req.Properties == nil {
-		return nil, errcode.Newf(errcode.ErrBadRequest, "properties 不能为空")
+	if err := checkPropertiesShape(req.Properties); err != nil {
+		return nil, err
 	}
 	if err := checkVersion(req.Version); err != nil {
 		return nil, err
