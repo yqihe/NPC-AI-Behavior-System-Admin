@@ -392,8 +392,9 @@ const emit = defineEmits<{
 **数据加载**：
 
 1. `open(refField, currentSelectedIds)` 触发时：
-   - 先 `fieldApi.detail(refField.id)` 拿到 `properties.constraints.ref_fields`（注意：前端约束存的是富对象数组 `[{id, name, label, type}]`，不是平面 ID 数组——对齐 `FieldConstraintReference.vue` 的 `RefFieldItem` 类型）。
-   - **最简策略**：直接用 `ref_fields` 数组里的 `id / name / label / type` 填充子字段列表，**不再二次调 `fieldApi.list`**。
+   - 先 `fieldApi.detail(refField.id)` 拿到 `properties.constraints.refs`（**持久化格式是纯 ID 数组 `number[]`**，`FieldConstraintReference.vue` 里的 `ref_fields` 富对象只是 UI 本地状态，submit 前会转回 `refs`，后端永远只见到 `refs`）。
+   - 对每个 refID **并发** `Promise.all(refs.map((id) => fieldApi.detail(id)))` 拿每个子字段的 `name / label / type`。reference 禁止嵌套保证子字段必是 leaf，数量通常 < 10，N+1 代价可接受。
+   - 罕见情况（子字段被硬删除）写个 `字段 {id}` 占位，不让 UI 崩。
    - 初始化 `tempSelected = currentSelectedIds.filter((id) => allSubIds.includes(id))`——把外部 selectedIds 中属于这个 reference 的子字段自动回勾。
 2. popover 内操作 `tempSelected` 独立于父组件——**不直接修改父组件的 selectedIds**，避免取消时污染父状态。
 3. 全选 / 全不选按钮只影响 `tempSelected`。
