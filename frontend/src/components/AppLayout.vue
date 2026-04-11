@@ -18,13 +18,13 @@
             <el-icon class="group-icon"><Setting /></el-icon>
             <span class="group-title">配置管理</span>
           </template>
-          <el-menu-item index="/fields">
-            <el-icon><List /></el-icon>
-            <span>字段管理</span>
-          </el-menu-item>
           <el-menu-item index="/templates">
             <el-icon><Files /></el-icon>
             <span>模板管理</span>
+          </el-menu-item>
+          <el-menu-item index="/fields">
+            <el-icon><List /></el-icon>
+            <span>字段管理</span>
           </el-menu-item>
         </el-sub-menu>
       </el-menu>
