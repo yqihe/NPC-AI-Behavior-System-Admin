@@ -117,7 +117,8 @@ const enabledFields = ref<FieldListItem[]>([])
 async function loadEnabledFields() {
   try {
     const res = await fieldApi.list({ enabled: true, page: 1, page_size: 1000 })
-    enabledFields.value = res.data?.items || []
+    // 过滤 reference 类型字段，与后端 validateReferenceRefs 的禁止嵌套保持一致
+    enabledFields.value = (res.data?.items || []).filter((f) => f.type !== 'reference')
   } catch {
     // 拦截器已 toast
   }
