@@ -95,7 +95,7 @@ func (s *EventTypeSchemaStore) List(ctx context.Context, q *model.EventTypeSchem
 func (s *EventTypeSchemaStore) ListEnabled(ctx context.Context) ([]model.EventTypeSchemaLite, error) {
 	items := make([]model.EventTypeSchemaLite, 0)
 	err := s.db.SelectContext(ctx, &items,
-		`SELECT field_name, field_label, field_type, constraints, default_value, sort_order
+		`SELECT field_name, field_label, field_type, constraints, default_value, sort_order, enabled
 		 FROM event_type_schema WHERE deleted = 0 AND enabled = 1
 		 ORDER BY sort_order ASC, id ASC`)
 	if err != nil {
@@ -108,7 +108,7 @@ func (s *EventTypeSchemaStore) ListEnabled(ctx context.Context) ([]model.EventTy
 func (s *EventTypeSchemaStore) ListAllLite(ctx context.Context) ([]model.EventTypeSchemaLite, error) {
 	items := make([]model.EventTypeSchemaLite, 0)
 	err := s.db.SelectContext(ctx, &items,
-		`SELECT field_name, field_label, field_type, constraints, default_value, sort_order
+		`SELECT field_name, field_label, field_type, constraints, default_value, sort_order, enabled
 		 FROM event_type_schema WHERE deleted = 0
 		 ORDER BY sort_order ASC, id ASC`)
 	if err != nil {

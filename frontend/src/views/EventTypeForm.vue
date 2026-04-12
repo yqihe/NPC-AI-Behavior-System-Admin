@@ -142,15 +142,21 @@
 
         <el-form :disabled="isView" label-width="120px" label-position="right">
           <el-form-item
-            v-for="ext in extensionSchema"
+            v-for="ext in sortedExtensionSchema"
             :key="ext.field_name"
             :label="ext.field_label"
+            :class="{ 'ext-disabled': !ext.enabled }"
           >
+            <!-- 禁用标注 -->
+            <div v-if="!ext.enabled" class="ext-disabled-tag">
+              <el-tag size="small" type="info">已禁用</el-tag>
+            </div>
             <!-- int -->
             <el-input-number
               v-if="ext.field_type === 'int'"
               v-model="extensionValues[ext.field_name]"
               :controls="false"
+              :disabled="!ext.enabled"
               :placeholder="`默认: ${ext.default_value}`"
               style="width: 200px"
               @change="() => markDirty(ext.field_name)"
@@ -161,6 +167,7 @@
               v-model="extensionValues[ext.field_name]"
               :controls="false"
               :step="0.1"
+              :disabled="!ext.enabled"
               :placeholder="`默认: ${ext.default_value}`"
               style="width: 200px"
               @change="() => markDirty(ext.field_name)"
@@ -169,6 +176,7 @@
             <el-input
               v-else-if="ext.field_type === 'string'"
               v-model="extensionValues[ext.field_name]"
+              :disabled="!ext.enabled"
               :placeholder="`默认: ${ext.default_value}`"
               style="width: 100%"
               @input="() => markDirty(ext.field_name)"
@@ -177,6 +185,7 @@
             <el-switch
               v-else-if="ext.field_type === 'bool'"
               :model-value="Boolean(extensionValues[ext.field_name])"
+              :disabled="!ext.enabled"
               @change="(val: string | number | boolean) => { extensionValues[ext.field_name] = Boolean(val); markDirty(ext.field_name) }"
             />
             <!-- select -->
@@ -184,6 +193,7 @@
               v-else-if="ext.field_type === 'select'"
               v-model="extensionValues[ext.field_name]"
               placeholder="请选择"
+              :disabled="!ext.enabled"
               style="width: 200px"
               @change="() => markDirty(ext.field_name)"
             >
@@ -213,7 +223,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance } from 'element-plus'
@@ -304,6 +314,7 @@ async function loadExtensionSchema() {
       constraints: s.constraints,
       default_value: s.default_value,
       sort_order: s.sort_order,
+      enabled: true,
     }))
     // 用默认值初始化扩展字段值（不标记 dirty）
     for (const ext of extensionSchema.value) {
@@ -358,6 +369,12 @@ function loadExtensionsFromConfig(
     }
   }
 }
+
+// ---------- 排序：按 sort_order 升序 ----------
+
+const sortedExtensionSchema = computed(() =>
+  [...extensionSchema.value].sort((a, b) => a.sort_order - b.sort_order),
+)
 
 // ---------- 标识符校验 ----------
 
@@ -605,6 +622,14 @@ async function handleSubmit() {
   margin-top: 4px;
   font-size: 12px;
   color: #909399;
+}
+
+.ext-disabled {
+  opacity: 0.55;
+}
+
+.ext-disabled-tag {
+  margin-bottom: 4px;
 }
 
 .form-footer {

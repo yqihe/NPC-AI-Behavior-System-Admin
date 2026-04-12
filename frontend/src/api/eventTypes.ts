@@ -41,6 +41,7 @@ export interface ExtensionSchemaItem {
   constraints: Record<string, unknown>
   default_value: unknown
   sort_order: number
+  enabled: boolean
 }
 
 /** 详情响应 */

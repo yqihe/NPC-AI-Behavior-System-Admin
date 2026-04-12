@@ -37,6 +37,7 @@ type EventTypeSchemaLite struct {
 	Constraints  json.RawMessage `json:"constraints" db:"constraints"`
 	DefaultValue json.RawMessage `json:"default_value" db:"default_value"`
 	SortOrder    int             `json:"sort_order" db:"sort_order"`
+	Enabled      bool            `json:"enabled" db:"enabled"`
 }
 
 // ──────────────────────────────────────────────
