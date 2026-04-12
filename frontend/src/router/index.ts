@@ -20,6 +20,12 @@ const router = createRouter({
       meta: { title: '新建字段', isCreate: true },
     },
     {
+      path: '/fields/:id/view',
+      name: 'field-view',
+      component: () => import('@/views/FieldForm.vue'),
+      meta: { title: '查看字段', isCreate: false, isView: true },
+    },
+    {
       path: '/fields/:id/edit',
       name: 'field-edit',
       component: () => import('@/views/FieldForm.vue'),
@@ -39,6 +45,13 @@ const router = createRouter({
       meta: { title: '新建模板' },
     },
     {
+      path: '/templates/:id/view',
+      name: 'template-view',
+      component: () => import('@/views/TemplateForm.vue'),
+      props: (route) => ({ mode: 'view', id: Number(route.params.id) }),
+      meta: { title: '查看模板' },
+    },
+    {
       path: '/templates/:id/edit',
       name: 'template-edit',
       component: () => import('@/views/TemplateForm.vue'),
@@ -56,6 +69,12 @@ const router = createRouter({
       name: 'event-type-create',
       component: () => import('@/views/EventTypeForm.vue'),
       meta: { title: '新建事件类型', isCreate: true },
+    },
+    {
+      path: '/event-types/:id/view',
+      name: 'event-type-view',
+      component: () => import('@/views/EventTypeForm.vue'),
+      meta: { title: '查看事件类型', isCreate: false, isView: true },
     },
     {
       path: '/event-types/:id/edit',

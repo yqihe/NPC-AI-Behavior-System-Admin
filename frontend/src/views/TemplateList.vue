@@ -73,11 +73,19 @@
             {{ formatTime(row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }: { row: TemplateListItem }">
             <el-link
               type="primary"
               :underline="false"
+              @click="$router.push(`/templates/${row.id}/view`)"
+            >
+              查看
+            </el-link>
+            <el-link
+              type="primary"
+              :underline="false"
+              style="margin-left: 12px"
               @click="handleEdit(row)"
             >
               编辑

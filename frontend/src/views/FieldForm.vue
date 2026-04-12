@@ -5,7 +5,7 @@
       <el-icon class="back-icon" @click="$router.push('/fields')"><ArrowLeft /></el-icon>
       <span class="back-text" @click="$router.push('/fields')">返回</span>
       <span class="header-sep"></span>
-      <span class="header-title">{{ isCreate ? '新建字段' : '编辑字段' }}</span>
+      <span class="header-title">{{ isView ? '查看字段' : isCreate ? '新建字段' : '编辑字段' }}</span>
     </div>
 
     <!-- 表单卡片 -->
@@ -15,6 +15,7 @@
           ref="formRef"
           :model="form"
           :rules="rules"
+          :disabled="isView"
           label-width="120px"
           label-position="right"
         >
@@ -184,8 +185,8 @@
             />
           </el-form-item>
 
-          <!-- 提交按钮 -->
-          <div class="form-actions">
+          <!-- 提交按钮（查看模式隐藏） -->
+          <div v-if="!isView" class="form-actions">
             <el-button @click="$router.push('/fields')">取消</el-button>
             <el-button
               type="primary"
@@ -219,6 +220,7 @@ import FieldConstraintReference from '@/components/FieldConstraintReference.vue'
 const route = useRoute()
 const router = useRouter()
 const isCreate = route.meta.isCreate as boolean
+const isView = (route.meta.isView as boolean) || false
 
 const formRef = ref<FormInstance>()
 const submitting = ref(false)

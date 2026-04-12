@@ -8,7 +8,7 @@
       <span class="back-text" @click="$router.push('/templates')">返回</span>
       <span class="header-sep"></span>
       <span class="header-title">
-        {{ mode === 'create' ? '新建模板' : '编辑模板' }}
+        {{ mode === 'view' ? '查看模板' : mode === 'create' ? '新建模板' : '编辑模板' }}
       </span>
       <span v-if="isEdit && template" class="header-sub">
         {{ template.label }}
@@ -42,6 +42,7 @@
           ref="formRef"
           :model="formState"
           :rules="rules"
+          :disabled="isView"
           label-width="120px"
           label-position="right"
         >
@@ -141,8 +142,8 @@
         />
       </div>
 
-      <!-- 操作栏 -->
-      <div class="form-actions">
+      <!-- 操作栏（查看模式隐藏） -->
+      <div v-if="!isView" class="form-actions">
         <el-button @click="$router.push('/templates')">取消</el-button>
         <el-button type="primary" :loading="submitting" @click="onSubmit">
           保存
@@ -173,12 +174,13 @@ import type { TemplateDetail, TemplateFieldItem } from '@/api/templates'
 import type { BizError } from '@/api/request'
 
 const props = defineProps<{
-  mode: 'create' | 'edit'
+  mode: 'create' | 'edit' | 'view'
   id?: number
 }>()
 
 const router = useRouter()
-const isEdit = computed(() => props.mode === 'edit')
+const isEdit = computed(() => props.mode === 'edit' || props.mode === 'view')
+const isView = computed(() => props.mode === 'view')
 
 // ---------- 状态 ----------
 

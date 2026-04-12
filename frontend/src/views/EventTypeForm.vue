@@ -5,7 +5,7 @@
       <el-icon class="back-icon" @click="$router.push('/event-types')"><ArrowLeft /></el-icon>
       <span class="back-text" @click="$router.push('/event-types')">返回</span>
       <span class="header-sep"></span>
-      <span class="header-title">{{ isCreate ? '新建事件类型' : '编辑事件类型' }}</span>
+      <span class="header-title">{{ isView ? '查看事件类型' : isCreate ? '新建事件类型' : '编辑事件类型' }}</span>
     </div>
 
     <!-- 表单滚动区 -->
@@ -20,12 +20,13 @@
           ref="formRef"
           :model="form"
           :rules="rules"
+          :disabled="isView"
           label-width="120px"
           label-position="right"
         >
           <!-- 事件标识 -->
           <el-form-item label="事件标识" prop="name">
-            <template v-if="!isCreate">
+            <template v-if="!isCreate || isView">
               <el-input :model-value="form.name" disabled style="width: 100%">
                 <template #prefix>
                   <el-icon><Lock /></el-icon>
@@ -139,7 +140,7 @@
           <span>扩展字段由事件类型 Schema 定义，以下字段将附加到 config_json 中</span>
         </div>
 
-        <el-form label-width="120px" label-position="right">
+        <el-form :disabled="isView" label-width="120px" label-position="right">
           <el-form-item
             v-for="ext in extensionSchema"
             :key="ext.field_name"
@@ -200,8 +201,8 @@
         </el-form>
       </div>
 
-      <!-- 表单操作 -->
-      <div class="form-card form-footer">
+      <!-- 表单操作（查看模式隐藏） -->
+      <div v-if="!isView" class="form-card form-footer">
         <el-button @click="$router.push('/event-types')">取消</el-button>
         <el-button type="primary" :loading="submitting" @click="handleSubmit">
           保存
@@ -227,6 +228,7 @@ import type { BizError } from '@/api/request'
 const route = useRoute()
 const router = useRouter()
 const isCreate = route.meta.isCreate as boolean
+const isView = (route.meta.isView as boolean) || false
 
 const formRef = ref<FormInstance>()
 const submitting = ref(false)

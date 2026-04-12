@@ -88,9 +88,12 @@
             {{ formatTime(row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
-            <el-link type="primary" :underline="false" @click="handleEdit(row)">
+            <el-link type="primary" :underline="false" @click="$router.push(`/event-types/${row.id}/view`)">
+              查看
+            </el-link>
+            <el-link type="primary" :underline="false" @click="handleEdit(row)" style="margin-left: 12px">
               编辑
             </el-link>
             <el-link type="danger" :underline="false" @click="handleDelete(row)" style="margin-left: 12px">
