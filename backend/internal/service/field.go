@@ -13,6 +13,7 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
+	"github.com/yqihe/npc-ai-admin/backend/internal/service/constraint"
 	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
 	storeredis "github.com/yqihe/npc-ai-admin/backend/internal/store/redis"
 )
@@ -650,22 +651,11 @@ func parseProperties(raw json.RawMessage) (*model.FieldProperties, error) {
 }
 
 func parseConstraintsMap(raw json.RawMessage) (map[string]json.RawMessage, error) {
-	if len(raw) == 0 {
-		return make(map[string]json.RawMessage), nil
-	}
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &m); err != nil {
-		return nil, fmt.Errorf("unmarshal constraints: %w", err)
-	}
-	return m, nil
+	return constraint.ParseConstraintsMap(raw)
 }
 
 func getFloat(raw json.RawMessage) (float64, bool) {
-	var v float64
-	if err := json.Unmarshal(raw, &v); err != nil {
-		return 0, false
-	}
-	return v, true
+	return constraint.GetFloat(raw)
 }
 
 func checkConstraintTightened(fieldType string, oldConstraints, newConstraints json.RawMessage) *errcode.Error {
@@ -752,33 +742,12 @@ func checkConstraintTightened(fieldType string, oldConstraints, newConstraints j
 	return nil
 }
 
-// getStringFromRaw 从 json.RawMessage 提取字符串值，失败返回空串
 func getStringFromRaw(raw json.RawMessage) string {
-	if len(raw) == 0 {
-		return ""
-	}
-	var s string
-	if err := json.Unmarshal(raw, &s); err != nil {
-		return ""
-	}
-	return s
+	return constraint.GetString(raw)
 }
 
 func parseSelectOptions(raw json.RawMessage) []string {
-	if len(raw) == 0 {
-		return nil
-	}
-	var options []struct {
-		Value string `json:"value"`
-	}
-	if err := json.Unmarshal(raw, &options); err != nil {
-		return nil
-	}
-	values := make([]string, 0, len(options))
-	for _, o := range options {
-		values = append(values, o.Value)
-	}
-	return values
+	return constraint.ParseSelectOptions(raw)
 }
 
 // ---- 循环引用检测 ----
