@@ -23,7 +23,7 @@
       <!-- 编辑：操作步骤 -->
       <div v-if="action === 'edit'" class="guard-box">
         <div class="guard-box-label">操作步骤</div>
-        <div class="guard-box-line">1. 在列表中点击该{{ entityTypeLabel }}的「启用」开关停用它</div>
+        <div class="guard-box-line">1. 在列表中点击该{{ entityTypeLabel }}的「启用」开关禁用它</div>
         <div class="guard-box-line">2. 完成编辑后再次启用</div>
       </div>
 
@@ -32,7 +32,7 @@
         <div class="guard-box-label">删除前置条件</div>
         <div class="guard-cond guard-cond-fail">
           <el-icon><CircleCloseFilled /></el-icon>
-          <span>{{ entityTypeLabel }}已停用</span>
+          <span>{{ entityTypeLabel }}已禁用</span>
         </div>
         <div
           class="guard-cond"
@@ -54,7 +54,7 @@
         <el-button @click="visible = false">知道了</el-button>
         <el-button type="warning" :loading="acting" @click="onActOnce">
           <el-icon v-if="!acting" class="btn-icon"><SwitchButton /></el-icon>
-          立即停用
+          立即禁用
         </el-button>
       </div>
     </template>
@@ -124,17 +124,17 @@ const leadText = computed(() => {
 const reasonText = computed(() => {
   if (action.value === 'edit') {
     if (entityType.value === 'field') {
-      return '已启用的字段对模板与其他字段可见，允许任意修改可能导致引用方看到不稳定的配置。请先停用，再进入编辑。'
+      return '已启用的字段对模板与其他字段可见，允许任意修改可能导致引用方看到不稳定的配置。请先禁用，再进入编辑。'
     }
     if (entityType.value === 'event-type') {
-      return '已启用的事件类型对 FSM/BT 可见，任意修改可能导致引用方看到不稳定的配置。请先停用，再进入编辑。'
+      return '已启用的事件类型对 FSM/BT 可见，任意修改可能导致引用方看到不稳定的配置。请先禁用，再进入编辑。'
     }
     if (entityType.value === 'event-type-schema') {
-      return '已启用的扩展字段对事件类型表单可见，任意修改可能导致表单配置不稳定。请先停用，再进入编辑。'
+      return '已启用的扩展字段对事件类型表单可见，任意修改可能导致表单配置不稳定。请先禁用，再进入编辑。'
     }
-    return '已启用的模板对 NPC 管理页可见，允许任意修改可能导致策划在配置不稳定时选用。请先停用，再进入编辑。'
+    return '已启用的模板对 NPC 管理页可见，允许任意修改可能导致策划在配置不稳定时选用。请先禁用，再进入编辑。'
   }
-  return '删除是不可恢复的操作。先停用可以提供一个观察期 — 确认下线没有问题，再执行删除。'
+  return '删除是不可恢复的操作。先禁用可以提供一个观察期 — 确认下线没有问题，再执行删除。'
 })
 
 const emit = defineEmits<{
@@ -182,7 +182,7 @@ async function onActOnce() {
       const detail = await templateApi.detail(id)
       await templateApi.toggleEnabled(id, false, detail.data.version)
     }
-    ElMessage.success('已停用')
+    ElMessage.success('已禁用')
 
     if (action.value === 'edit') {
       visible.value = false

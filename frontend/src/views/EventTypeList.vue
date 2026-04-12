@@ -58,7 +58,7 @@
       >
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="name" label="事件标识" min-width="140" />
-        <el-table-column prop="display_name" label="中文名称" min-width="120" />
+        <el-table-column prop="display_name" label="中文标签" min-width="120" />
         <el-table-column label="感知模式" width="100">
           <template #default="{ row }">
             <el-tag size="small" :type="modeBadgeType(row.perception_mode)">
@@ -199,10 +199,10 @@ function handleReset() {
 // ---------- 行操作 ----------
 
 async function handleToggle(row: EventTypeListItem, val: boolean) {
-  const action = val ? '启用' : '停用'
+  const action = val ? '启用' : '禁用'
   const msg = val
     ? `确认启用事件类型「${row.display_name}」？启用后可被 FSM/BT 引用。`
-    : `确认停用事件类型「${row.display_name}」？停用后新的 FSM/BT 无法引用该事件类型，已有引用不受影响。`
+    : `确认禁用事件类型「${row.display_name}」？禁用后新的 FSM/BT 无法引用该事件类型，已有引用不受影响。`
   try {
     await ElMessageBox.confirm(msg, `${action}确认`, {
       confirmButtonText: `确认${action}`,

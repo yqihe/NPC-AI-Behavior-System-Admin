@@ -17,7 +17,7 @@
     <div class="filter-bar">
       <el-select
         v-model="query.enabled"
-        placeholder="状态"
+        placeholder="启用状态"
         clearable
         class="filter-item"
       >
@@ -41,7 +41,7 @@
       >
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="field_name" label="字段标识" min-width="130" />
-        <el-table-column prop="field_label" label="中文名" min-width="120" />
+        <el-table-column prop="field_label" label="中文标签" min-width="120" />
         <el-table-column label="类型" width="100">
           <template #default="{ row }">
             <el-tag size="small" :type="typeBadgeType(row.field_type)">

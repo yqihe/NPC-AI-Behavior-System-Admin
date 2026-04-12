@@ -199,10 +199,10 @@ function handleReset() {
 // ---------- 行操作 ----------
 
 async function handleToggle(row: TemplateListItem, val: boolean) {
-  const action = val ? '启用' : '停用'
+  const action = val ? '启用' : '禁用'
   const msg = val
     ? `确认启用模板「${row.label}」？启用后可被 NPC 管理页选择。`
-    : `确认停用模板「${row.label}」？停用后 NPC 管理页将无法看到，已有 NPC 不受影响。`
+    : `确认禁用模板「${row.label}」？禁用后 NPC 管理页将无法看到，已有 NPC 不受影响。`
   try {
     await ElMessageBox.confirm(msg, `${action}确认`, {
       confirmButtonText: `确认${action}`,

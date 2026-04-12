@@ -223,7 +223,7 @@ const isLocked = computed(
   () => isEdit.value && (template.value?.ref_count ?? 0) > 0,
 )
 
-/** 编辑模式优先从 template.fields 拿停用字段元数据；create 模式全从 fieldPool 构造 */
+/** 编辑模式优先从 template.fields 拿禁用字段元数据；create 模式全从 fieldPool 构造 */
 const selectedFieldsView = computed<TemplateFieldItem[]>(() => {
   const detailMap = new Map<number, TemplateFieldItem>()
   if (isEdit.value && template.value) {
@@ -362,7 +362,7 @@ async function onSubmit() {
   try {
     if (props.mode === 'create') {
       await templateApi.create(payload)
-      ElMessage.success('创建成功，模板默认为停用状态，确认无误后请手动启用')
+      ElMessage.success('创建成功，模板默认为禁用状态，确认无误后请手动启用')
     } else {
       await templateApi.update({
         ...payload,

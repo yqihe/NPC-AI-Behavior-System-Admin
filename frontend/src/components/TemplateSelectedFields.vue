@@ -18,7 +18,7 @@
               <WarningFilled />
             </el-icon>
             <span>{{ row.label }}</span>
-            <el-tag v-if="!row.enabled" size="small" type="warning">已停用</el-tag>
+            <el-tag v-if="!row.enabled" size="small" type="warning">已禁用</el-tag>
           </div>
         </template>
       </el-table-column>

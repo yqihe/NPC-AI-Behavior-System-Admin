@@ -50,7 +50,7 @@
       </el-select>
       <el-select
         v-model="query.enabled"
-        placeholder="状态"
+        placeholder="启用状态"
         clearable
         class="filter-item"
       >
@@ -73,7 +73,7 @@
         style="width: 100%"
       >
         <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column prop="name" label="标识符" min-width="120" />
+        <el-table-column prop="name" label="字段标识" min-width="120" />
         <el-table-column prop="label" label="中文标签" min-width="120" />
         <el-table-column label="类型" width="100">
           <template #default="{ row }">

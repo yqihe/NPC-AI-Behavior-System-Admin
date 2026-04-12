@@ -205,7 +205,7 @@
               />
             </el-select>
             <div class="ext-hint">
-              类型: {{ ext.field_type }} · 默认值: {{ JSON.stringify(ext.default_value) }}
+              类型: {{ extTypeLabel(ext.field_type) }} · 默认值: {{ JSON.stringify(ext.default_value) }}
             </div>
           </el-form-item>
         </el-form>
@@ -412,6 +412,13 @@ function markDirty(fieldName: string) {
   dirtyExtensions.add(fieldName)
 }
 
+function extTypeLabel(type: string): string {
+  const map: Record<string, string> = {
+    int: '整数', float: '浮点数', string: '文本', bool: '布尔', select: '选择',
+  }
+  return map[type] || type
+}
+
 function getSelectOptions(ext: ExtensionSchemaItem): unknown[] {
   const constraints = ext.constraints || {}
   const options = constraints.options as Array<{ value: unknown }> | undefined
@@ -452,7 +459,7 @@ async function handleSubmit() {
         range: form.range!,
         extensions: Object.keys(extensions).length > 0 ? extensions : undefined,
       })
-      ElMessage.success('创建成功，事件类型默认为停用状态，确认无误后请手动启用')
+      ElMessage.success('创建成功，事件类型默认为禁用状态，确认无误后请手动启用')
     } else {
       await eventTypeApi.update({
         id: Number(route.params.id),
