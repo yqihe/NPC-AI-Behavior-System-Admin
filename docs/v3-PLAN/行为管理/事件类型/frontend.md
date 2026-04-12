@@ -1,174 +1,185 @@
 # 事件类型管理 — 前端设计
 
-> **实现状态**：规划中，前端代码尚未落地。以下内容基于后端已实现的 API 和现有设计文档规划。
+> **实现状态**：已完成。事件类型 CRUD + 扩展字段 Schema 管理均已落地。
 > 通用前端规范见 `docs/development/standards/red-lines/frontend.md` 和 `dev-rules/frontend.md`。
 
 ---
 
-## 1. 目录结构（规划中）
+## 1. 目录结构
 
 ```
 frontend/src/
 ├── api/
-│   └── event-types.ts                    # 类型定义 + EVENT_TYPE_ERR(42001-42015) + EVENT_TYPE_SCHEMA_ERR(42020-42030) + API 函数
+│   └── eventTypes.ts                    # 类型定义 + EVENT_TYPE_ERR + EXT_SCHEMA_ERR + API 函数
 ├── views/
-│   ├── EventTypeList.vue                 # 列表页：筛选(display_name / perception_mode / enabled) + 分页 + toggle + 编辑删除守卫
-│   ├── EventTypeForm.vue                 # 新建/编辑共用：系统字段 + 扩展字段(SchemaForm) + dirty 追踪
-│   └── SchemaManagement.vue              # Schema 管理页主容器（含多 tab，事件类型扩展字段为其中一个）
+│   ├── EventTypeList.vue                # 列表页：筛选(display_name / perception_mode / enabled) + 分页 + toggle + 编辑删除守卫
+│   ├── EventTypeForm.vue                # 新建/编辑/查看共用：系统字段 + 扩展字段(按 sort_order 排序) + dirty 追踪
+│   ├── EventTypeSchemaList.vue          # 扩展字段 Schema 列表页：筛选(enabled) + toggle + 编辑删除守卫
+│   └── EventTypeSchemaForm.vue          # 扩展字段 Schema 新建/编辑/查看表单页
 ├── components/
-│   ├── EventTypeSchemaTab.vue            # 事件类型扩展字段 tab（列表 + 新建/编辑弹窗）
-│   ├── SchemaForm.vue                    # 通用 Schema 驱动表单：接受 schema 数组 + 值对象 + dirty 追踪
-│   ├── FormFieldInt.vue                  # SchemaForm 子组件：整数输入
-│   ├── FormFieldFloat.vue               # SchemaForm 子组件：浮点输入
-│   ├── FormFieldString.vue              # SchemaForm 子组件：字符串输入
-│   ├── FormFieldBool.vue                # SchemaForm 子组件：布尔开关
-│   ├── FormFieldSelect.vue              # SchemaForm 子组件：选择框
-│   ├── ConstraintPanel.vue              # 按 field_type 动态渲染约束编辑器（复用字段管理的 FieldConstraint*.vue）
-│   └── EnabledGuardDialog.vue           # 启用守卫（复用，entityType 泛型扩展 'event_type'）
-├── stores/
-│   ├── eventType.ts                     # 列表查询 / 详情 / 当前编辑对象 / 提交态
-│   └── eventTypeSchema.ts              # 扩展字段 schema 列表 + 按 enabled 过滤 + reload 动作
-└── router/index.ts                      # 新增 /event-types, /event-types/new, /event-types/:id/edit, /schema-management
+│   ├── EnabledGuardDialog.vue           # 启用守卫（复用，entityType 含 'event-type' | 'event-type-schema'）
+│   ├── FieldConstraintInteger.vue       # 约束组件（复用，typeName 支持 'int'/'float'/'integer'）
+│   ├── FieldConstraintString.vue        # 约束组件（复用）
+│   └── FieldConstraintSelect.vue        # 约束组件（复用）
+└── router/index.ts                      # 8 条路由（事件类型 4 + 扩展字段 4）
 ```
 
-复用已有组件：`EnabledGuardDialog.vue`、`FieldConstraintInteger.vue`、`FieldConstraintString.vue`、`FieldConstraintSelect.vue`。不复用 `FieldConstraintReference.vue`（扩展字段不支持 reference 类型）。
+不使用 Pinia/Vuex 状态管理，所有状态在组件内 `ref` / `reactive` 管理。
 
 ---
 
-## 2. 页面路由（规划中）
+## 2. 页面路由
 
-| 路径 | 组件 | 说明 |
-|---|---|---|
-| `/event-types` | `EventTypeList.vue` | 列表页 |
-| `/event-types/new` | `EventTypeForm.vue` | 新建页 |
-| `/event-types/:id/edit` | `EventTypeForm.vue` | 编辑页（与新建共用，mode 区分） |
-| `/schema-management` | `SchemaManagement.vue` | Schema 管理页（多 tab，事件类型扩展字段是其中一个） |
+| 路径 | 组件 | route meta | 说明 |
+|---|---|---|---|
+| `/event-types` | EventTypeList | — | 列表页 |
+| `/event-types/create` | EventTypeForm | `isCreate: true` | 新建页 |
+| `/event-types/:id/view` | EventTypeForm | `isCreate: false, isView: true` | 查看页（只读） |
+| `/event-types/:id/edit` | EventTypeForm | `isCreate: false` | 编辑页 |
+| `/event-type-schemas` | EventTypeSchemaList | — | 扩展字段列表页 |
+| `/event-type-schemas/create` | EventTypeSchemaForm | `isCreate: true` | 扩展字段新建页 |
+| `/event-type-schemas/:id/view` | EventTypeSchemaForm | `isCreate: false, isView: true` | 扩展字段查看页 |
+| `/event-type-schemas/:id/edit` | EventTypeSchemaForm | `isCreate: false` | 扩展字段编辑页 |
+
+侧边栏菜单：「配置管理」分组下「事件类型」+「事件扩展字段」。
 
 ---
 
-## 3. 组件树（规划中）
+## 3. 组件树
 
 ```
 EventTypeList.vue
-  └─ EnabledGuardDialog.vue               (复用，entityType: 'event_type')
+  └─ EnabledGuardDialog (entityType: 'event-type')
 
-EventTypeForm.vue (mode: 'create' | 'edit')
-  ├─ 系统字段区域（硬编码表单项）
+EventTypeForm.vue (三模式：create / edit / view)
+  ├─ 基本信息卡片（蓝色 title-bar）
   │   name / display_name / perception_mode / range / default_severity / default_ttl
-  └─ 扩展字段区域
-      └─ SchemaForm.vue                    (通用组件，接受 schema 数组)
-          ├─ FormFieldInt.vue
-          ├─ FormFieldFloat.vue
-          ├─ FormFieldString.vue
-          ├─ FormFieldBool.vue
-          └─ FormFieldSelect.vue
+  └─ 扩展字段卡片（橙色 title-bar，按 sort_order 排序）
+      ├─ 启用字段：可编辑
+      └─ 禁用但有值的字段：灰显 + 「已禁用」tag + disabled
 
-SchemaManagement.vue
-  └─ EventTypeSchemaTab.vue
-      ├─ EventTypeSchemaList.vue           (扩展字段列表)
-      ├─ EventTypeSchemaForm.vue           (新建/编辑弹窗)
-      └─ ConstraintPanel.vue              (复用 FieldConstraint*.vue)
+EventTypeSchemaList.vue
+  └─ EnabledGuardDialog (entityType: 'event-type-schema')
+
+EventTypeSchemaForm.vue (三模式：create / edit / view)
+  ├─ field_name (创建可编辑 / 编辑查看锁定)
+  ├─ field_label / field_type (编辑时 field_type 锁定)
+  ├─ 约束配置 (FieldConstraintInteger / String / Select)
+  ├─ default_value (按 field_type 动态渲染)
+  └─ sort_order
 ```
 
 ---
 
-## 4. 类型契约（规划中）
+## 4. 类型契约
 
 ```ts
-// --- api/event-types.ts ---
+// --- api/eventTypes.ts ---
 
-// 事件类型错误码（42001-42015，与 backend/internal/errcode/codes.go 对齐）
-const EVENT_TYPE_ERR: Record<number, string> = {
-  42001: '事件标识已存在（含已删除记录）',
-  42002: '事件标识格式不合法，必须小写字母开头，只含小写字母/数字/下划线',
-  42003: '感知模式必须是 visual / auditory / global 之一',
-  42004: '默认威胁必须在 0-100 之间',
-  42005: '默认 TTL 必须大于 0',
-  42006: '传播范围不能小于 0',
-  42007: '扩展字段的值不符合约束',
-  42008: '当前事件类型仍被引用，不能删除',
-  42010: '数据已被其他用户修改，请刷新后重试',
-  42011: '事件类型不存在',
-  42012: '请先停用此事件类型才能删除',
-  42015: '请先停用此事件类型才能编辑',
-}
+// 事件类型错误码（42001-42015）
+export const EVENT_TYPE_ERR = {
+  NAME_EXISTS: 42001, NAME_INVALID: 42002, MODE_INVALID: 42003,
+  SEVERITY_INVALID: 42004, TTL_INVALID: 42005, RANGE_INVALID: 42006,
+  EXT_VALUE_INVALID: 42007, REF_DELETE: 42008,
+  VERSION_CONFLICT: 42010, NOT_FOUND: 42011,
+  DELETE_NOT_DISABLED: 42012, EDIT_NOT_DISABLED: 42015,
+} as const
 
-// 扩展字段 Schema 错误码（42020-42030）
-const EVENT_TYPE_SCHEMA_ERR: Record<number, string> = {
-  42020: '扩展字段标识已存在',
-  42021: '扩展字段标识格式不合法',
-  42022: '扩展字段定义不存在',
-  42023: '扩展字段已停用',
-  42024: '扩展字段类型非法',
-  42025: '约束配置不自洽',
-  42026: '默认值不符合约束',
-  42027: '请先停用此扩展字段才能删除',
-  42030: '扩展字段已被其他用户修改，请刷新后重试',
-}
+// 扩展字段 Schema 错误码（42020-42031）
+export const EXT_SCHEMA_ERR = {
+  NAME_EXISTS: 42020, NAME_INVALID: 42021, NOT_FOUND: 42022,
+  DISABLED: 42023, TYPE_INVALID: 42024, CONSTRAINTS_INVALID: 42025,
+  DEFAULT_INVALID: 42026, DELETE_NOT_DISABLED: 42027,
+  VERSION_CONFLICT: 42030, EDIT_NOT_DISABLED: 42031,
+} as const
 
-// SchemaForm 扩展字段交互的核心类型
-interface ExtensionFieldState {
-  schema: EventTypeSchemaItem  // 从 extension_schema 获取
-  value: unknown               // 当前值
-  dirty: boolean               // dirty=false 使用默认值（浅灰占位），dirty=true 运营主动填写（黑色）
+// 扩展字段 Schema（detail 接口返回）
+interface ExtensionSchemaItem {
+  field_name: string; field_label: string; field_type: string
+  constraints: Record<string, unknown>; default_value: unknown
+  sort_order: number; enabled: boolean
 }
 ```
 
-**SchemaForm 核心设计**：
+**扩展字段 dirty 追踪**：
 
-- `dirty=false` 的扩展字段在提交时不进 payload，服务端使用自己的默认值
-- `dirty=true` 的扩展字段写入 `config_json`，代表运营明确配置过
-- UI 上 dirty=false 显示"默认: {value}"浅灰占位文字，dirty=true 显示黑色值 + "重置为默认"按钮
+- `dirty=false`：字段未被运营主动修改，使用 schema 默认值，提交时不进 payload
+- `dirty=true`：运营主动设置过值，提交时写入 `extensions` 对象
+- 编辑模式加载时，config 中已有值的字段自动标记 `dirty=true`
 
 ---
 
-## 5. API 调用映射（规划中）
+## 5. API 调用映射
+
+### 事件类型
 
 | UI 操作 | API 函数 | 后端端点 |
 |---|---|---|
-| 列表加载 / 筛选 / 翻页 | `eventTypeApi.list(params)` | `POST /api/v1/event-types/list` |
-| 新建事件类型 | `eventTypeApi.create(data)` | `POST /api/v1/event-types/create` |
-| 查看详情 | `eventTypeApi.detail(id)` | `POST /api/v1/event-types/detail` |
-| 编辑事件类型 | `eventTypeApi.update(data)` | `POST /api/v1/event-types/update` |
-| 删除事件类型 | `eventTypeApi.delete(id)` | `POST /api/v1/event-types/delete` |
-| 标识符唯一性校验 | `eventTypeApi.checkName(name)` | `POST /api/v1/event-types/check-name` |
-| 切换启用/停用 | `eventTypeApi.toggleEnabled(id, enabled, version)` | `POST /api/v1/event-types/toggle-enabled` |
-| Schema 列表 | `eventTypeSchemaApi.list()` | `POST /api/v1/event-type-schemas/list` |
-| Schema 新建 | `eventTypeSchemaApi.create(data)` | `POST /api/v1/event-type-schemas/create` |
-| Schema 编辑 | `eventTypeSchemaApi.update(data)` | `POST /api/v1/event-type-schemas/update` |
-| Schema 删除 | `eventTypeSchemaApi.delete(id)` | `POST /api/v1/event-type-schemas/delete` |
+| 列表 / 筛选 / 翻页 | `eventTypeApi.list(params)` | `POST /api/v1/event-types/list` |
+| 新建 | `eventTypeApi.create(data)` | `POST /api/v1/event-types/create` |
+| 详情 | `eventTypeApi.detail(id)` | `POST /api/v1/event-types/detail` |
+| 编辑 | `eventTypeApi.update(data)` | `POST /api/v1/event-types/update` |
+| 删除 | `eventTypeApi.delete(id)` | `POST /api/v1/event-types/delete` |
+| 标识符校验 | `eventTypeApi.checkName(name)` | `POST /api/v1/event-types/check-name` |
+| 启用/禁用 | `eventTypeApi.toggleEnabled(id, enabled, version)` | `POST /api/v1/event-types/toggle-enabled` |
+
+### 扩展字段 Schema
+
+| UI 操作 | API 函数 | 后端端点 |
+|---|---|---|
+| Schema 列表 | `eventTypeApi.schemaList(params?)` | `POST /api/v1/event-type-schema/list` |
+| Schema 列表（仅启用） | `eventTypeApi.schemaListEnabled()` | `POST /api/v1/event-type-schema/list` (enabled=true) |
+| Schema 新建 | `eventTypeApi.schemaCreate(data)` | `POST /api/v1/event-type-schema/create` |
+| Schema 编辑 | `eventTypeApi.schemaUpdate(data)` | `POST /api/v1/event-type-schema/update` |
+| Schema 删除 | `eventTypeApi.schemaDelete(id)` | `POST /api/v1/event-type-schema/delete` |
+| Schema 启用/禁用 | `eventTypeApi.schemaToggleEnabled(id, enabled, version)` | `POST /api/v1/event-type-schema/toggle-enabled` |
+
+**注意**：Schema 无 detail 接口，编辑/查看页通过 `schemaList()` 全量获取后按 ID 查找。无 checkName 接口，标识符重复在提交时通过 42020 错误码处理。
 
 ---
 
-## 6. 错误码处理（规划中）
+## 6. 错误码处理
 
-### 事件类型错误码
+### 事件类型
 
 | 错误码 | UI 反馈 |
 |---|---|
-| 42001 事件标识已存在 | form 内联红字（同字段/模板的 nameStatus 模式） |
-| 42002 标识格式不合法 | form 内联红字 |
-| 42003 感知模式非法 | `ElMessage.error` toast（前端 select 已限制，兜底） |
-| 42004 威胁值越界 | `ElMessage.error` toast（前端 slider 已限制，兜底） |
-| 42005 TTL 非法 | `ElMessage.error` toast |
-| 42006 范围非法 | `ElMessage.error` toast |
-| 42007 扩展字段值违反约束 | `ElMessage.error` toast |
-| 42008 被引用不能删除 | 列表删除时 toast 提示 |
+| 42001 标识已存在 | nameStatus='taken' + form 内联红字 |
+| 42002 标识格式非法 | nameStatus='taken' + form 内联红字 |
+| 42003-42006 参数校验 | `ElMessage.error` toast（前端 select/slider 已限制，兜底） |
+| 42007 扩展字段违反约束 | `ElMessage.error` toast |
 | 42010 版本冲突 | `ElMessageBox.alert` 提示刷新 |
-| 42011 不存在 | `ElMessage.error` + `router.push('/event-types')` |
-| 42012 删除须先停用 | `EnabledGuardDialog` 前端拦截，兜底 toast |
-| 42015 编辑须先停用 | `EnabledGuardDialog` 前端拦截，兜底 toast |
+| 42011 不存在 | `ElMessage.error` + 跳转列表 |
+| 42012/42015 须先禁用 | `EnabledGuardDialog` 前端拦截 |
 
-### 扩展字段 Schema 错误码
+### 扩展字段 Schema
 
 | 错误码 | UI 反馈 |
 |---|---|
-| 42020 标识已存在 | 弹窗 form 内联红字 |
-| 42021 标识格式不合法 | 弹窗 form 内联红字 |
-| 42022 定义不存在 | `ElMessage.error` + 关闭弹窗刷新列表 |
-| 42023 已停用 | `ElMessage.error` toast |
-| 42024 类型非法 | `ElMessage.error` toast（前端 select 已限制，兜底） |
-| 42025 约束不自洽 | `ElMessage.error` toast |
-| 42026 默认值违反约束 | `ElMessage.error` toast |
-| 42027 删除须先停用 | `ElMessage.warning` toast |
+| 42020 标识已存在 | nameStatus='taken' + form 内联红字 |
+| 42021 标识格式非法 | nameStatus='taken' + form 内联红字 |
+| 42022 不存在 | `ElMessage.error` + 跳转列表 |
+| 42024-42026 参数校验 | 拦截器 toast |
+| 42027 删除须先禁用 | `ElMessage.warning` |
 | 42030 版本冲突 | `ElMessageBox.alert` 提示刷新 |
+| 42031 编辑须先禁用 | `ElMessage.warning` |
+
+---
+
+## 7. 关键实现细节
+
+### 扩展字段排序与禁用展示
+
+- 扩展字段按 `sort_order ASC` 排序显示（通过 `sortedExtensionSchema` computed）
+- 后端 detail 接口返回 `extension_schema` 包含启用 + 有值的禁用 schema
+- 禁用字段：整行 `opacity: 0.55` + 「已禁用」`el-tag` + 所有控件 `disabled`
+- 禁用字段的值只读展示，不可修改，不进 dirty 追踪
+
+### 感知模式联动
+
+- `perception_mode = 'global'` 时，`range` 自动置为 0 且 disabled
+- 切换回 `visual` / `auditory` 时恢复可编辑
+
+### 约束组件复用
+
+`FieldConstraintInteger` 的 `typeName` prop 同时支持 `'integer'`（字段管理）和 `'int'`（Schema），标题显示均为「整数类型 — 约束配置」。
