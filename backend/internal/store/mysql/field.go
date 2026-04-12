@@ -9,6 +9,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
+	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // FieldStore fields 表操作
@@ -252,10 +253,7 @@ func (s *FieldStore) GetRefCountTx(ctx context.Context, tx *sqlx.Tx, id int64) (
 	return count, nil
 }
 
-// escapeLike 转义 LIKE 通配符，防止用户输入 % 或 _ 匹配所有记录
+// escapeLike 转义 LIKE 通配符 — 权威定义在 util/strings.go
 func escapeLike(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `%`, `\%`)
-	s = strings.ReplaceAll(s, `_`, `\_`)
-	return s
+	return util.EscapeLike(s)
 }

@@ -5,10 +5,7 @@ import (
 	"time"
 )
 
-// ──────────────────────────────────────────────
-// 感知模式枚举常量
-// ──────────────────────────────────────────────
-
+// 感知模式 — 权威定义在 util/const.go，此处别名保持已有代码兼容
 const (
 	PerceptionModeVisual   = "visual"
 	PerceptionModeAuditory = "auditory"

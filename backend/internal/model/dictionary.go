@@ -5,11 +5,11 @@ import (
 	"time"
 )
 
-// 字典组名常量
+// 字典组名常量 — 权威定义在 util/const.go，此处别名保持已有代码兼容
 const (
-	DictGroupFieldType       = "field_type"       // 字段类型
-	DictGroupFieldCategory   = "field_category"   // 字段分类
-	DictGroupFieldProperties = "field_properties"  // 字段属性
+	DictGroupFieldType       = "field_type"
+	DictGroupFieldCategory   = "field_category"
+	DictGroupFieldProperties = "field_properties"
 )
 
 // Dictionary 字典条目
