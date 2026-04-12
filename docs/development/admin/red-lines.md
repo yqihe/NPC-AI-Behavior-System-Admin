@@ -69,6 +69,18 @@
 - **禁止**用 `el-menu-item-group` 给菜单做多级结构。`el-menu-item-group` 只是静态分组标题 + 子项容器，不支持点击折叠。多级菜单必须用 `el-sub-menu`（原生支持折叠箭头、`default-openeds` 初始展开），一级分组标题用 `#title` slot 定义大号加粗字样（15px/600），二级项用 `el-menu-item` 缩进（`padding-left: 44px`）展示
 - **禁止**sidebar 深色系下只给 `.is-active` 设蓝底，忽略 `:hover` 态。深色 sidebar 必须同时定义 `:deep(.el-menu-item:hover)` 和 `:deep(.el-sub-menu__title:hover)` 的背景色（如 `#1F2D3D`），否则 hover 时视觉无反馈
 
+## 禁止偏离已建立的跨模块代码模式
+
+- **禁止**新模块 handler 的 Update/Delete/ToggleEnabled 返回 `*model.Empty{}`。必须与 Field/Template 一致：Update → `*string("保存成功")`、Delete → `*DeleteResult{ID, Name, Label}`、ToggleEnabled → `*string("操作成功")`
+- **禁止**新模块 service 的 `ToggleEnabled` 使用 `(ctx, id, version)` 签名自行取反 `!et.Enabled`。必须接收 `*model.ToggleEnabledRequest`（调用方指定目标 `enabled` 状态）
+- **禁止**新模块 service 缓存读取用 `_, hit, _ := cache.GetDetail(...)` 丢弃 error。必须用 `err == nil && hit` 模式（Redis 错误降级直查 MySQL，不误判为缓存命中）
+- **禁止**新模块 service 对 store 错误直接 `return err` 不包装。必须 `slog.Error` + `fmt.Errorf("xxx: %w", err)` 对齐 Field/Template
+- **禁止**新模块 store 的 Create/Update 使用展开的位置参数（如 ~~`Create(ctx, name, displayName, mode string, ...)`~~）。必须用 `*model.CreateXxxRequest` 结构体
+- **禁止**新模块 handler 自定义 ID/Version 校验逻辑和错误消息。必须调共享 `checkID()` / `checkVersion()`
+- **禁止**新模块 handler 在校验**之前**打 slog Debug 日志。日志必须在校验通过后打印
+- **禁止**新模块前端 API 文件重复定义 `ListData<T>` / `CheckNameResult`。必须从 `fields.ts` 导入
+- **禁止**新模块前端表单用 `detail.value!.xxx` 非空断言读取服务端数据。必须用独立 `ref()` 存储
+
 ## 禁止表格排序按钮用 el-button text + Unicode 箭头
 
 - **禁止**已选字段配置、字段优先级等 table 内行排序按钮用 `el-button text` 包 Unicode `↑` `↓`。视觉太粗 + 带按钮 padding + 不统一。必须用纯 `el-icon` 包 `ArrowUp` / `ArrowDown`，禁用态 `#C0C4CC` 灰、可点态 `#409EFF` 蓝、hover 态浅蓝底 `#ECF5FF`，两按钮 gap 14，容器 width 90 居中对齐（对齐 mockup `oE1Hj` / `ylI4t`）
