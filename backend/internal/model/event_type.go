@@ -5,19 +5,8 @@ import (
 	"time"
 )
 
-// 感知模式 — 权威定义在 util/const.go，此处别名保持已有代码兼容
-const (
-	PerceptionModeVisual   = "visual"
-	PerceptionModeAuditory = "auditory"
-	PerceptionModeGlobal   = "global"
-)
-
-// ValidPerceptionModes 合法枚举集合（handler 校验用）
-var ValidPerceptionModes = map[string]bool{
-	PerceptionModeVisual:   true,
-	PerceptionModeAuditory: true,
-	PerceptionModeGlobal:   true,
-}
+// 感知模式常量统一定义在 util/const.go
+// 使用 util.PerceptionModeVisual / util.ValidPerceptionModes 等
 
 // ──────────────────────────────────────────────
 // DB 结构体

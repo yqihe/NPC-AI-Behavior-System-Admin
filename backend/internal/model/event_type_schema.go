@@ -5,23 +5,8 @@ import (
 	"time"
 )
 
-// 扩展字段类型 — 权威定义在 util/const.go，此处别名保持已有代码兼容
-const (
-	ExtFieldTypeInt    = "int"
-	ExtFieldTypeFloat  = "float"
-	ExtFieldTypeString = "string"
-	ExtFieldTypeBool   = "bool"
-	ExtFieldTypeSelect = "select"
-)
-
-// ValidExtFieldTypes 合法枚举集合（handler 校验用，不含 reference）
-var ValidExtFieldTypes = map[string]bool{
-	ExtFieldTypeInt:    true,
-	ExtFieldTypeFloat:  true,
-	ExtFieldTypeString: true,
-	ExtFieldTypeBool:   true,
-	ExtFieldTypeSelect: true,
-}
+// 扩展字段类型常量统一定义在 util/const.go
+// 使用 util.ExtFieldTypeInt / util.ValidExtFieldTypes 等
 
 // ──────────────────────────────────────────────
 // DB 结构体

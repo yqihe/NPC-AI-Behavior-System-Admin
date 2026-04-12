@@ -10,6 +10,7 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	"github.com/yqihe/npc-ai-admin/backend/internal/service"
+	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // EventTypeSchemaHandler 扩展字段 Schema 管理 HTTP handler
@@ -55,7 +56,7 @@ func (h *EventTypeSchemaHandler) checkFieldLabel(label string) *errcode.Error {
 }
 
 func checkFieldType(fieldType string) *errcode.Error {
-	if !model.ValidExtFieldTypes[fieldType] {
+	if !util.ValidExtFieldTypes[fieldType] {
 		return errcode.New(errcode.ErrExtSchemaTypeInvalid)
 	}
 	return nil

@@ -15,6 +15,7 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/service/constraint"
 	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
 	storeredis "github.com/yqihe/npc-ai-admin/backend/internal/store/redis"
+	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // EventTypeService 事件类型管理业务逻辑
@@ -196,7 +197,7 @@ func (s *EventTypeService) Create(ctx context.Context, req *model.CreateEventTyp
 
 	// global 模式强制 range=0
 	rangeVal := req.Range
-	if req.PerceptionMode == model.PerceptionModeGlobal {
+	if req.PerceptionMode == util.PerceptionModeGlobal {
 		rangeVal = 0
 	}
 
@@ -284,7 +285,7 @@ func (s *EventTypeService) Update(ctx context.Context, req *model.UpdateEventTyp
 
 	// global 模式强制 range=0
 	rangeVal := req.Range
-	if req.PerceptionMode == model.PerceptionModeGlobal {
+	if req.PerceptionMode == util.PerceptionModeGlobal {
 		rangeVal = 0
 	}
 

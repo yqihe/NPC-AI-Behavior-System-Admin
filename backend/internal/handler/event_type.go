@@ -10,6 +10,7 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	"github.com/yqihe/npc-ai-admin/backend/internal/service"
+	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // EventTypeHandler 事件类型管理 HTTP handler
@@ -58,7 +59,7 @@ func (h *EventTypeHandler) checkDisplayName(displayName string) *errcode.Error {
 }
 
 func checkPerceptionMode(mode string) *errcode.Error {
-	if !model.ValidPerceptionModes[mode] {
+	if !util.ValidPerceptionModes[mode] {
 		return errcode.New(errcode.ErrEventTypeModeInvalid)
 	}
 	return nil
@@ -128,7 +129,7 @@ func (h *EventTypeHandler) Create(ctx context.Context, req *model.CreateEventTyp
 		return nil, e
 	}
 	// global 模式后端兜底
-	if req.PerceptionMode == model.PerceptionModeGlobal {
+	if req.PerceptionMode == util.PerceptionModeGlobal {
 		req.Range = 0
 	}
 	if e := checkExtensionsShape(req.Extensions); e != nil {
@@ -211,7 +212,7 @@ func (h *EventTypeHandler) Update(ctx context.Context, req *model.UpdateEventTyp
 	if e := checkRange(req.Range); e != nil {
 		return nil, e
 	}
-	if req.PerceptionMode == model.PerceptionModeGlobal {
+	if req.PerceptionMode == util.PerceptionModeGlobal {
 		req.Range = 0
 	}
 	if e := checkExtensionsShape(req.Extensions); e != nil {

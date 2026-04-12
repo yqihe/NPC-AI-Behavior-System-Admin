@@ -12,6 +12,7 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	"github.com/yqihe/npc-ai-admin/backend/internal/service/constraint"
 	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
+	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // EventTypeSchemaService 事件类型扩展字段 Schema 业务逻辑
@@ -73,7 +74,7 @@ func (s *EventTypeSchemaService) Create(ctx context.Context, req *model.CreateEv
 	}
 
 	// field_type 枚举校验
-	if !model.ValidExtFieldTypes[req.FieldType] {
+	if !util.ValidExtFieldTypes[req.FieldType] {
 		return 0, errcode.Newf(errcode.ErrExtSchemaTypeInvalid, "扩展字段类型 '%s' 不合法", req.FieldType)
 	}
 
