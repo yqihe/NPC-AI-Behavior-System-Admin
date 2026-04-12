@@ -13,6 +13,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
+	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 	"github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
 )
 
@@ -40,7 +41,7 @@ func main() {
 
 	// field_type: 6 种字段类型
 	fieldTypes := []model.Dictionary{
-		{GroupName: model.DictGroupFieldType, Name: "integer", Label: "整数", SortOrder: 1, Extra: mustRawJSON(map[string]any{
+		{GroupName: util.DictGroupFieldType, Name: "integer", Label: "整数", SortOrder: 1, Extra: mustRawJSON(map[string]any{
 			"constraint_schema": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -50,7 +51,7 @@ func main() {
 				},
 			},
 		})},
-		{GroupName: model.DictGroupFieldType, Name: "float", Label: "浮点数", SortOrder: 2, Extra: mustRawJSON(map[string]any{
+		{GroupName: util.DictGroupFieldType, Name: "float", Label: "浮点数", SortOrder: 2, Extra: mustRawJSON(map[string]any{
 			"constraint_schema": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -60,7 +61,7 @@ func main() {
 				},
 			},
 		})},
-		{GroupName: model.DictGroupFieldType, Name: "string", Label: "文本", SortOrder: 3, Extra: mustRawJSON(map[string]any{
+		{GroupName: util.DictGroupFieldType, Name: "string", Label: "文本", SortOrder: 3, Extra: mustRawJSON(map[string]any{
 			"constraint_schema": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -70,13 +71,13 @@ func main() {
 				},
 			},
 		})},
-		{GroupName: model.DictGroupFieldType, Name: "boolean", Label: "布尔", SortOrder: 4, Extra: mustRawJSON(map[string]any{
+		{GroupName: util.DictGroupFieldType, Name: "boolean", Label: "布尔", SortOrder: 4, Extra: mustRawJSON(map[string]any{
 			"constraint_schema": map[string]any{
 				"type":       "object",
 				"properties": map[string]any{},
 			},
 		})},
-		{GroupName: model.DictGroupFieldType, Name: "select", Label: "选择", SortOrder: 5, Extra: mustRawJSON(map[string]any{
+		{GroupName: util.DictGroupFieldType, Name: "select", Label: "选择", SortOrder: 5, Extra: mustRawJSON(map[string]any{
 			"constraint_schema": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -96,7 +97,7 @@ func main() {
 				},
 			},
 		})},
-		{GroupName: model.DictGroupFieldType, Name: "reference", Label: "引用", SortOrder: 6, Extra: mustRawJSON(map[string]any{
+		{GroupName: util.DictGroupFieldType, Name: "reference", Label: "引用", SortOrder: 6, Extra: mustRawJSON(map[string]any{
 			"constraint_schema": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -112,26 +113,26 @@ func main() {
 
 	// field_category: 6 种标签分类
 	fieldCategories := []model.Dictionary{
-		{GroupName: model.DictGroupFieldCategory, Name: "basic", Label: "基础属性", SortOrder: 1},
-		{GroupName: model.DictGroupFieldCategory, Name: "combat", Label: "战斗属性", SortOrder: 2},
-		{GroupName: model.DictGroupFieldCategory, Name: "perception", Label: "感知属性", SortOrder: 3},
-		{GroupName: model.DictGroupFieldCategory, Name: "movement", Label: "移动属性", SortOrder: 4},
-		{GroupName: model.DictGroupFieldCategory, Name: "interaction", Label: "交互属性", SortOrder: 5},
-		{GroupName: model.DictGroupFieldCategory, Name: "personality", Label: "个性属性", SortOrder: 6},
+		{GroupName: util.DictGroupFieldCategory, Name: "basic", Label: "基础属性", SortOrder: 1},
+		{GroupName: util.DictGroupFieldCategory, Name: "combat", Label: "战斗属性", SortOrder: 2},
+		{GroupName: util.DictGroupFieldCategory, Name: "perception", Label: "感知属性", SortOrder: 3},
+		{GroupName: util.DictGroupFieldCategory, Name: "movement", Label: "移动属性", SortOrder: 4},
+		{GroupName: util.DictGroupFieldCategory, Name: "interaction", Label: "交互属性", SortOrder: 5},
+		{GroupName: util.DictGroupFieldCategory, Name: "personality", Label: "个性属性", SortOrder: 6},
 	}
 
 	// field_properties: 4 种动态表单属性
 	fieldProperties := []model.Dictionary{
-		{GroupName: model.DictGroupFieldProperties, Name: "description", Label: "描述说明", SortOrder: 1, Extra: mustRawJSON(map[string]any{
+		{GroupName: util.DictGroupFieldProperties, Name: "description", Label: "描述说明", SortOrder: 1, Extra: mustRawJSON(map[string]any{
 			"input_type": "textarea", "required": false,
 		})},
-		{GroupName: model.DictGroupFieldProperties, Name: "expose_bb", Label: "暴露 BB Key", SortOrder: 2, Extra: mustRawJSON(map[string]any{
+		{GroupName: util.DictGroupFieldProperties, Name: "expose_bb", Label: "暴露 BB Key", SortOrder: 2, Extra: mustRawJSON(map[string]any{
 			"input_type": "radio_bool", "required": true, "default": false,
 		})},
-		{GroupName: model.DictGroupFieldProperties, Name: "default_value", Label: "默认值", SortOrder: 3, Extra: mustRawJSON(map[string]any{
+		{GroupName: util.DictGroupFieldProperties, Name: "default_value", Label: "默认值", SortOrder: 3, Extra: mustRawJSON(map[string]any{
 			"input_type": "dynamic", "required": false,
 		})},
-		{GroupName: model.DictGroupFieldProperties, Name: "constraints", Label: "约束配置", SortOrder: 4, Extra: mustRawJSON(map[string]any{
+		{GroupName: util.DictGroupFieldProperties, Name: "constraints", Label: "约束配置", SortOrder: 4, Extra: mustRawJSON(map[string]any{
 			"input_type": "constraints", "required": false,
 		})},
 	}

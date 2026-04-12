@@ -1,32 +1,128 @@
 #!/bin/bash
 # =============================================================================
-# ADMIN 后端 API 全方位集成测试（字段管理 + 模板管理 + 跨模块 + 攻击性测试）
+# ADMIN 后端 API 全方位集成测试
 #
-# 合并自：field_api_test.sh / template_api_test.sh，并新增针对可疑 bug 的攻击测试。
-# 运行前提：docker compose up -d && seed 脚本已执行
-# 用法：bash tests/api_test.sh
+# 覆盖：字段管理 + 模板管理 + 事件类型 + 扩展字段 Schema + 导出 API + 攻击性测试
+#
+# 用法：bash tests/integration_test.sh
+#
+# 脚本自动完成：
+#   1. docker compose up --build -d  （重建后端镜像）
+#   2. MySQL DROP + 重建所有表（自增 ID 从 1 开始）
+#   3. 执行 seed 种子数据
+#   4. 等待后端就绪
+#   5. 运行全部测试用例
 #
 # 约定：
 #   [PASS] ... 测试通过
-#   [FAIL] ... 测试失败（包括普通断言失败）
-#   [BUG ] ... 攻击测试命中的可疑 bug（也计为 FAIL，同时追加到 BUGS 汇总）
-#   [INFO] ... 仅记录当前行为，不判定对错
+#   [FAIL] ... 测试失败
+#   [BUG ] ... 攻击测试命中的可疑 bug
 # =============================================================================
 
-# Windows 环境 UTF-8 支持
+set -o pipefail
+
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 if command -v chcp.com &>/dev/null; then
   chcp.com 65001 > /dev/null 2>&1
 fi
 
+# 项目根目录（脚本所在目录的上一层）
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+MYSQL_CONTAINER="npc-admin-mysql"
+MYSQL_CMD="docker exec -i $MYSQL_CONTAINER mysql -uroot -proot npc_ai_admin"
+MIGRATIONS_DIR="$PROJECT_ROOT/backend/migrations"
+
 BASE="http://localhost:9821/api/v1"
+EXPORT_BASE="http://localhost:9821/api/configs"
 PASS=0
 FAIL=0
 TOTAL=0
-BUGS=()    # 攻击测试命中的 bug
+BUGS=()
 TS=$(date +%s)
 P="t${TS}_"
+
+# =============================================================================
+# Phase 0: 环境准备（Docker 重建 + MySQL 清空 + Seed）
+# =============================================================================
+
+echo "================================================================="
+echo "  Phase 0: 环境准备"
+echo "================================================================="
+echo ""
+
+# 0.1 Docker Compose 重建后端
+echo "  [0.1] docker compose up --build -d ..."
+cd "$PROJECT_ROOT"
+docker compose up --build -d 2>&1 | tail -5
+echo ""
+
+# 0.2 等待 MySQL 就绪
+echo "  [0.2] 等待 MySQL 就绪 ..."
+for i in $(seq 1 30); do
+  if docker exec $MYSQL_CONTAINER mysqladmin ping -uroot -proot --silent 2>/dev/null; then
+    echo "  MySQL 就绪 (${i}s)"
+    break
+  fi
+  sleep 1
+done
+
+# 0.3 清空 Redis 缓存（防止上一次测试的缓存污染）
+echo "  [0.3] 清空 Redis 缓存 ..."
+docker exec npc-admin-redis redis-cli FLUSHALL > /dev/null 2>&1
+
+# 0.3b 清空业务数据表（TRUNCATE 重置自增 ID），保留字典和 Schema 定义表
+echo "  [0.3b] 清空业务数据 ..."
+echo "SET FOREIGN_KEY_CHECKS=0;
+DROP TABLE IF EXISTS field_refs;
+DROP TABLE IF EXISTS fields;
+DROP TABLE IF EXISTS templates;
+DROP TABLE IF EXISTS event_types;
+DROP TABLE IF EXISTS event_type_schema;
+SET FOREIGN_KEY_CHECKS=1;" | $MYSQL_CMD 2>/dev/null
+
+# 字典和 Schema 只在不存在时创建 + 确保种子数据存在
+echo "  [0.3c] 确保基础表存在 ..."
+for f in "$MIGRATIONS_DIR"/0*.sql; do
+  $MYSQL_CMD < "$f" 2>/dev/null
+done
+
+# 检查字典是否已有数据（有则跳过 seed）
+DICT_COUNT=$(echo "SELECT COUNT(*) AS c FROM dictionaries;" | $MYSQL_CMD -N 2>/dev/null | tr -d '\r ')
+
+if [ "$DICT_COUNT" -gt 0 ] 2>/dev/null; then
+  echo "  字典已有 ${DICT_COUNT} 条，跳过 seed"
+else
+  echo "  [0.4] 执行种子脚本 ..."
+  cd "$PROJECT_ROOT/backend"
+  go run ./cmd/seed/ -config config.yaml 2>&1
+  cd "$PROJECT_ROOT"
+fi
+echo ""
+
+# 0.5 重启后端（让 DictCache / SchemaCache 加载刚写入的种子数据）
+echo "  [0.5] 重启后端容器 ..."
+docker restart npc-admin-backend > /dev/null 2>&1
+
+# 0.6 等待后端就绪
+echo "  [0.6] 等待后端就绪 ..."
+for i in $(seq 1 60); do
+  if curl -s http://localhost:9821/health | grep -q '"ok"' 2>/dev/null; then
+    echo "  后端就绪 (${i}s)"
+    break
+  fi
+  if [ "$i" -eq 60 ]; then
+    echo "  [FATAL] 后端 60s 内未就绪，终止测试"
+    exit 1
+  fi
+  sleep 1
+done
+echo ""
+echo "  环境准备完成"
+echo ""
+
 
 # =============================================================================
 # 工具函数
@@ -153,6 +249,19 @@ subsection() {
   echo "--- $1 ---"
 }
 
+
+# ---- 事件类型辅助 ----
+et_detail()  { post "/event-types/detail" "{\"id\":$1}"; }
+et_version() { et_detail "$1" | jq -r '.data.version' | tr -d '\r'; }
+get_export() { curl -s "$EXPORT_BASE$1"; }
+
+# =============================================================================
+# PART 0: 健康检查 + 字典
+# PART 1: 字段管理
+# PART 2: 模板管理
+# PART 3: 跨模块
+# PART 4: 攻击性测试（字段+模板）
+# =============================================================================
 # =============================================================================
 # 开始测试
 # =============================================================================
@@ -208,7 +317,7 @@ subsection "功能 2: 新建字段"
 R=$(post "/fields/create" "{\"name\":\"${P}hp\",\"label\":\"测试生命值\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{\"description\":\"HP\",\"expose_bb\":false,\"constraints\":{\"min\":0,\"max\":100}}}")
 assert_code         "f2.1 创建成功"             "0" "$R"
 assert_field        "f2.1 返回 name"            ".data.name" "${P}hp" "$R"
-HP_ID=$(echo "$R" | jq -r '.data.id')
+HP_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 assert_not_equal    "f2.1 id > 0"               ".data.id" "null" "$R"
 
 R=$(fld_detail "$HP_ID")
@@ -245,23 +354,23 @@ assert_code "f2.11 不存在的 category 40004" "40004" "$R"
 
 # 供后续用的字段池（每种类型都准备一份，便于覆盖收紧检查和引用场景）
 R=$(post "/fields/create" "{\"name\":\"${P}atk\",\"label\":\"攻击力\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{\"description\":\"ATK\",\"expose_bb\":false,\"constraints\":{\"min\":0,\"max\":999}}}")
-ATK_ID=$(echo "$R" | jq -r '.data.id')
+ATK_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 assert_code "f2.12 创建 atk (integer)" "0" "$R"
 
 R=$(post "/fields/create" "{\"name\":\"${P}str\",\"label\":\"名字文本\",\"type\":\"string\",\"category\":\"basic\",\"properties\":{\"description\":\"STR\",\"expose_bb\":false,\"constraints\":{\"minLength\":1,\"maxLength\":50}}}")
-STR_ID=$(echo "$R" | jq -r '.data.id')
+STR_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 assert_code "f2.13 创建 str (string)" "0" "$R"
 
 R=$(post "/fields/create" "{\"name\":\"${P}flag\",\"label\":\"布尔标记\",\"type\":\"boolean\",\"category\":\"basic\",\"properties\":{\"description\":\"flag\",\"expose_bb\":false}}")
-FLAG_ID=$(echo "$R" | jq -r '.data.id')
+FLAG_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 assert_code "f2.14 创建 flag (boolean)" "0" "$R"
 
 R=$(post "/fields/create" "{\"name\":\"${P}mood\",\"label\":\"情绪选择\",\"type\":\"select\",\"category\":\"personality\",\"properties\":{\"description\":\"mood\",\"expose_bb\":false,\"constraints\":{\"options\":[{\"value\":\"happy\",\"label\":\"开心\"},{\"value\":\"sad\",\"label\":\"伤心\"}],\"minSelect\":1,\"maxSelect\":1}}}")
-MOOD_ID=$(echo "$R" | jq -r '.data.id')
+MOOD_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 assert_code "f2.15 创建 mood (select)" "0" "$R"
 
 R=$(post "/fields/create" "{\"name\":\"${P}fnum\",\"label\":\"浮点字段\",\"type\":\"float\",\"category\":\"combat\",\"properties\":{\"description\":\"fl\",\"expose_bb\":false,\"constraints\":{\"min\":0.0,\"max\":100.0,\"precision\":2}}}")
-FLOAT_ID=$(echo "$R" | jq -r '.data.id')
+FLOAT_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 assert_code "f2.16 创建 fnum (float)" "0" "$R"
 
 # ---- 功能 6：唯一性校验 ----
@@ -429,12 +538,12 @@ fld_enable "$ATK_ID"
 subsection "功能 10/11: 约束收紧 + 引用关系"
 
 R=$(post "/fields/create" "{\"name\":\"${P}tgt\",\"label\":\"收紧目标\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{\"description\":\"tgt\",\"expose_bb\":false,\"constraints\":{\"min\":0,\"max\":100}}}")
-TGT_ID=$(echo "$R" | jq -r '.data.id')
+TGT_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 fld_enable "$TGT_ID"
 
 R=$(post "/fields/create" "{\"name\":\"${P}refone\",\"label\":\"引用一\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"description\":\"ref\",\"expose_bb\":false,\"constraints\":{\"refs\":[${TGT_ID}]}}}")
 assert_code "f10.1 创建 reference 字段" "0" "$R"
-REFONE_ID=$(echo "$R" | jq -r '.data.id')
+REFONE_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 
 R=$(fld_detail "$TGT_ID")
 assert_field "f10.2 target ref_count=1" ".data.ref_count" "1" "$R"
@@ -459,9 +568,9 @@ assert_code "f10.6 被引用改 type 40006" "40006" "$R"
 
 # float 收紧测试
 R=$(post "/fields/create" "{\"name\":\"${P}ftgt\",\"label\":\"浮点目标\",\"type\":\"float\",\"category\":\"combat\",\"properties\":{\"description\":\"\",\"expose_bb\":false,\"constraints\":{\"min\":0.0,\"max\":100.0,\"precision\":4}}}")
-FTGT_ID=$(echo "$R" | jq -r '.data.id'); fld_enable "$FTGT_ID"
+FTGT_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r'); fld_enable "$FTGT_ID"
 R=$(post "/fields/create" "{\"name\":\"${P}fholder\",\"label\":\"浮点持有\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false,\"constraints\":{\"refs\":[${FTGT_ID}]}}}")
-FHOLDER_ID=$(echo "$R" | jq -r '.data.id')
+FHOLDER_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 fld_disable "$FTGT_ID"
 FTGT_VER=$(fld_version "$FTGT_ID")
 
@@ -474,9 +583,9 @@ assert_code "f10.8 float precision 4→6 放宽 ok" "0" "$R"
 
 # string pattern / minLength / maxLength 收紧
 R=$(post "/fields/create" "{\"name\":\"${P}stgt\",\"label\":\"字符目标\",\"type\":\"string\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false,\"constraints\":{\"minLength\":0,\"maxLength\":100}}}")
-STGT_ID=$(echo "$R" | jq -r '.data.id'); fld_enable "$STGT_ID"
+STGT_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r'); fld_enable "$STGT_ID"
 R=$(post "/fields/create" "{\"name\":\"${P}sholder\",\"label\":\"字符持\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false,\"constraints\":{\"refs\":[${STGT_ID}]}}}")
-SHOLDER_ID=$(echo "$R" | jq -r '.data.id')
+SHOLDER_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 fld_disable "$STGT_ID"
 STGT_VER=$(fld_version "$STGT_ID")
 
@@ -491,9 +600,9 @@ assert_code "f10.11 string 新增 pattern 40007" "40007" "$R"
 
 # select 收紧（options 删除 + minSelect/maxSelect）
 R=$(post "/fields/create" "{\"name\":\"${P}seltgt\",\"label\":\"选择目标\",\"type\":\"select\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false,\"constraints\":{\"options\":[{\"value\":\"a\",\"label\":\"A\"},{\"value\":\"b\",\"label\":\"B\"},{\"value\":\"c\",\"label\":\"C\"}],\"minSelect\":1,\"maxSelect\":3}}}")
-SELTGT_ID=$(echo "$R" | jq -r '.data.id'); fld_enable "$SELTGT_ID"
+SELTGT_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r'); fld_enable "$SELTGT_ID"
 R=$(post "/fields/create" "{\"name\":\"${P}selholder\",\"label\":\"选持\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false,\"constraints\":{\"refs\":[${SELTGT_ID}]}}}")
-SELHOLDER_ID=$(echo "$R" | jq -r '.data.id')
+SELHOLDER_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 fld_disable "$SELTGT_ID"
 SELTGT_VER=$(fld_version "$SELTGT_ID")
 
@@ -512,9 +621,9 @@ assert_code "f10.15 select 追加 option ok" "0" "$R"
 
 # boolean 无约束检查
 R=$(post "/fields/create" "{\"name\":\"${P}btgt\",\"label\":\"布尔目标\",\"type\":\"boolean\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false}}")
-BTGT_ID=$(echo "$R" | jq -r '.data.id'); fld_enable "$BTGT_ID"
+BTGT_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r'); fld_enable "$BTGT_ID"
 R=$(post "/fields/create" "{\"name\":\"${P}bholder\",\"label\":\"布持\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false,\"constraints\":{\"refs\":[${BTGT_ID}]}}}")
-BHOLDER_ID=$(echo "$R" | jq -r '.data.id')
+BHOLDER_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 fld_disable "$BTGT_ID"
 BTGT_VER=$(fld_version "$BTGT_ID")
 R=$(post "/fields/update" "{\"id\":${BTGT_ID},\"label\":\"布尔目标\",\"type\":\"boolean\",\"category\":\"basic\",\"properties\":{\"description\":\"boolean 编辑\",\"expose_bb\":false},\"version\":${BTGT_VER}}")
@@ -524,11 +633,11 @@ assert_code "f10.16 boolean 编辑 ok（无约束）" "0" "$R"
 subsection "功能 11: reference 引用校验"
 
 R=$(post "/fields/create" "{\"name\":\"${P}cyc_a\",\"label\":\"A\",\"type\":\"integer\",\"category\":\"basic\",\"properties\":{\"description\":\"A\",\"expose_bb\":false}}")
-CA=$(echo "$R" | jq -r '.data.id'); fld_enable "$CA"
+CA=$(echo "$R" | jq -r '.data.id' | tr -d '\r'); fld_enable "$CA"
 
 R=$(post "/fields/create" "{\"name\":\"${P}cyc_b\",\"label\":\"B\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"description\":\"B\",\"expose_bb\":false,\"constraints\":{\"refs\":[${CA}]}}}")
 assert_code "f11.1 B refs [A] 成功" "0" "$R"
-CB=$(echo "$R" | jq -r '.data.id'); fld_enable "$CB"
+CB=$(echo "$R" | jq -r '.data.id' | tr -d '\r'); fld_enable "$CB"
 
 # 嵌套 reference 应 40016
 R=$(post "/fields/create" "{\"name\":\"${P}cyc_c\",\"label\":\"C\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"description\":\"C\",\"expose_bb\":false,\"constraints\":{\"refs\":[${CB}]}}}")
@@ -536,7 +645,7 @@ assert_code "f11.2 C refs [B](reference 嵌套) 40016" "40016" "$R"
 
 # 引用停用字段
 R=$(post "/fields/create" "{\"name\":\"${P}cyc_d\",\"label\":\"D\",\"type\":\"integer\",\"category\":\"basic\",\"properties\":{\"description\":\"D\",\"expose_bb\":false}}")
-CD=$(echo "$R" | jq -r '.data.id')
+CD=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 R=$(post "/fields/create" "{\"name\":\"${P}cyc_e\",\"label\":\"E\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"description\":\"E\",\"expose_bb\":false,\"constraints\":{\"refs\":[${CD}]}}}")
 assert_code "f11.3 引用停用字段 40013" "40013" "$R"
 
@@ -615,16 +724,16 @@ section "Part 4: 模板管理 + 跨模块集成"
 
 # 准备模板用字段池
 R=$(post "/fields/create" "{\"name\":\"${P}f_hp\",\"label\":\"T_HP\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{\"description\":\"HP\",\"expose_bb\":false,\"constraints\":{\"min\":0,\"max\":100}}}")
-F_HP=$(echo "$R" | jq -r '.data.id'); fld_enable "$F_HP"
+F_HP=$(echo "$R" | jq -r '.data.id' | tr -d '\r'); fld_enable "$F_HP"
 
 R=$(post "/fields/create" "{\"name\":\"${P}f_atk\",\"label\":\"T_ATK\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{\"description\":\"ATK\",\"expose_bb\":false,\"constraints\":{\"min\":0,\"max\":999}}}")
-F_ATK=$(echo "$R" | jq -r '.data.id'); fld_enable "$F_ATK"
+F_ATK=$(echo "$R" | jq -r '.data.id' | tr -d '\r'); fld_enable "$F_ATK"
 
 R=$(post "/fields/create" "{\"name\":\"${P}f_name\",\"label\":\"T_NAME\",\"type\":\"string\",\"category\":\"basic\",\"properties\":{\"description\":\"name\",\"expose_bb\":false,\"constraints\":{\"minLength\":1,\"maxLength\":50}}}")
-F_NAME=$(echo "$R" | jq -r '.data.id'); fld_enable "$F_NAME"
+F_NAME=$(echo "$R" | jq -r '.data.id' | tr -d '\r'); fld_enable "$F_NAME"
 
 R=$(post "/fields/create" "{\"name\":\"${P}f_disabled\",\"label\":\"T_DIS\",\"type\":\"integer\",\"category\":\"basic\",\"properties\":{\"description\":\"dis\",\"expose_bb\":false}}")
-F_DISABLED=$(echo "$R" | jq -r '.data.id')   # 保持停用
+F_DISABLED=$(echo "$R" | jq -r '.data.id' | tr -d '\r')   # 保持停用
 
 # ---- 模板功能 10：唯一性校验 ----
 subsection "模板 功能 10: 名唯一性校验"
@@ -646,7 +755,7 @@ subsection "模板 功能 2: 新建"
 
 R=$(post "/templates/create" "{\"name\":\"${P}npc_combat\",\"label\":\"战斗生物模板\",\"description\":\"战斗用\",\"fields\":[{\"field_id\":${F_HP},\"required\":true},{\"field_id\":${F_ATK},\"required\":true},{\"field_id\":${F_NAME},\"required\":false}]}")
 assert_code "t2.1 创建成功" "0" "$R"
-TPL_ID=$(echo "$R" | jq -r '.data.id')
+TPL_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 
 R=$(tpl_detail "$TPL_ID")
 assert_field "t2.2 enabled=false"                ".data.enabled" "false" "$R"
@@ -695,7 +804,7 @@ assert_code "t2.11 description 513 字 40000" "40000" "$R"
 LONG_OK=$(printf 'a%.0s' $(seq 1 512))
 R=$(post "/templates/create" "{\"name\":\"${P}n_desc_ok\",\"label\":\"x\",\"description\":\"${LONG_OK}\",\"fields\":[{\"field_id\":${F_HP},\"required\":true}]}")
 assert_code "t2.12 description 512 字 ok" "0" "$R"
-DESC_OK_ID=$(echo "$R" | jq -r '.data.id')
+DESC_OK_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 if [ -n "$DESC_OK_ID" ] && [ "$DESC_OK_ID" != "null" ]; then
   tpl_rm "$DESC_OK_ID" 2>/dev/null
 fi
@@ -777,7 +886,7 @@ assert_field "t4.3 fields[1]=f_hp"    ".data.fields[1].name" "${P}f_hp" "$R"
 
 # 集合变化：加新字段 + 移除旧字段
 R=$(post "/fields/create" "{\"name\":\"${P}f_def\",\"label\":\"T_DEF\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{\"description\":\"DEF\",\"expose_bb\":false}}")
-F_DEF=$(echo "$R" | jq -r '.data.id'); fld_enable "$F_DEF"
+F_DEF=$(echo "$R" | jq -r '.data.id' | tr -d '\r'); fld_enable "$F_DEF"
 
 V=$(tpl_version "$TPL_ID")
 R=$(post "/templates/update" "{\"id\":${TPL_ID},\"label\":\"战斗生物模板（改）\",\"description\":\"\",\"fields\":[{\"field_id\":${F_HP},\"required\":true},{\"field_id\":${F_DEF},\"required\":true}],\"version\":${V}}")
@@ -904,13 +1013,13 @@ section "Part 5: 攻击性测试（重点攻击可疑 bug）"
 
 # 专用字段池
 R=$(post "/fields/create" "{\"name\":\"${P}atk_leaf1\",\"label\":\"攻击叶1\",\"type\":\"integer\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false,\"constraints\":{\"min\":0,\"max\":100}}}")
-LEAF1=$(echo "$R" | jq -r '.data.id'); fld_enable "$LEAF1"
+LEAF1=$(echo "$R" | jq -r '.data.id' | tr -d '\r'); fld_enable "$LEAF1"
 
 R=$(post "/fields/create" "{\"name\":\"${P}atk_leaf2\",\"label\":\"攻击叶2\",\"type\":\"integer\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false,\"constraints\":{\"min\":0,\"max\":100}}}")
-LEAF2=$(echo "$R" | jq -r '.data.id'); fld_enable "$LEAF2"
+LEAF2=$(echo "$R" | jq -r '.data.id' | tr -d '\r'); fld_enable "$LEAF2"
 
 R=$(post "/fields/create" "{\"name\":\"${P}atk_leaf3\",\"label\":\"攻击叶3\",\"type\":\"integer\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false,\"constraints\":{\"min\":0,\"max\":100}}}")
-LEAF3=$(echo "$R" | jq -r '.data.id'); fld_enable "$LEAF3"
+LEAF3=$(echo "$R" | jq -r '.data.id' | tr -d '\r'); fld_enable "$LEAF3"
 
 # ---- Attack 1: refs 数组含重复 ID（DB unique 泄漏 或 ref_count 被重复递增）----
 subsection "ATK-1: refs=[X,X] 未去重 — syncFieldRefs 缺 dedup"
@@ -920,7 +1029,7 @@ CODE=$(echo "$R" | jq -r '.code' | tr -d '\r')
 TOTAL=$((TOTAL + 1))
 if [ "$CODE" = "0" ]; then
   # 业务通过 → 必须确认 leaf2.ref_count 只被 +1
-  DUP_ID=$(echo "$R" | jq -r '.data.id')
+  DUP_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
   L2_RC=$(fld_refcount "$LEAF2")
   if [ "$L2_RC" = "1" ]; then
     echo "  [PASS] atk1.1 创建成功且 leaf2.ref_count=1（业务层或 DB 保证了去重）"
@@ -949,7 +1058,7 @@ subsection "ATK-2: reference 嵌套 — 应 40016"
 
 R=$(post "/fields/create" "{\"name\":\"${P}atk_ref_a\",\"label\":\"嵌套A\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false,\"constraints\":{\"refs\":[${LEAF1}]}}}")
 assert_code "atk2.1 refA -> LEAF1 成功" "0" "$R"
-REF_A=$(echo "$R" | jq -r '.data.id'); fld_enable "$REF_A"
+REF_A=$(echo "$R" | jq -r '.data.id' | tr -d '\r'); fld_enable "$REF_A"
 
 R=$(post "/fields/create" "{\"name\":\"${P}atk_ref_b\",\"label\":\"嵌套B\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false,\"constraints\":{\"refs\":[${REF_A}]}}}")
 assert_code "atk2.2 refB -> refA 应 40016（嵌套禁止）" "40016" "$R"
@@ -974,7 +1083,7 @@ fi
 
 # 编辑路径同样应拒绝 — 先用合法字段建一个模板，再尝试 Update 改成 reference 字段
 R=$(post "/templates/create" "{\"name\":\"${P}atk_tpl_ref2\",\"label\":\"模板\",\"description\":\"\",\"fields\":[{\"field_id\":${LEAF3},\"required\":true}]}")
-TPL_REF2=$(echo "$R" | jq -r '.data.id')
+TPL_REF2=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 V=$(tpl_version "$TPL_REF2")
 R=$(post "/templates/update" "{\"id\":${TPL_REF2},\"label\":\"模板\",\"description\":\"\",\"fields\":[{\"field_id\":${LEAF3},\"required\":true},{\"field_id\":${REF_A},\"required\":false}],\"version\":${V}}")
 assert_code "atk3.3 编辑时加入 reference 字段 41012" "41012" "$R"
@@ -1000,10 +1109,10 @@ subsection "ATK-5: oldRefSet 语义 — 已有 ref 即使停用也应保留"
 
 # 创建新目标 + reference 字段
 R=$(post "/fields/create" "{\"name\":\"${P}atk_legacy_tgt\",\"label\":\"遗留目标\",\"type\":\"integer\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false}}")
-LEGACY_TGT=$(echo "$R" | jq -r '.data.id'); fld_enable "$LEGACY_TGT"
+LEGACY_TGT=$(echo "$R" | jq -r '.data.id' | tr -d '\r'); fld_enable "$LEGACY_TGT"
 
 R=$(post "/fields/create" "{\"name\":\"${P}atk_legacy_ref\",\"label\":\"遗留 ref\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false,\"constraints\":{\"refs\":[${LEGACY_TGT}]}}}")
-LEGACY_REF=$(echo "$R" | jq -r '.data.id')
+LEGACY_REF=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 
 # 把目标停用
 fld_disable "$LEGACY_TGT"
@@ -1015,7 +1124,7 @@ assert_code "atk5.1 保留停用目标 ok（存量不动）" "0" "$R"
 
 # Update 再新增一个停用目标作为 NEW ref → 应 40013
 R=$(post "/fields/create" "{\"name\":\"${P}atk_new_dis\",\"label\":\"新停用\",\"type\":\"integer\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false}}")
-NEW_DIS=$(echo "$R" | jq -r '.data.id')
+NEW_DIS=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 # 保持停用
 VER=$(fld_version "$LEGACY_REF")
 R=$(post "/fields/update" "{\"id\":${LEGACY_REF},\"label\":\"遗留 ref\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false,\"constraints\":{\"refs\":[${LEGACY_TGT},${NEW_DIS}]}},\"version\":${VER}}")
@@ -1026,10 +1135,10 @@ fld_rm "$NEW_DIS"
 subsection "ATK-6: reference → integer 类型变更应清空 refs"
 
 R=$(post "/fields/create" "{\"name\":\"${P}atk_morph_tgt\",\"label\":\"morph 目标\",\"type\":\"integer\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false}}")
-MORPH_TGT=$(echo "$R" | jq -r '.data.id'); fld_enable "$MORPH_TGT"
+MORPH_TGT=$(echo "$R" | jq -r '.data.id' | tr -d '\r'); fld_enable "$MORPH_TGT"
 
 R=$(post "/fields/create" "{\"name\":\"${P}atk_morph\",\"label\":\"morph\",\"type\":\"reference\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false,\"constraints\":{\"refs\":[${MORPH_TGT}]}}}")
-MORPH=$(echo "$R" | jq -r '.data.id')
+MORPH=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 
 RC_BEFORE=$(fld_refcount "$MORPH_TGT")
 VER=$(fld_version "$MORPH")
@@ -1045,12 +1154,12 @@ TOTAL=$((TOTAL + 2))
 subsection "ATK-7: 模板纯排序变化不应触发 field_refs 操作"
 
 R=$(post "/fields/create" "{\"name\":\"${P}atk_ord_a\",\"label\":\"orda\",\"type\":\"integer\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false}}")
-O_A=$(echo "$R" | jq -r '.data.id'); fld_enable "$O_A"
+O_A=$(echo "$R" | jq -r '.data.id' | tr -d '\r'); fld_enable "$O_A"
 R=$(post "/fields/create" "{\"name\":\"${P}atk_ord_b\",\"label\":\"ordb\",\"type\":\"integer\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false}}")
-O_B=$(echo "$R" | jq -r '.data.id'); fld_enable "$O_B"
+O_B=$(echo "$R" | jq -r '.data.id' | tr -d '\r'); fld_enable "$O_B"
 
 R=$(post "/templates/create" "{\"name\":\"${P}atk_ord_tpl\",\"label\":\"排序模板\",\"description\":\"\",\"fields\":[{\"field_id\":${O_A},\"required\":true},{\"field_id\":${O_B},\"required\":false}]}")
-O_TPL=$(echo "$R" | jq -r '.data.id')
+O_TPL=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 
 RC_A_BEFORE=$(fld_refcount "$O_A")
 RC_B_BEFORE=$(fld_refcount "$O_B")
@@ -1104,7 +1213,7 @@ else
   echo "  [BUG ] atk9.1 refs=[0] code=$CODE 未拦截"
   FAIL=$((FAIL+1))
   BUGS+=("atk9.1: refs 含 0 未被拦截")
-  ID0=$(echo "$R" | jq -r '.data.id // empty')
+  ID0=$(echo "$R" | jq -r '.data.id // empty' | tr -d '\r')
   [ -n "$ID0" ] && fld_rm "$ID0"
 fi
 
@@ -1118,7 +1227,7 @@ else
   echo "  [BUG ] atk9.2 refs=[-1] code=$CODE 未拦截"
   FAIL=$((FAIL+1))
   BUGS+=("atk9.2: refs 含负值未被拦截")
-  ID_NEG=$(echo "$R" | jq -r '.data.id // empty')
+  ID_NEG=$(echo "$R" | jq -r '.data.id // empty' | tr -d '\r')
   [ -n "$ID_NEG" ] && fld_rm "$ID_NEG"
 fi
 
@@ -1133,7 +1242,7 @@ CODE=$(echo "$R" | jq -r '.code' | tr -d '\r')
 TOTAL=$((TOTAL + 1))
 if [ "$CODE" = "0" ]; then
   echo "  [PASS] atk10.2 SQL-like label 被安全处理"; PASS=$((PASS+1))
-  SQLI_ID=$(echo "$R" | jq -r '.data.id')
+  SQLI_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
   fld_rm "$SQLI_ID"
 else
   echo "  [FAIL] atk10.2 意外 code=$CODE"; FAIL=$((FAIL+1))
@@ -1174,7 +1283,7 @@ TOTAL=$((TOTAL + 1))
 echo "  [INFO] atk11.1 超大 int 约束 code=$CODE（行为确认）"
 PASS=$((PASS+1))
 if [ "$CODE" = "0" ]; then
-  BIG_ID=$(echo "$R" | jq -r '.data.id')
+  BIG_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
   [ -n "$BIG_ID" ] && [ "$BIG_ID" != "null" ] && fld_rm "$BIG_ID"
 fi
 
@@ -1182,7 +1291,7 @@ fi
 subsection "ATK-12: 缓存一致性（编辑 → 立即读 → 旧值不应泄漏）"
 
 R=$(post "/fields/create" "{\"name\":\"${P}atk_cache\",\"label\":\"初始\",\"type\":\"integer\",\"category\":\"basic\",\"properties\":{\"description\":\"v1\",\"expose_bb\":false,\"constraints\":{\"min\":0,\"max\":100}}}")
-CACHE_ID=$(echo "$R" | jq -r '.data.id')
+CACHE_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 
 # 第一次读（回填缓存）
 R=$(fld_detail "$CACHE_ID")
@@ -1205,7 +1314,7 @@ R=$(post "/fields/list" '{"label":"原子操作","page":1,"page_size":20}')
 BEFORE_TOTAL=$(echo "$R" | jq -r '.data.total' | tr -d '\r')
 
 R=$(post "/fields/create" "{\"name\":\"${P}atk_atomic\",\"label\":\"原子操作\",\"type\":\"integer\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false}}")
-ATOMIC_ID=$(echo "$R" | jq -r '.data.id')
+ATOMIC_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 
 R=$(post "/fields/list" '{"label":"原子操作","page":1,"page_size":20}')
 AFTER_TOTAL=$(echo "$R" | jq -r '.data.total' | tr -d '\r')
@@ -1228,7 +1337,7 @@ BIG_FIELDS=""
 BIG_IDS=()
 for i in $(seq 1 50); do
   R=$(post "/fields/create" "{\"name\":\"${P}big_${i}\",\"label\":\"big${i}\",\"type\":\"integer\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false,\"constraints\":{\"min\":0,\"max\":100}}}")
-  ID=$(echo "$R" | jq -r '.data.id')
+  ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
   fld_enable "$ID"
   BIG_IDS+=("$ID")
   if [ -z "$BIG_FIELDS" ]; then
@@ -1240,7 +1349,7 @@ done
 
 R=$(post "/templates/create" "{\"name\":\"${P}atk_big_tpl\",\"label\":\"大模板\",\"description\":\"\",\"fields\":[${BIG_FIELDS}]}")
 assert_code "atk14.1 50 字段模板创建成功" "0" "$R"
-BIG_TPL=$(echo "$R" | jq -r '.data.id')
+BIG_TPL=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 
 R=$(tpl_detail "$BIG_TPL")
 assert_field "atk14.2 fields 长度=50" ".data.fields | length" "50" "$R"
@@ -1291,7 +1400,7 @@ fi
 subsection "ATK-15: Unicode label 搜索"
 
 R=$(post "/fields/create" "{\"name\":\"${P}atk_emoji\",\"label\":\"🔥 火焰\",\"type\":\"integer\",\"category\":\"combat\",\"properties\":{\"description\":\"\",\"expose_bb\":false}}")
-EMOJI_ID=$(echo "$R" | jq -r '.data.id')
+EMOJI_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 assert_code "atk15.1 emoji label 创建" "0" "$R"
 
 R=$(post "/fields/list" "{\"label\":\"🔥\",\"page\":1,\"page_size\":20}")
@@ -1353,7 +1462,7 @@ assert_code "atk19.2 update version=-999 → 40000" "40000" "$R"
 subsection "ATK-20: 生命周期：删除 → list 不可见"
 
 R=$(post "/fields/create" "{\"name\":\"${P}atk_lifecycle\",\"label\":\"生命周期\",\"type\":\"integer\",\"category\":\"basic\",\"properties\":{\"description\":\"\",\"expose_bb\":false}}")
-LIFE_ID=$(echo "$R" | jq -r '.data.id')
+LIFE_ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')
 
 R=$(post "/fields/list" '{"label":"生命周期","page":1,"page_size":20}')
 assert_ge "atk20.1 创建后 list 可见" ".data.total" "1" "$R"
@@ -1362,6 +1471,304 @@ fld_rm "$LIFE_ID"
 
 R=$(post "/fields/list" '{"label":"生命周期","page":1,"page_size":20}')
 assert_field "atk20.2 删除后 list 不可见 total=0" ".data.total" "0" "$R"
+
+
+# =============================================================================
+# PART 5: 事件类型管理（扩展字段 Schema + 事件类型 CRUD + 导出 + 攻击）
+# =============================================================================
+echo "================================================================="
+echo "  事件类型管理 API 集成测试   $(date)"
+echo "================================================================="
+echo ""
+
+# =============================================================================
+# 1. 扩展字段 Schema CRUD
+# =============================================================================
+echo "--- 1. 扩展字段 Schema CRUD ---"
+
+# 1.1 创建 schema: priority (int, 1-10, default 5)
+body=$(post "/event-type-schema/create" "{\"field_name\":\"${P}priority\",\"field_label\":\"优先级\",\"field_type\":\"int\",\"constraints\":{\"min\":1,\"max\":10},\"default_value\":5,\"sort_order\":1}")
+assert_code "1.1 创建 schema priority" "0" "$body"
+SCHEMA_ID=$(echo "$body" | jq -r '.data.id' | tr -d '\r')
+
+# 1.2 创建 schema: category (string)
+body=$(post "/event-type-schema/create" "{\"field_name\":\"${P}category\",\"field_label\":\"事件分类\",\"field_type\":\"string\",\"constraints\":{\"maxLength\":32},\"default_value\":\"unknown\",\"sort_order\":2}")
+assert_code "1.2 创建 schema category" "0" "$body"
+SCHEMA_ID2=$(echo "$body" | jq -r '.data.id' | tr -d '\r')
+
+# 1.3 重复 field_name → 42020
+body=$(post "/event-type-schema/create" "{\"field_name\":\"${P}priority\",\"field_label\":\"重复\",\"field_type\":\"int\",\"constraints\":{},\"default_value\":0,\"sort_order\":0}")
+assert_code "1.3 重复 field_name" "42020" "$body"
+
+# 1.4 非法 field_type → 42024
+body=$(post "/event-type-schema/create" "{\"field_name\":\"${P}bad_type\",\"field_label\":\"坏类型\",\"field_type\":\"reference\",\"constraints\":{},\"default_value\":0,\"sort_order\":0}")
+assert_code "1.4 reference 被拒" "42024" "$body"
+
+# 1.5 constraints 不自洽 (min > max) → 42025
+body=$(post "/event-type-schema/create" "{\"field_name\":\"${P}bad_range\",\"field_label\":\"坏范围\",\"field_type\":\"int\",\"constraints\":{\"min\":10,\"max\":1},\"default_value\":5,\"sort_order\":0}")
+assert_code "1.5 min > max" "42025" "$body"
+
+# 1.6 default_value 不符合 constraints → 42026
+body=$(post "/event-type-schema/create" "{\"field_name\":\"${P}bad_default\",\"field_label\":\"坏默认\",\"field_type\":\"int\",\"constraints\":{\"min\":1,\"max\":10},\"default_value\":99,\"sort_order\":0}")
+assert_code "1.6 default 超范围" "42026" "$body"
+
+# 1.7 列表
+body=$(post "/event-type-schema/list" "{}")
+assert_code "1.7 schema 列表" "0" "$body"
+
+# 1.8 停用 schema (先拿 version)
+SCHEMA2_DETAIL=$(post "/event-type-schema/list" "{}")
+V=$(echo "$SCHEMA2_DETAIL" | jq -r ".data.items[] | select(.id==$SCHEMA_ID2) | .version" | tr -d '\r')
+body=$(post "/event-type-schema/toggle-enabled" "{\"id\":$SCHEMA_ID2,\"version\":${V:-1}}")
+assert_code "1.8 停用 schema" "0" "$body"
+
+# 1.9 删除未停用 schema → 42027
+body=$(post "/event-type-schema/delete" "{\"id\":$SCHEMA_ID}")
+assert_code "1.9 删除未停用 schema" "42027" "$body"
+
+echo ""
+
+# =============================================================================
+# 2. 事件类型 CRUD（正向流程）
+# =============================================================================
+echo "--- 2. 事件类型 CRUD ---"
+
+# 2.1 创建 gunshot（auditory）
+body=$(post "/event-types/create" "{\"name\":\"${P}gunshot\",\"display_name\":\"枪声\",\"perception_mode\":\"auditory\",\"default_severity\":90,\"default_ttl\":10,\"range\":300}")
+assert_code "2.1 创建 gunshot" "0" "$body"
+ET_ID=$(echo "$body" | jq -r '.data.id' | tr -d '\r')
+
+# 2.2 创建 earthquake（global, range 自动置 0）
+body=$(post "/event-types/create" "{\"name\":\"${P}earthquake\",\"display_name\":\"地震\",\"perception_mode\":\"global\",\"default_severity\":95,\"default_ttl\":30,\"range\":999}")
+assert_code "2.2 创建 earthquake (global)" "0" "$body"
+ET_ID2=$(echo "$body" | jq -r '.data.id' | tr -d '\r')
+
+# 2.3 详情 — config 里 range=0（global 兜底）
+body=$(et_detail "$ET_ID2")
+assert_code "2.3 详情" "0" "$body"
+assert_field "2.3 global range=0" '.data.config.range' "0" "$body"
+assert_field "2.3 severity=95" '.data.config.default_severity' "95" "$body"
+assert_field "2.3 perception_mode=global" '.data.config.perception_mode' "global" "$body"
+
+# 2.4 创建带扩展字段
+body=$(post "/event-types/create" "{\"name\":\"${P}fire\",\"display_name\":\"火灾\",\"perception_mode\":\"visual\",\"default_severity\":70,\"default_ttl\":20,\"range\":100,\"extensions\":{\"${P}priority\":8}}")
+assert_code "2.4 创建带扩展字段" "0" "$body"
+ET_ID3=$(echo "$body" | jq -r '.data.id' | tr -d '\r')
+
+# 2.5 详情验证扩展字段
+body=$(et_detail "$ET_ID3")
+assert_field "2.5 扩展 priority=8" ".data.config.${P}priority" "8" "$body"
+
+# 2.6 check-name 已存在
+body=$(post "/event-types/check-name" "{\"name\":\"${P}gunshot\"}")
+assert_code "2.6 check-name" "0" "$body"
+assert_field "2.6 not available" '.data.available' "false" "$body"
+
+# 2.7 check-name 可用
+body=$(post "/event-types/check-name" "{\"name\":\"${P}not_exist\"}")
+assert_field "2.7 available" '.data.available' "true" "$body"
+
+# 2.8 列表
+body=$(post "/event-types/list" "{\"page\":1,\"page_size\":20}")
+assert_code "2.8 列表" "0" "$body"
+assert_ge "2.8 total >= 3" '.data.total' "3" "$body"
+
+# 2.9 列表 — perception_mode 筛选
+body=$(post "/event-types/list" "{\"perception_mode\":\"global\",\"page\":1,\"page_size\":20}")
+assert_code "2.9 列表 global 筛选" "0" "$body"
+
+# 2.10 编辑 — 未停用状态，可编辑（默认 enabled=0）
+V=$(et_detail "$ET_ID" | jq -r '.data.version' | tr -d '\r')
+body=$(post "/event-types/update" "{\"id\":$ET_ID,\"display_name\":\"枪声(修改)\",\"perception_mode\":\"auditory\",\"default_severity\":85,\"default_ttl\":8,\"range\":250,\"version\":$V}")
+assert_code "2.10 编辑 gunshot" "0" "$body"
+
+# 2.11 编辑验证 — severity 变成 85
+body=$(et_detail "$ET_ID")
+assert_field "2.11 severity=85" '.data.config.default_severity' "85" "$body"
+
+# 2.12 启用
+V=$(et_detail "$ET_ID" | jq -r '.data.version' | tr -d '\r')
+body=$(post "/event-types/toggle-enabled" "{\"id\":$ET_ID,\"version\":$V}")
+assert_code "2.12 启用 gunshot" "0" "$body"
+
+# 2.13 启用后编辑 → 42015
+V=$(et_detail "$ET_ID" | jq -r '.data.version' | tr -d '\r')
+body=$(post "/event-types/update" "{\"id\":$ET_ID,\"display_name\":\"枪声(再改)\",\"perception_mode\":\"auditory\",\"default_severity\":85,\"default_ttl\":8,\"range\":250,\"version\":$V}")
+assert_code "2.13 启用后编辑拒绝" "42015" "$body"
+
+# 2.14 启用后删除 → 42012
+body=$(post "/event-types/delete" "{\"id\":$ET_ID}")
+assert_code "2.14 启用后删除拒绝" "42012" "$body"
+
+# 2.15 停用再删除
+V=$(et_detail "$ET_ID" | jq -r '.data.version' | tr -d '\r')
+body=$(post "/event-types/toggle-enabled" "{\"id\":$ET_ID,\"version\":$V}")
+assert_code "2.15a 停用" "0" "$body"
+body=$(post "/event-types/delete" "{\"id\":$ET_ID}")
+assert_code "2.15b 删除" "0" "$body"
+
+# 2.16 软删后 name 不可复用
+body=$(post "/event-types/create" "{\"name\":\"${P}gunshot\",\"display_name\":\"枪声复用\",\"perception_mode\":\"auditory\",\"default_severity\":50,\"default_ttl\":5,\"range\":100}")
+assert_code "2.16 软删后 name 不可复用" "42001" "$body"
+
+echo ""
+
+# =============================================================================
+# 3. 导出 API
+# =============================================================================
+echo "--- 3. 导出 API ---"
+
+# 先启用 earthquake 和 fire
+V2=$(et_detail "$ET_ID2" | jq -r '.data.version' | tr -d '\r')
+R=$(post "/event-types/toggle-enabled" "{\"id\":$ET_ID2,\"version\":$V2}")
+echo "  [INFO] 启用 earthquake: $(echo $R | jq -r '.code' | tr -d '\r')"
+V3=$(et_detail "$ET_ID3" | jq -r '.data.version' | tr -d '\r')
+R=$(post "/event-types/toggle-enabled" "{\"id\":$ET_ID3,\"version\":$V3}")
+echo "  [INFO] 启用 fire: $(echo $R | jq -r '.code' | tr -d '\r')"
+
+# 3.1 导出 — 返回 items 数组
+body=$(get_export "/event_types")
+TOTAL=$((TOTAL + 1))
+items_count=$(echo "$body" | jq '.items | length' 2>/dev/null | tr -d '\r')
+if [ "$items_count" -ge "1" ] 2>/dev/null; then
+  echo "  [PASS] 3.1 导出 items >= 1 (=$items_count)"
+  PASS=$((PASS + 1))
+else
+  echo "  [FAIL] 3.1 导出 items >= 1, 实际: $items_count"
+  echo "         响应: $(echo "$body" | head -c 300)"
+  FAIL=$((FAIL + 1))
+fi
+
+# 3.2 导出格式 — 每条有 name + config
+TOTAL=$((TOTAL + 1))
+first_name=$(echo "$body" | jq -r '.items[0].name // empty' | tr -d '\r')
+first_config=$(echo "$body" | jq -r '.items[0].config // empty' | tr -d '\r')
+if [ -n "$first_name" ] && [ -n "$first_config" ]; then
+  echo "  [PASS] 3.2 导出格式 {name, config}"
+  PASS=$((PASS + 1))
+else
+  echo "  [FAIL] 3.2 导出格式, name='$first_name'"
+  FAIL=$((FAIL + 1))
+fi
+
+# 3.3 已删除的 gunshot 不在导出中
+TOTAL=$((TOTAL + 1))
+deleted_count=$(echo "$body" | jq "[.items[] | select(.name==\"${P}gunshot\")] | length" | tr -d '\r')
+if [ "$deleted_count" = "0" ]; then
+  echo "  [PASS] 3.3 已删除不导出"
+  PASS=$((PASS + 1))
+else
+  echo "  [FAIL] 3.3 已删除不导出, 找到 $deleted_count 条"
+  FAIL=$((FAIL + 1))
+fi
+
+echo ""
+
+# =============================================================================
+# 4. 攻击性测试
+# =============================================================================
+echo "--- 4. 攻击性测试 ---"
+
+# 4.1 name 含大写
+body=$(post "/event-types/create" "{\"name\":\"${P}BadCase\",\"display_name\":\"大写\",\"perception_mode\":\"visual\",\"default_severity\":50,\"default_ttl\":5,\"range\":100}")
+assert_code "4.1 name 大写拒绝" "42002" "$body"
+
+# 4.2 name 含中文
+body=$(post "/event-types/create" "{\"name\":\"枪声\",\"display_name\":\"中文名\",\"perception_mode\":\"visual\",\"default_severity\":50,\"default_ttl\":5,\"range\":100}")
+assert_code "4.2 name 中文拒绝" "42002" "$body"
+
+# 4.3 name 含空格
+body=$(post "/event-types/create" "{\"name\":\"bad name\",\"display_name\":\"空格\",\"perception_mode\":\"visual\",\"default_severity\":50,\"default_ttl\":5,\"range\":100}")
+assert_code "4.3 name 空格拒绝" "42002" "$body"
+
+# 4.4 非法 perception_mode
+body=$(post "/event-types/create" "{\"name\":\"${P}bad_mode\",\"display_name\":\"坏模式\",\"perception_mode\":\"telekinesis\",\"default_severity\":50,\"default_ttl\":5,\"range\":100}")
+assert_code "4.4 非法 perception_mode" "42003" "$body"
+
+# 4.5 severity 超范围
+body=$(post "/event-types/create" "{\"name\":\"${P}bad_sev\",\"display_name\":\"超范围\",\"perception_mode\":\"visual\",\"default_severity\":101,\"default_ttl\":5,\"range\":100}")
+assert_code "4.5 severity > 100" "42004" "$body"
+
+# 4.6 severity = 0 合法（零值不被吞）
+body=$(post "/event-types/create" "{\"name\":\"${P}zero_sev\",\"display_name\":\"零威胁\",\"perception_mode\":\"visual\",\"default_severity\":0,\"default_ttl\":5,\"range\":100}")
+assert_code "4.6 severity=0 合法" "0" "$body"
+ZERO_ID=$(echo "$body" | jq -r '.data.id' | tr -d '\r')
+body=$(et_detail "$ZERO_ID")
+assert_field "4.6 config.default_severity=0" '.data.config.default_severity' "0" "$body"
+
+# 4.7 ttl <= 0
+body=$(post "/event-types/create" "{\"name\":\"${P}bad_ttl\",\"display_name\":\"零TTL\",\"perception_mode\":\"visual\",\"default_severity\":50,\"default_ttl\":0,\"range\":100}")
+assert_code "4.7 ttl=0 拒绝" "42005" "$body"
+
+# 4.8 range < 0
+body=$(post "/event-types/create" "{\"name\":\"${P}bad_range\",\"display_name\":\"负范围\",\"perception_mode\":\"visual\",\"default_severity\":50,\"default_ttl\":5,\"range\":-1}")
+assert_code "4.8 range < 0 拒绝" "42006" "$body"
+
+# 4.9 扩展字段塞不存在的 key → 42022
+body=$(post "/event-types/create" "{\"name\":\"${P}bad_ext\",\"display_name\":\"坏扩展\",\"perception_mode\":\"visual\",\"default_severity\":50,\"default_ttl\":5,\"range\":100,\"extensions\":{\"nonexistent_field\":1}}")
+assert_code "4.9 不存在的扩展字段" "42022" "$body"
+
+# 4.10 扩展字段值不符合约束 → 42007
+body=$(post "/event-types/create" "{\"name\":\"${P}bad_ext_val\",\"display_name\":\"坏扩展值\",\"perception_mode\":\"visual\",\"default_severity\":50,\"default_ttl\":5,\"range\":100,\"extensions\":{\"${P}priority\":99}}")
+assert_code "4.10 扩展值超约束" "42007" "$body"
+
+# 4.11 display_name SQL 注入
+body=$(post "/event-types/create" "{\"name\":\"${P}sqli\",\"display_name\":\"' OR 1=1 --\",\"perception_mode\":\"visual\",\"default_severity\":50,\"default_ttl\":5,\"range\":100}")
+assert_code "4.11 SQL 注入 display_name 不崩" "0" "$body"
+
+# 4.12 display_name 模糊搜索 LIKE 转义
+body=$(post "/event-types/list" "{\"label\":\"%\",\"page\":1,\"page_size\":20}")
+assert_code "4.12 LIKE % 不返回全部" "0" "$body"
+
+# 4.13 乐观锁冲突（对未启用的 fire 事件用错误 version）
+# 先停用 fire
+V=$(et_detail "$ET_ID3" | jq -r '.data.version' | tr -d '\r')
+post "/event-types/toggle-enabled" "{\"id\":$ET_ID3,\"version\":$V}" > /dev/null
+body=$(post "/event-types/update" "{\"id\":$ET_ID3,\"display_name\":\"火灾(改)\",\"perception_mode\":\"visual\",\"default_severity\":70,\"default_ttl\":20,\"range\":100,\"version\":999}")
+assert_code "4.13 乐观锁冲突" "42010" "$body"
+
+# 4.14 不存在的 ID
+body=$(post "/event-types/detail" "{\"id\":99999999}")
+assert_code "4.14 不存在 ID" "42011" "$body"
+
+echo ""
+
+
+# =============================================================================
+section "Part 7: 新增攻击测试（CJK 字符串长度 + 配置修复验证）"
+# =============================================================================
+
+subsection "CJK 字符串长度校验"
+
+# 创建一个带 minLength/maxLength 约束的扩展字段 schema
+body=$(post "/event-type-schema/create" "{\"field_name\":\"${P}cjk_test\",\"field_label\":\"中文测试\",\"field_type\":\"string\",\"constraints\":{\"minLength\":1,\"maxLength\":5},\"default_value\":\"测试\",\"sort_order\":99}")
+assert_code "cjk.1 创建 string schema (minLength=1, maxLength=5)" "0" "$body"
+CJK_SCHEMA_ID=$(echo "$body" | jq -r '.data.id' | tr -d '\r')
+
+# 测试：3 个中文字符应通过 maxLength=5（字符数=3，不是字节数=9）
+body=$(post "/event-type-schema/update" "{\"id\":$CJK_SCHEMA_ID,\"field_label\":\"中文测试\",\"constraints\":{\"minLength\":1,\"maxLength\":5},\"default_value\":\"三个字\",\"version\":1}")
+assert_code "cjk.2 三个中文字符应通过 maxLength=5 (字符数=3)" "0" "$body"
+
+# 测试：6 个中文字符应被 maxLength=5 拒绝（字符数=6 > 5）
+body=$(post "/event-type-schema/update" "{\"id\":$CJK_SCHEMA_ID,\"field_label\":\"中文测试\",\"constraints\":{\"minLength\":1,\"maxLength\":5},\"default_value\":\"六个中文字符\",\"version\":2}")
+assert_code "cjk.3 六个中文字符应被 maxLength=5 拒绝" "42026" "$body"
+
+# 测试：空字符串应被 minLength=1 拒绝
+body=$(post "/event-type-schema/update" "{\"id\":$CJK_SCHEMA_ID,\"field_label\":\"中文测试\",\"constraints\":{\"minLength\":1,\"maxLength\":5},\"default_value\":\"\",\"version\":2}")
+assert_code "cjk.4 空字符串应被 minLength=1 拒绝" "42026" "$body"
+
+# 清理 CJK schema
+if [ -n "$CJK_SCHEMA_ID" ] && [ "$CJK_SCHEMA_ID" != "null" ]; then
+  post "/event-type-schema/toggle-enabled" "{\"id\":$CJK_SCHEMA_ID,\"version\":2}" > /dev/null 2>&1
+  post "/event-type-schema/delete" "{\"id\":$CJK_SCHEMA_ID}" > /dev/null 2>&1
+fi
+
+subsection "模板配置独立验证"
+
+# 验证模板名称长度走独立配置（TemplateNameMaxLength）
+LONG_NAME=$(printf 'a%.0s' {1..65})  # 65 字符
+body=$(post "/templates/create" "{\"name\":\"$LONG_NAME\",\"label\":\"超长名\",\"description\":\"\",\"fields\":[{\"field_id\":1,\"required\":true}]}")
+assert_code "cfg.1 模板名超 64 字符应被拒绝 (41002=NameInvalid)" "41002" "$body"
 
 # =============================================================================
 section "Part 6: 清理测试数据"

@@ -1,6 +1,6 @@
-# MySQL 常见陷阱
+# MySQL 开发规范
 
-编写 MySQL 相关代码时主动检查。禁止红线见 `../standards/mysql-red-lines.md`。
+禁止红线见 `../red-lines/mysql.md`。
 
 ## 事务与锁
 

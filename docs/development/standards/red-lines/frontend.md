@@ -1,6 +1,6 @@
 # 前端禁止红线
 
-适用于所有 Vue 3 + Element Plus 项目。
+适用于所有 Vue 3 + Element Plus 项目。开发规范见 `../dev-rules/frontend.md`。
 
 ## 禁止数据源污染
 

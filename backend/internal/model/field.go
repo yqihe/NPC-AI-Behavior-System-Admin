@@ -60,16 +60,8 @@ type FieldProperties struct {
 	Constraints  json.RawMessage `json:"constraints,omitempty"`
 }
 
-// 字段类型常量
-const (
-	FieldTypeReference = "reference" // 引用类型字段
-)
-
-// 引用来源类型常量
-const (
-	RefTypeTemplate = "template" // 模板引用
-	RefTypeField    = "field"    // reference 字段引用
-)
+// 字段类型常量、引用来源类型常量统一定义在 util/const.go
+// 使用 util.FieldTypeReference / util.RefTypeTemplate / util.RefTypeField
 
 // FieldRef 字段引用关系（改用 ID 关联）
 type FieldRef struct {

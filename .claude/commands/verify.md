@@ -56,6 +56,16 @@
 - **不准修改测试来迁就代码**——除非先确认服务端行为符合设计预期
 - **不准跳过竞态检测**——涉及并发的代码必须跑 `-race`
 
+## 测试环境规范
+
+运行 `tests/integration_test.sh` 前，脚本自动执行环境重置。手动跑 curl 测试时也必须遵守（详见 `docs/development/admin/dev-rules.md` "测试环境重置（Phase 0）"章节）：
+
+1. **Redis FLUSHALL** — 清除上次运行的缓存残留
+2. **DROP + CREATE 业务表** — 重置 AUTO_INCREMENT
+3. **保留字典表** — 有种子数据的表不重建
+4. **先 seed 后重启后端** — DictCache 启动时加载
+5. **所有 jq 提取必须 `| tr -d '\r'`** — Windows CRLF 问题
+
 ## 攻击性测试思维
 
 跑完基础测试后，主动尝试搞崩它：

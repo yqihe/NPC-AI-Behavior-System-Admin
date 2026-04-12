@@ -13,8 +13,10 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
+	"github.com/yqihe/npc-ai-admin/backend/internal/service/constraint"
 	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
 	storeredis "github.com/yqihe/npc-ai-admin/backend/internal/store/redis"
+	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // FieldService 字段管理业务逻辑
@@ -47,11 +49,11 @@ func (s *FieldService) checkDictExists(group, value string, code int, label stri
 }
 
 func (s *FieldService) checkTypeExists(typ string) *errcode.Error {
-	return s.checkDictExists(model.DictGroupFieldType, typ, errcode.ErrFieldTypeNotFound, "字段类型")
+	return s.checkDictExists(util.DictGroupFieldType, typ, errcode.ErrFieldTypeNotFound, "字段类型")
 }
 
 func (s *FieldService) checkCategoryExists(category string) *errcode.Error {
-	return s.checkDictExists(model.DictGroupFieldCategory, category, errcode.ErrFieldCategoryNotFound, "标签分类")
+	return s.checkDictExists(util.DictGroupFieldCategory, category, errcode.ErrFieldCategoryNotFound, "标签分类")
 }
 
 // getFieldOrNotFound 按 ID 查字段 + 判空
@@ -93,8 +95,8 @@ func (s *FieldService) List(ctx context.Context, q *model.FieldListQuery) (*mode
 	}
 
 	for i := range items {
-		items[i].TypeLabel = s.dictCache.GetLabel(model.DictGroupFieldType, items[i].Type)
-		items[i].CategoryLabel = s.dictCache.GetLabel(model.DictGroupFieldCategory, items[i].Category)
+		items[i].TypeLabel = s.dictCache.GetLabel(util.DictGroupFieldType, items[i].Type)
+		items[i].CategoryLabel = s.dictCache.GetLabel(util.DictGroupFieldCategory, items[i].Category)
 	}
 
 	result := &model.FieldListData{
@@ -133,7 +135,7 @@ func (s *FieldService) Create(ctx context.Context, req *model.CreateFieldRequest
 	// reference 类型：通过 validateReferenceRefs 统一校验
 	// 规则：非空 + 目标存在 + 目标启用 + 目标非 reference（禁嵌套） + 无循环
 	var refFieldIDs []int64
-	if req.Type == model.FieldTypeReference {
+	if req.Type == util.FieldTypeReference {
 		props, _ := parseProperties(req.Properties)
 		if props != nil {
 			refFieldIDs = parseRefFieldIDs(props.Constraints)
@@ -254,7 +256,7 @@ func (s *FieldService) Update(ctx context.Context, req *model.UpdateFieldRequest
 	// reference 类型：通过 validateReferenceRefs 统一校验
 	// 规则：非空 + 目标存在 + 新增 ref 必须启用非 reference + 无循环
 	// 已有 ref（在 oldRefSet 中）不重新校验启用/嵌套，保持"存量不动"
-	if req.Type == model.FieldTypeReference {
+	if req.Type == util.FieldTypeReference {
 		newProps, _ := parseProperties(req.Properties)
 		var newRefIDs []int64
 		if newProps != nil {
@@ -262,7 +264,7 @@ func (s *FieldService) Update(ctx context.Context, req *model.UpdateFieldRequest
 		}
 		// 旧 ref 集合（仅旧类型也是 reference 时才有意义）
 		var oldRefSet map[int64]bool
-		if old.Type == model.FieldTypeReference {
+		if old.Type == util.FieldTypeReference {
 			oldRefSet = make(map[int64]bool)
 			oldProps, _ := parseProperties(old.Properties)
 			if oldProps != nil {
@@ -288,11 +290,11 @@ func (s *FieldService) Update(ctx context.Context, req *model.UpdateFieldRequest
 
 	// reference 类型：同步引用关系
 	var refAffected []int64
-	if req.Type == model.FieldTypeReference {
+	if req.Type == util.FieldTypeReference {
 		oldProps, _ := parseProperties(old.Properties)
 		newProps, _ := parseProperties(req.Properties)
 		var oldRefIDs, newRefIDs []int64
-		if oldProps != nil && old.Type == model.FieldTypeReference {
+		if oldProps != nil && old.Type == util.FieldTypeReference {
 			oldRefIDs = parseRefFieldIDs(oldProps.Constraints)
 		}
 		if newProps != nil {
@@ -304,7 +306,7 @@ func (s *FieldService) Update(ctx context.Context, req *model.UpdateFieldRequest
 			return fmt.Errorf("sync field refs: %w", err)
 		}
 		refAffected = affected
-	} else if old.Type == model.FieldTypeReference && req.Type != model.FieldTypeReference {
+	} else if old.Type == util.FieldTypeReference && req.Type != util.FieldTypeReference {
 		// 类型从 reference 改为其他：清除所有引用关系
 		oldProps, _ := parseProperties(old.Properties)
 		if oldProps != nil {
@@ -365,8 +367,8 @@ func (s *FieldService) Delete(ctx context.Context, id int64) (*model.DeleteResul
 
 	// reference 类型字段删除时，清除它对其他字段的引用关系
 	var affectedIDs []int64
-	if field.Type == model.FieldTypeReference {
-		affectedIDs, err = s.fieldRefStore.RemoveBySource(ctx, tx, model.RefTypeField, id)
+	if field.Type == util.FieldTypeReference {
+		affectedIDs, err = s.fieldRefStore.RemoveBySource(ctx, tx, util.RefTypeField, id)
 		if err != nil {
 			return nil, fmt.Errorf("remove field refs: %w", err)
 		}
@@ -426,9 +428,9 @@ func (s *FieldService) GetReferences(ctx context.Context, id int64) (*model.Refe
 	fieldIDs := make([]int64, 0)
 	for _, r := range refs {
 		switch r.RefType {
-		case model.RefTypeTemplate:
+		case util.RefTypeTemplate:
 			templateIDs = append(templateIDs, r.RefID)
-		case model.RefTypeField:
+		case util.RefTypeField:
 			fieldIDs = append(fieldIDs, r.RefID)
 		}
 	}
@@ -452,7 +454,7 @@ func (s *FieldService) GetReferences(ctx context.Context, id int64) (*model.Refe
 		}
 		for _, fid := range fieldIDs {
 			result.Fields = append(result.Fields, model.ReferenceItem{
-				RefType: model.RefTypeField,
+				RefType: util.RefTypeField,
 				RefID:   fid,
 				Label:   labelMap[fid],
 			})
@@ -462,7 +464,7 @@ func (s *FieldService) GetReferences(ctx context.Context, id int64) (*model.Refe
 	// 模板引用：只填 ID，Label 留空由 handler 跨模块补齐
 	for _, tid := range templateIDs {
 		result.Templates = append(result.Templates, model.ReferenceItem{
-			RefType: model.RefTypeTemplate,
+			RefType: util.RefTypeTemplate,
 			RefID:   tid,
 		})
 	}
@@ -529,7 +531,7 @@ func (s *FieldService) ValidateFieldsForTemplate(ctx context.Context, fieldIDs [
 		if !f.Enabled {
 			return errcode.Newf(errcode.ErrTemplateFieldDisabled, "字段 '%s' 已停用，请先在字段管理中启用", f.Name)
 		}
-		if f.Type == model.FieldTypeReference {
+		if f.Type == util.FieldTypeReference {
 			return errcode.Newf(errcode.ErrTemplateFieldIsReference, "字段 '%s' 是 reference 类型，请展开其子字段后加入模板", f.Name)
 		}
 	}
@@ -549,7 +551,7 @@ func (s *FieldService) AttachToTemplateTx(ctx context.Context, tx *sqlx.Tx, temp
 		return make([]int64, 0), nil
 	}
 	for _, fieldID := range fieldIDs {
-		if err := s.fieldRefStore.Add(ctx, tx, fieldID, model.RefTypeTemplate, templateID); err != nil {
+		if err := s.fieldRefStore.Add(ctx, tx, fieldID, util.RefTypeTemplate, templateID); err != nil {
 			return nil, fmt.Errorf("add field ref %d → template %d: %w", fieldID, templateID, err)
 		}
 		if err := s.fieldStore.IncrRefCountTx(ctx, tx, fieldID); err != nil {
@@ -574,7 +576,7 @@ func (s *FieldService) DetachFromTemplateTx(ctx context.Context, tx *sqlx.Tx, te
 		return make([]int64, 0), nil
 	}
 	for _, fieldID := range fieldIDs {
-		if err := s.fieldRefStore.Remove(ctx, tx, fieldID, model.RefTypeTemplate, templateID); err != nil {
+		if err := s.fieldRefStore.Remove(ctx, tx, fieldID, util.RefTypeTemplate, templateID); err != nil {
 			return nil, fmt.Errorf("remove field ref %d → template %d: %w", fieldID, templateID, err)
 		}
 		if err := s.fieldStore.DecrRefCountTx(ctx, tx, fieldID); err != nil {
@@ -619,7 +621,7 @@ func (s *FieldService) GetByIDsLite(ctx context.Context, fieldIDs []int64) ([]mo
 			Label:         f.Label,
 			Type:          f.Type,
 			Category:      f.Category,
-			CategoryLabel: s.dictCache.GetLabel(model.DictGroupFieldCategory, f.Category),
+			CategoryLabel: s.dictCache.GetLabel(util.DictGroupFieldCategory, f.Category),
 			Enabled:       f.Enabled,
 		}
 	}
@@ -650,22 +652,11 @@ func parseProperties(raw json.RawMessage) (*model.FieldProperties, error) {
 }
 
 func parseConstraintsMap(raw json.RawMessage) (map[string]json.RawMessage, error) {
-	if len(raw) == 0 {
-		return make(map[string]json.RawMessage), nil
-	}
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &m); err != nil {
-		return nil, fmt.Errorf("unmarshal constraints: %w", err)
-	}
-	return m, nil
+	return constraint.ParseConstraintsMap(raw)
 }
 
 func getFloat(raw json.RawMessage) (float64, bool) {
-	var v float64
-	if err := json.Unmarshal(raw, &v); err != nil {
-		return 0, false
-	}
-	return v, true
+	return constraint.GetFloat(raw)
 }
 
 func checkConstraintTightened(fieldType string, oldConstraints, newConstraints json.RawMessage) *errcode.Error {
@@ -752,33 +743,12 @@ func checkConstraintTightened(fieldType string, oldConstraints, newConstraints j
 	return nil
 }
 
-// getStringFromRaw 从 json.RawMessage 提取字符串值，失败返回空串
 func getStringFromRaw(raw json.RawMessage) string {
-	if len(raw) == 0 {
-		return ""
-	}
-	var s string
-	if err := json.Unmarshal(raw, &s); err != nil {
-		return ""
-	}
-	return s
+	return constraint.GetString(raw)
 }
 
 func parseSelectOptions(raw json.RawMessage) []string {
-	if len(raw) == 0 {
-		return nil
-	}
-	var options []struct {
-		Value string `json:"value"`
-	}
-	if err := json.Unmarshal(raw, &options); err != nil {
-		return nil
-	}
-	values := make([]string, 0, len(options))
-	for _, o := range options {
-		values = append(values, o.Value)
-	}
-	return values
+	return constraint.ParseSelectOptions(raw)
 }
 
 // ---- 循环引用检测 ----
@@ -831,7 +801,7 @@ func (s *FieldService) validateReferenceRefs(ctx context.Context, currentID int6
 		if !f.Enabled {
 			return errcode.Newf(errcode.ErrFieldRefDisabled, "字段 '%s' 已停用，不能引用", f.Name)
 		}
-		if f.Type == model.FieldTypeReference {
+		if f.Type == util.FieldTypeReference {
 			return errcode.Newf(errcode.ErrFieldRefNested, "字段 '%s' 是 reference 类型，不允许嵌套引用", f.Name)
 		}
 	}
@@ -862,7 +832,7 @@ func (s *FieldService) detectCyclicRef(ctx context.Context, currentID int64, ref
 			if err != nil || field == nil {
 				continue
 			}
-			if field.Type != model.FieldTypeReference {
+			if field.Type != util.FieldTypeReference {
 				continue
 			}
 
@@ -921,7 +891,7 @@ func (s *FieldService) syncFieldRefs(ctx context.Context, sourceFieldID int64, o
 	defer tx.Rollback()
 
 	for _, targetID := range toAdd {
-		if err := s.fieldRefStore.Add(ctx, tx, targetID, model.RefTypeField, sourceFieldID); err != nil {
+		if err := s.fieldRefStore.Add(ctx, tx, targetID, util.RefTypeField, sourceFieldID); err != nil {
 			return nil, fmt.Errorf("add field ref %d: %w", targetID, err)
 		}
 		if err := s.fieldStore.IncrRefCountTx(ctx, tx, targetID); err != nil {
@@ -930,7 +900,7 @@ func (s *FieldService) syncFieldRefs(ctx context.Context, sourceFieldID int64, o
 	}
 
 	for _, targetID := range toRemove {
-		if err := s.fieldRefStore.Remove(ctx, tx, targetID, model.RefTypeField, sourceFieldID); err != nil {
+		if err := s.fieldRefStore.Remove(ctx, tx, targetID, util.RefTypeField, sourceFieldID); err != nil {
 			return nil, fmt.Errorf("remove field ref %d: %w", targetID, err)
 		}
 		if err := s.fieldStore.DecrRefCountTx(ctx, tx, targetID); err != nil {

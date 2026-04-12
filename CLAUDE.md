@@ -70,10 +70,11 @@ frontend/
     components/            #   通用组件（SchemaForm/BtNodeEditor/ConditionEditor 等）
     api/                   #   REST API 调用
 docs/                      # 文档
-  standards/               #   通用标准红线（Go/MySQL/Redis/缓存/前端）
-  architecture/            #   ADMIN 项目专属约束（后端架构/UI-UX）
-  development/             #   开发规范与陷阱（Go/MySQL/MongoDB/Redis/缓存/前端）
-  v3-PLAN/                 #   V3 需求规划文档
+  architecture/            #   架构总览 + 游戏服务端 API 契约
+  development/
+    standards/             #   通用标准（跨项目）：red-lines/ + dev-rules/
+    admin/                 #   ADMIN 项目专属：red-lines + dev-rules
+  v3-PLAN/                 #   V3 需求规划文档（按模块分 features/backend/frontend）
 Dockerfile.backend
 Dockerfile.frontend
 docker-compose.yml
@@ -102,7 +103,7 @@ docker-compose.yml
 
 ### MongoDB 数据格式
 
-所有配置文档统一 `{name, config}` 格式。详见 `docs/api-contract.md`。
+所有配置文档统一 `{name, config}` 格式。详见 `docs/architecture/api-contract.md`。
 
 ### BB Key 同步
 
@@ -122,7 +123,7 @@ ADMIN 和游戏服务端各存各的 BB Key，不走 API 互拉。ADMIN 的 Key 
 - 游戏服务端设置 `NPC_ADMIN_API=http://<admin地址>:9821`
 - 导出接口：`GET /api/configs/{npc_templates,event_types,fsm_configs,bt_trees,regions}`
 - 返回格式：`{"items": [{"name": "...", "config": {...}}, ...]}`
-- 详见 `docs/api-contract.md`
+- 详见 `docs/architecture/api-contract.md`
 
 ## Git 工作流
 

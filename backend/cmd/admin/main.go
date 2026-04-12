@@ -65,8 +65,11 @@ func main() {
 	fieldRefStore := storemysql.NewFieldRefStore(db)
 	dictStore := storemysql.NewDictionaryStore(db)
 	templateStore := storemysql.NewTemplateStore(db)
+	eventTypeStore := storemysql.NewEventTypeStore(db)
+	eventTypeSchemaStore := storemysql.NewEventTypeSchemaStore(db)
 	fieldCache := storeredis.NewFieldCache(rdb)
 	templateCache := storeredis.NewTemplateCache(rdb)
+	eventTypeCache := storeredis.NewEventTypeCache(rdb)
 
 	// DictCache（内存缓存，启动时从 MySQL 加载）
 	dictCache := cache.NewDictCache(dictStore)
@@ -77,18 +80,32 @@ func main() {
 	}
 	cancel2()
 
+	// EventTypeSchemaCache（内存缓存，启动时从 MySQL 加载）
+	eventTypeSchemaCache := cache.NewEventTypeSchemaCache(eventTypeSchemaStore)
+	ctx3, cancel3 := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
+	if err := eventTypeSchemaCache.Load(ctx3); err != nil {
+		slog.Error("启动.加载事件类型Schema缓存失败", "error", err)
+		os.Exit(1)
+	}
+	cancel3()
+
 	// Service（按"分层职责"硬规则：service 间无横向依赖）
 	fieldService := service.NewFieldService(fieldStore, fieldRefStore, fieldCache, dictCache, &cfg.Pagination)
 	templateService := service.NewTemplateService(templateStore, templateCache, &cfg.Pagination)
+	eventTypeService := service.NewEventTypeService(eventTypeStore, eventTypeCache, eventTypeSchemaCache, &cfg.Pagination, &cfg.EventType)
+	eventTypeSchemaService := service.NewEventTypeSchemaService(eventTypeSchemaStore, eventTypeSchemaCache, &cfg.EventTypeSchema)
 
 	// Handler（跨模块编排在 handler 层）
 	fieldHandler := handler.NewFieldHandler(fieldService, templateService, &cfg.Validation)
 	templateHandler := handler.NewTemplateHandler(db, templateService, fieldService, &cfg.Validation)
 	dictHandler := handler.NewDictionaryHandler(dictCache)
+	eventTypeHandler := handler.NewEventTypeHandler(eventTypeService, eventTypeSchemaService, &cfg.EventType)
+	eventTypeSchemaHandler := handler.NewEventTypeSchemaHandler(eventTypeSchemaService, &cfg.EventTypeSchema)
+	exportHandler := handler.NewExportHandler(eventTypeService)
 
 	// Router
 	r := gin.Default()
-	router.Setup(r, fieldHandler, dictHandler, templateHandler)
+	router.Setup(r, fieldHandler, dictHandler, templateHandler, eventTypeHandler, eventTypeSchemaHandler, exportHandler)
 
 	// Server
 	srv := &http.Server{

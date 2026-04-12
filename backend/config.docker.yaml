@@ -21,3 +21,17 @@ pagination:
 validation:
   field_name_max_length: 64
   field_label_max_length: 128
+  template_name_max_length: 64
+  description_max_length: 512
+
+event_type:
+  name_max_length: 64
+  display_name_max_length: 128
+  cache_detail_ttl: 10m
+  cache_list_ttl: 5m
+  cache_lock_ttl: 3s
+
+event_type_schema:
+  field_name_max_length: 64
+  field_label_max_length: 128
+  max_schemas: 100

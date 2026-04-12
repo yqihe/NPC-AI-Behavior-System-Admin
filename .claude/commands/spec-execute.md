@@ -26,7 +26,7 @@
 3. 定位目标任务，确认未完成
 4. 读取任务涉及的所有文件（先读再改，不准盲改）
 5. 执行实现
-6. 检查文档是否需要同步更新（参考 `docs/development/dev-rules.md` 文档同步章节）
+6. 检查文档是否需要同步更新（参考 `docs/development/admin/dev-rules.md` 文档同步章节）
 7. 在 tasks.md 中将任务标记为 `[x]`
 8. **立即执行 `/verify <feature-name> --task=T[N]`**——写完代码必须先验证，不允许跳过
 9. verify PASS → commit 当前改动 → 自动继续下一个 task
@@ -53,18 +53,19 @@
 
 ## 写 Go 代码时必须检查
 
-按涉及的技术领域查阅对应陷阱文档（`docs/development/` 下按技术拆分），重点关注：
+按涉及的技术领域查阅对应开发规范（`docs/development/standards/dev-rules/`），重点关注：
 
-- **Go 语言**（`go-pitfalls.md`）：nil slice/map 初始化了吗？bson tag 写了吗？omitempty 会吞零值吗？error 没忽略吧？map 初始化了吗？中文字符串长度用 `utf8.RuneCountInString` 了吗？
-- **HTTP Handler**（`go-pitfalls.md`）：写错误响应后 return 了吗？WriteHeader 只调一次了吗？
-- **MySQL**（`mysql-pitfalls.md`）：事务内查询用 tx 了吗？TOCTOU 防护用了 FOR SHARE 吗？LIKE 转义了吗？乐观锁 rows==0 语义清楚吗？
-- **MongoDB**（`mongodb-pitfalls.md`）：context 带超时了吗？ErrNoDocuments 单独判断了吗？MatchedCount==0 返回 404 了吗？
-- **Redis**（`redis-pitfalls.md`）：redis.Nil 判断了吗？缓存 key 用 keys.go 生成了吗？
-- **缓存**（`cache-pitfalls.md`）：写操作后清了 list 和 detail 缓存吗？空值标记防穿透了吗？TTL 加抖动了吗？
+- **Go 语言**（`go.md`）：nil slice/map 初始化了吗？bson tag 写了吗？omitempty 会吞零值吗？error 没忽略吧？map 初始化了吗？中文字符串长度用 `utf8.RuneCountInString` 了吗？
+- **HTTP Handler**（`go.md`）：写错误响应后 return 了吗？WriteHeader 只调一次了吗？
+- **MySQL**（`mysql.md`）：事务内查询用 tx 了吗？TOCTOU 防护用了 FOR SHARE 吗？LIKE 转义了吗？乐观锁 rows==0 语义清楚吗？
+- **MongoDB**（`mongodb.md`）：context 带超时了吗？ErrNoDocuments 单独判断了吗？MatchedCount==0 返回 404 了吗？
+- **Redis**（`redis.md`）：redis.Nil 判断了吗？缓存 key 用 keys.go 生成了吗？
+- **缓存**（`cache.md`）：写操作后清了 list 和 detail 缓存吗？空值标记防穿透了吗？TTL 加抖动了吗？
+- **测试**（`docs/development/admin/dev-rules.md` "测试脚本编写规范"章节）：jq 提取加 `tr -d '\r'` 了吗？环境重置清 Redis 了吗？断言错误码对准 errcode/codes.go 了吗？
 
 ## 写前端代码时必须检查
 
-参考 `docs/development/frontend-pitfalls.md`，重点关注：
+参考 `docs/development/standards/dev-rules/frontend.md`，重点关注：
 
 - **响应式**：解构 reactive 用 toRefs 了吗？ref 用了 .value 吗？reactive 没整体替换吧？
 - **Element Plus 表单**：el-form-item 的 prop 和 model 字段名一致吗？dialog 关闭时重置表单了吗？
@@ -74,7 +75,7 @@
 
 ## DEBUG 日志
 
-统一格式（参考 `docs/development/dev-rules.md`）：
+统一格式（参考 `docs/development/admin/dev-rules.md`）：
 ```go
 log.Debug("组件.动作", "key1", val1, "key2", val2)
 ```
@@ -105,4 +106,4 @@ log.Debug("组件.动作", "key1", val1, "key2", val2)
 
 ## 经验沉淀
 
-执行过程中踩到的坑，按技术领域追加到对应文档（参考 `docs/development/dev-rules.md` 经验沉淀指引表格）。
+执行过程中踩到的坑，按技术领域追加到对应文档（参考 `docs/development/admin/dev-rules.md` 经验沉淀指引表格）。

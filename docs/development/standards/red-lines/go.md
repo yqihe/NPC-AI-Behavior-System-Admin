@@ -1,6 +1,6 @@
 # Go 语言禁止红线
 
-适用于所有 Go 项目。纯 Go 语言层面的禁令。MySQL 见 `mysql-red-lines.md`，Redis 见 `redis-red-lines.md`，缓存模式见 `cache-red-lines.md`。
+适用于所有 Go 项目。纯 Go 语言层面的禁令。MySQL 见 `mysql.md`，Redis 见 `redis.md`，缓存模式见 `cache.md`。开发规范见 `../dev-rules/go.md`。
 
 ## 禁止资源泄漏
 

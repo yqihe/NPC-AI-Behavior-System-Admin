@@ -5,12 +5,8 @@ import (
 	"time"
 )
 
-// 字典组名常量
-const (
-	DictGroupFieldType       = "field_type"       // 字段类型
-	DictGroupFieldCategory   = "field_category"   // 字段分类
-	DictGroupFieldProperties = "field_properties"  // 字段属性
-)
+// 字典组名常量统一定义在 util/const.go
+// 使用 util.DictGroupFieldType / util.DictGroupFieldCategory 等
 
 // Dictionary 字典条目
 type Dictionary struct {

@@ -6,18 +6,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"regexp"
 	"unicode/utf8"
 
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	"github.com/yqihe/npc-ai-admin/backend/internal/service"
+	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
-// identPattern 通用标识符正则：a-z 开头，仅 a-z0-9_
-// 所有配置类型（字段/模板等）的 name 共用此规则。
-var identPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+// identPattern 通用标识符正则 — 权威定义在 util/strings.go
+var identPattern = util.IdentPattern
 
 // FieldHandler 字段管理业务处理
 type FieldHandler struct {

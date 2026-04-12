@@ -10,11 +10,13 @@ import (
 
 // Config 全局配置
 type Config struct {
-	Server     ServerConfig     `yaml:"server"`
-	MySQL      MySQLConfig      `yaml:"mysql"`
-	Redis      RedisConfig      `yaml:"redis"`
-	Pagination PaginationConfig `yaml:"pagination"`
-	Validation ValidationConfig `yaml:"validation"`
+	Server          ServerConfig          `yaml:"server"`
+	MySQL           MySQLConfig           `yaml:"mysql"`
+	Redis           RedisConfig           `yaml:"redis"`
+	Pagination      PaginationConfig      `yaml:"pagination"`
+	Validation      ValidationConfig      `yaml:"validation"`
+	EventType       EventTypeConfig       `yaml:"event_type"`
+	EventTypeSchema EventTypeSchemaConfig `yaml:"event_type_schema"`
 }
 
 // ServerConfig HTTP 服务配置
@@ -47,8 +49,26 @@ type PaginationConfig struct {
 
 // ValidationConfig 校验配置
 type ValidationConfig struct {
+	FieldNameMaxLength     int `yaml:"field_name_max_length"`
+	FieldLabelMaxLength    int `yaml:"field_label_max_length"`
+	TemplateNameMaxLength  int `yaml:"template_name_max_length"`
+	DescriptionMaxLength   int `yaml:"description_max_length"`
+}
+
+// EventTypeConfig 事件类型配置
+type EventTypeConfig struct {
+	NameMaxLength        int           `yaml:"name_max_length"`
+	DisplayNameMaxLength int           `yaml:"display_name_max_length"`
+	CacheDetailTTL       time.Duration `yaml:"cache_detail_ttl"`
+	CacheListTTL         time.Duration `yaml:"cache_list_ttl"`
+	CacheLockTTL         time.Duration `yaml:"cache_lock_ttl"`
+}
+
+// EventTypeSchemaConfig 事件类型扩展字段 Schema 配置
+type EventTypeSchemaConfig struct {
 	FieldNameMaxLength  int `yaml:"field_name_max_length"`
 	FieldLabelMaxLength int `yaml:"field_label_max_length"`
+	MaxSchemas          int `yaml:"max_schemas"`
 }
 
 // Load 从文件加载配置

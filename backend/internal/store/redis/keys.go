@@ -21,6 +21,13 @@ const (
 
 	// templateListVersionKey 模板列表缓存版本号（同字段方案）
 	templateListVersionKey = "templates:list:version"
+
+	prefixEventTypeList   = "event_types:list:"   // 事件类型列表分页缓存
+	prefixEventTypeDetail = "event_types:detail:" // 事件类型单条缓存
+	prefixEventTypeLock   = "event_types:lock:"   // 事件类型分布式锁
+
+	// eventTypeListVersionKey 事件类型列表缓存版本号
+	eventTypeListVersionKey = "event_types:list:version"
 )
 
 // DictKey 字典缓存 key: dict:{group}
@@ -74,4 +81,32 @@ func TemplateDetailKey(id int64) string {
 // TemplateLockKey 模板分布式锁 key: templates:lock:{id}
 func TemplateLockKey(id int64) string {
 	return fmt.Sprintf("%s%d", prefixTemplateLock, id)
+}
+
+// EventTypeListKey 事件类型列表缓存 key（带版本号）
+// perceptionMode: 空串=不筛选
+func EventTypeListKey(version int64, label, perceptionMode string, enabled *bool, page, pageSize int) string {
+	e := "*"
+	if enabled != nil {
+		if *enabled {
+			e = "1"
+		} else {
+			e = "0"
+		}
+	}
+	pm := "*"
+	if perceptionMode != "" {
+		pm = perceptionMode
+	}
+	return fmt.Sprintf("%sv%d:%s:%s:%s:%d:%d", prefixEventTypeList, version, label, pm, e, page, pageSize)
+}
+
+// EventTypeDetailKey 事件类型详情缓存 key: event_types:detail:{id}
+func EventTypeDetailKey(id int64) string {
+	return fmt.Sprintf("%s%d", prefixEventTypeDetail, id)
+}
+
+// EventTypeLockKey 事件类型分布式锁 key: event_types:lock:{id}
+func EventTypeLockKey(id int64) string {
+	return fmt.Sprintf("%s%d", prefixEventTypeLock, id)
 }

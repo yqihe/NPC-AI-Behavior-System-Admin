@@ -1,6 +1,6 @@
-# 前端常见陷阱（Vue 3 + Element Plus）
+# 前端开发规范（Vue 3 + Element Plus）
 
-编写前端代码时主动检查。禁止红线见 `../standards/frontend-red-lines.md`。
+禁止红线见 `../red-lines/frontend.md`。
 
 ## JavaScript 基础
 
@@ -24,9 +24,9 @@
 
 ## Element Plus 组件
 
-- **el-form prop 匹配**：`el-form-item` 的 `prop` 必须与 `:model` 字段名一���，否则校验静默失效
+- **el-form prop 匹配**：`el-form-item` 的 `prop` 必须与 `:model` 字段名一致，否则校验静默失效
 - **嵌套对象校验**：prop 用点号路径 `prop="config.range"`
-- **el-dialog 表单残留**：关闭���打开数据残留，需在 `@open`/`@close` 重置
+- **el-dialog 表单残留**：关闭再打开数据残留，需在 `@open`/`@close` 重置
 - **el-select v-model 类型**：选项 value 是数字，v-model 也必须是数字
 - **el-slider 精度**：step 默认 1，小数需显式 `:step="0.1"`
 - **ElMessage/ElMessageBox 样式缺失**：auto-import 插件只处理模板组件，`ElMessage`、`ElMessageBox`、`ElNotification` 是命令式 JS API，样式不会自动引入。必须在 `main.ts` 手动导入：`import 'element-plus/theme-chalk/el-message.css'` 等，否则弹窗不显示
@@ -35,10 +35,9 @@
 ## Axios / HTTP
 
 - **拦截器吞错**：响应拦截器弹 ElMessage 但没 `return Promise.reject`，调用方 `.then()` 收到 undefined
-- **并发竞态**：快速双击提交导致重复数据，需防抖或 loading ��用按钮
+- **并发竞态**：快速双击提交导致重复数据，需防抖或 loading 禁用按钮
 - **baseURL 环境差异**：dev 走 Vite proxy，prod 走 nginx。用 `VITE_API_BASE` 控制
-- **错误响应**：`error.response.data.error` 才是后端错误信���，`error.message` 是 Axios 自己的
-
+- **错误响应**：`error.response.data.error` 才是后端错误信息，`error.message` 是 Axios 自己的
 - **拦截器需携带业务错误码**：拦截器 reject 时给 Error 对象挂 `code` 属性（`err.code = code`），调用方 `.catch(err)` 才能按错误码做差异化处理（弹窗/红字/跳转）
 - **列表接口可能缺少字段**：列表接口返回精简数据（如不含 `version`），需要乐观锁的操作（toggle/update）必须先调 detail 获取完整数据再提交
 
@@ -51,7 +50,7 @@
 
 ## Vite 构建
 
-- **环境变量前缀**：只有 `VITE_` 前缀的变量暴露到客户端���码
+- **环境变量前缀**：只有 `VITE_` 前缀的变量暴露到客户端代码
 - **动态导入**：路由懒加载用显式路径 `() => import('../views/Xxx.vue')`
 - **proxy 只在 dev 生效**：prod 由 nginx 反代
 - **Docker 容器内 npm ci 网络超时**：Docker 容器 DNS 解析可能不稳定，导致 `npm ci` 下载依赖超时。解法：Docker Desktop 设置 DNS（`223.5.5.5`），或 Dockerfile 中 `npm config set registry https://registry.npmmirror.com`
@@ -73,7 +72,7 @@
 ## BT 节点编辑器
 
 - **装饰节点 != 复合节点**：`inverter` 只有 `child`（单对象），不是 `children`（数组）
-- **类型切换清理**：从复合切到装���时清空 `children` 并初始化 `decoratorChild`，反之亦然
+- **类型切换清理**：从复合切到装饰时清空 `children` 并初始化 `decoratorChild`，反之亦然
 - **BB Key 下拉**：必须用 `el-select`，不能 `el-input`。白名单来源与服务端 `keys.go` 对齐
 - **stub_action result**：三个值 `success`/`failure`/`running`，不是两个
 

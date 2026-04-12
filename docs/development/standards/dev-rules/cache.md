@@ -1,6 +1,6 @@
-# 缓存模式常见陷阱
+# 缓存模式开发规范
 
-缓存设计模式层面的陷阱，不针对具体中间件。Redis 操作见 `redis-pitfalls.md`，缓存红线见 `../standards/cache-red-lines.md`。
+禁止红线见 `../red-lines/cache.md`。Redis 操作见 `redis.md`。
 
 ## Cache-Aside 模式
 
