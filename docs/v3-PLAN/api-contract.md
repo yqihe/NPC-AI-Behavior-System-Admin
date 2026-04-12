@@ -107,6 +107,71 @@
 | `range` | 传播范围（米），global 模式下无效 |
 | `display_name` | 中文名，服务端可忽略 |
 
+**config 字段集合是动态的（重要）**
+
+ADMIN 侧的事件类型字段分成**系统字段**（硬编码）和**扩展字段**（运营通过 Schema 管理页自定义）两类，两类字段都扁平地出现在 `config` 对象里：
+
+- **系统字段**（永远存在）：`display_name` / `default_severity` / `default_ttl` / `perception_mode` / `range`
+- **扩展字段**（可能出现、可能不出现）：由运营在 Schema 管理页定义，如 `priority` / `category` / `cooldown` / `stackable` 等。**同一扩展字段在某些事件源里有、在某些事件源里没有**（取决于运营是否填过；未填的字段不进 `config`）
+
+**服务端实现契约（已与服务端 CC 确认）：**
+
+1. **系统字段硬解析**：`name / display_name / default_severity / default_ttl / perception_mode / range` 固定到 struct，缺失则 reject（拒绝加载该条或启动失败）
+2. **未知字段优雅捕获**：用 `Extensions map[string]json.RawMessage` 接收未知 key，禁止 struct 缺字段导致整体 Unmarshal 失败
+3. **扩展字段默认值集中管理**：服务端 `internal/runtime/event/defaults.go` 维护扩展字段默认值的**单一事实来源**。ADMIN 不回填默认值到历史数据
+4. **类型错误运行时退化**：访问器读到的值类型与期望不符时，**退化到 `defaults.go` 的默认值 + 记 `slog.Warn`**（含 `event_type` / `field` / `expected_type` / `raw_value`），不 panic 不拒绝加载
+5. **扩展字段增删对服务端透明**：ADMIN 侧禁用/删除扩展字段不触发数据清理，老值继续通过导出 API 流到服务端；服务端无需感知 schema 生命周期
+
+**ADMIN 侧契约承诺：**
+
+- ADMIN 保存扩展字段值时**必须**按 `event_type_schema.constraints` 做类型和约束校验，校验通过才能落库
+- 系统字段在 Handler 层做强类型 + 边界校验（`default_severity ∈ [0, 100]`、`default_ttl > 0` 等）
+- 运行时服务端触发的"类型不匹配 warn" **被视为 ADMIN 侧 bug**（校验漏了 / Schema 迁移出错 / 绕过 Service 层直写 MySQL），由 ADMIN 团队排查修复，不是服务端兜底的常规路径
+
+**责任划分：**
+
+| 关注点 | ADMIN 侧 | 服务端侧 |
+|---|---|---|
+| 系统字段格式 | Handler 强校验 + Service 兜底 | struct 硬解析，缺失 reject |
+| 扩展字段类型 | Service 层按 Schema 校验后才落库 | 运行时访问器退化 + warn |
+| 扩展字段默认值 | 不回填历史数据；Schema `default_value` 仅做表单初始值提示 | `defaults.go` 单一事实来源 |
+| 扩展字段增删 | Schema 管理页自助，不清存量 | 透明，`Extensions` map 自动承载 |
+| 系统字段改动的热更新 | 本期不支持，编辑页提示"需服务端重启" | 本期不支持，启动时一次性加载 |
+
+**推荐的 `EventTypeConfig` 骨架：**
+
+```go
+// internal/runtime/event/event.go
+type EventTypeConfig struct {
+    Name            string  `json:"name"`
+    DisplayName     string  `json:"display_name"`
+    DefaultSeverity int     `json:"default_severity"`
+    DefaultTTL      float64 `json:"default_ttl"`
+    PerceptionMode  string  `json:"perception_mode"`
+    Range           float64 `json:"range"`
+
+    Extensions map[string]json.RawMessage `json:"-"`  // 自定义 UnmarshalJSON 填充
+}
+
+// internal/runtime/event/defaults.go — 扩展字段默认值的单一事实来源
+var extensionDefaults = map[string]any{
+    "priority":  50,
+    "category":  "unknown",
+    "cooldown":  0.0,
+    "stackable": false,
+    // 运营在 ADMIN Schema 管理页添加新扩展字段时，服务端在此补一行默认值
+}
+
+// 访问器 — 消费扩展字段的主要入口，默认值从 extensionDefaults 查找
+cfg.GetIntExt("priority")      // int
+cfg.GetFloatExt("cooldown")    // float64
+cfg.GetStringExt("category")   // string
+cfg.GetBoolExt("stackable")    // bool
+
+// 原始 map — 嵌套结构等边缘场景的兜底
+raw := cfg.Extensions["custom_nested"]  // json.RawMessage
+```
+
 ---
 
 ### 3. 状态机
