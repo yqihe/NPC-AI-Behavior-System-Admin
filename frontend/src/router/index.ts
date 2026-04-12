@@ -45,6 +45,24 @@ const router = createRouter({
       props: (route) => ({ mode: 'edit', id: Number(route.params.id) }),
       meta: { title: '编辑模板' },
     },
+    {
+      path: '/event-types',
+      name: 'event-type-list',
+      component: () => import('@/views/EventTypeList.vue'),
+      meta: { title: '事件类型管理' },
+    },
+    {
+      path: '/event-types/create',
+      name: 'event-type-create',
+      component: () => import('@/views/EventTypeForm.vue'),
+      meta: { title: '新建事件类型', isCreate: true },
+    },
+    {
+      path: '/event-types/:id/edit',
+      name: 'event-type-edit',
+      component: () => import('@/views/EventTypeForm.vue'),
+      meta: { title: '编辑事件类型', isCreate: false },
+    },
   ],
 })
 
