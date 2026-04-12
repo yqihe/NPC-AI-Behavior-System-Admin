@@ -49,12 +49,12 @@ type EventTypeSchema struct {
 
 // EventTypeSchemaLite 精简版（给详情接口 extension_schema + 内存缓存）
 type EventTypeSchemaLite struct {
-	FieldName    string          `json:"field_name"`
-	FieldLabel   string          `json:"field_label"`
-	FieldType    string          `json:"field_type"`
-	Constraints  json.RawMessage `json:"constraints"`
-	DefaultValue json.RawMessage `json:"default_value"`
-	SortOrder    int             `json:"sort_order"`
+	FieldName    string          `json:"field_name" db:"field_name"`
+	FieldLabel   string          `json:"field_label" db:"field_label"`
+	FieldType    string          `json:"field_type" db:"field_type"`
+	Constraints  json.RawMessage `json:"constraints" db:"constraints"`
+	DefaultValue json.RawMessage `json:"default_value" db:"default_value"`
+	SortOrder    int             `json:"sort_order" db:"sort_order"`
 }
 
 // ──────────────────────────────────────────────
