@@ -1,6 +1,6 @@
 # Redis 禁止红线
 
-适用于所有使用 Redis 的项目。
+适用于所有使用 Redis 的项目。Go 见 `go.md`，MySQL 见 `mysql.md`，缓存模式见 `cache.md`。开发规范见 `../dev-rules/redis.md`。
 
 ## 禁止高危操作
 

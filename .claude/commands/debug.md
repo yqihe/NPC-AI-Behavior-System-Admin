@@ -91,4 +91,4 @@
 
 ## 经验沉淀
 
-排查过程中发现的新坑，按技术领域追加到对应文档（参考 `docs/development/dev-rules.md` 经验沉淀指引表格）。
+排查过程中发现的新坑，按技术领域追加到对应文档（参考 `docs/development/admin/dev-rules.md` 经验沉淀指引表格）。

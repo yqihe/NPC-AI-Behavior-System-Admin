@@ -1,15 +1,11 @@
-# 模板管理 — 已实现功能清单
+# 模板管理 — 功能清单
 
-> **实现状态**：**后端 + 前端全部落地**（后端 199/199 集成测试通过 + 8 个接口 + 跨模块事务编排 + 12 个错误码含 41012；前端 `TemplateList` / `TemplateForm` / `TemplateFieldPicker` / `TemplateRefPopover` / `TemplateSelectedFields` / `TemplateReferencesDialog` + `EnabledGuardDialog` 泛型复用，详见 `frontend.md`）。
-> 本文档是「用户场景 → 校验 → 调用链」的按功能展开说明；架构层的文件组织 / 缓存策略 / 跨模块事务编排步骤见 `backend.md`，前端状态流 / 组件树 / 41012 兜底见 `frontend.md`。
-> 模板是 ADMIN 内部的管理概念，把字段组合成"可复用的配置方案"。NPC 创建时选一个模板填值。模板只和 MySQL 打交道，不涉及 MongoDB——MongoDB 数据由 NPC 配置层产生。
-> **所有操作标识使用主键 ID (BIGINT)，`name` 仅用于创建时写入和唯一性校验。**
-> **技术栈**：后端 Go（gin + sqlx + slog），前端 Vue 3 + TypeScript + Element Plus + Vite。
-> **UI 参考**：`docs/v3-PLAN/mockups-template.pen`（含列表 / 新建 / 编辑·未引用 / 编辑·已引用 / 删除确认 / reference 弹层 / 引用详情 / 启用下禁止编辑 / 启用下禁止删除 共 9 个画布）。
+> 通用架构/规范见 `docs/architecture/overview.md` 和 `docs/development/`。
+> 后端实现细节见同目录 `backend.md`，前端设计见 `frontend.md`。
 
 ---
 
-## 模板的三种状态
+## 状态模型
 
 | 状态 | 模板管理页看到 | NPC 管理页看到 | 能被新 NPC 选择 | 已有 NPC |
 |------|-------------|------------|--------------|---------|
@@ -25,7 +21,7 @@
 
 ---
 
-## 模块职责边界（分层硬规则）
+## 模块职责边界
 
 模板管理严格遵守"分层职责"硬规则。`TemplateService` **只持有自身的 `TemplateStore` / `TemplateCache`**，**不持有** `FieldStore` / `FieldRefStore` / `FieldCache` / `DictCache`。所有跨模块的事情——字段存在性/启用校验、`field_refs` 维护、字段 `ref_count` 维护、字段详情补全、字段方缓存清理——都由 `TemplateHandler` 作为"用例编排者"显式调 `FieldService` 的对外方法（参见字段管理 features 功能 12）。
 
@@ -36,6 +32,8 @@
 ---
 
 ## 功能 1：模板列表
+
+### 场景描述
 
 **场景 A — 在模板管理页，管理员要浏览所有模板。** 不传 `enabled` 筛选条件，启用和停用的模板都展示出来，管理员才能对停用模板做重新启用或删除操作。
 
@@ -64,7 +62,11 @@
 - **不需要"已停用"文字标签** —— 整行变灰已经是足够强的视觉信号。
 - **不展示"描述"和"字段数"列** —— 描述是创建时的辅助说明，列表场景下噪音大于价值；字段数从 `fields` JSON 拿要么回表要么冗余存，价值不抵成本。需要时点进编辑页一目了然。
 
-**调用链路：**
+### 校验规则
+
+无 Handler 层校验（直接透传 query）。Service 层校正分页参数上下界。
+
+### 调用链
 
 | 层 | 入口 |
 |---|---|
@@ -73,17 +75,27 @@
 | Service | `TemplateService.List` — 分页参数校正 → 查 Redis 列表缓存 → miss 时查 MySQL → 写缓存 |
 | Store | `TemplateCache.GetList` → `TemplateStore.List`（覆盖索引，`ORDER BY id DESC`）→ `TemplateCache.SetList` |
 
+### 错误码
+
+无专属错误码。
+
+### 边界 case
+
+- Redis 挂了跳过缓存，降级直查 MySQL。
+
 ---
 
 ## 功能 2：新建模板（跨模块事务）
 
-**场景 — 在模板管理页，管理员要定义一个新的"字段组合方案"（比如"战斗生物模板"、"场景NPC模板"）。** 填写模板标识、中文标签、描述，从启用字段中勾选所需字段，并为每个字段标记是否必填后提交。
+### 场景描述
+
+在模板管理页，管理员要定义一个新的"字段组合方案"（比如"战斗生物模板"、"场景NPC模板"）。填写模板标识、中文标签、描述，从启用字段中勾选所需字段，并为每个字段标记是否必填后提交。
 
 新建的模板默认是**未启用**状态（`enabled=false`）。这是一个刻意的设计：管理员创建模板后，往往还需要反复调整字段勾选、必填配置。如果创建即启用，NPC 管理页的下拉列表会立刻出现这个半成品模板，策划可能在管理员还没配好之前就选了它。默认未启用就提供了一个"配置窗口期"。
 
 模板标识（`name`）一旦创建不可修改（是唯一键），且含软删除记录也不能重复使用，防止历史数据混乱。
 
-### 字段勾选交互（按字段管理实际分类分组展示）
+#### 字段勾选交互（按字段管理实际分类分组展示）
 
 - **数据来源**：调字段列表接口 `enabled=true`，只展示启用的字段
 - **按字段的 `category` 分组展示**：分组对应字段管理的字典（dictionary `field_category`），目前 6 类：
@@ -106,7 +118,7 @@
 - 存储结果：扁平的实际字段 ID 列表，**无 reference 痕迹**
 - 同一字段被多个 reference 引用、或既被直接勾选又被某个 reference 包含时，**自动去重**
 
-### 已选字段配置交互（必填 + 排序）
+#### 已选字段配置交互（必填 + 排序）
 
 - 上半部分勾选字段后，下半部分"已选字段配置区"自动同步增删行
 - 每行展示：字段标签 / 字段标识 / 字段类型 tag / 必填 checkbox / **上下移动按钮**
@@ -120,29 +132,20 @@
 
 **保存按钮**：文案就是 `保存` 两个字，**不要在按钮里写"默认未启用"**之类的提示 —— 如有需要可作为按钮旁的副文案，但不污染按钮本身的可读性。
 
-### 后端跨模块事务流程（Handler 编排）
+### 校验规则
 
-1. **格式校验**（`TemplateHandler.Create`）：`identPattern` 校验 `name`、`label` 非空且长度 ≤ `valCfg.FieldLabelMaxLength`、`description` 长度 ≤ 512 字符、`fields` 非空且 `field_id > 0` 不重复
-2. **事务外预检**：
-   - `templateService.ExistsByName(ctx, name)` 查 name 唯一性（给前端早失败）→ `41001`
-   - `fieldService.ValidateFieldsForTemplate(ctx, fieldIDs)` 校验勾选字段全部存在 + 启用 + 非 reference 类型 → `41005` / `41006` / `41012`
-3. `h.db.BeginTxx(ctx, nil)` 开事务，`defer tx.Rollback()`
-4. `templateService.CreateTx(ctx, tx, req)` — Service 内做 fields 基础校验 + name 唯一性（兜底）+ 序列化 `fields` JSON + `TemplateStore.CreateTx`
-5. `fieldService.AttachToTemplateTx(ctx, tx, templateID, fieldIDs)` — 对每个 fieldID 写 `field_refs(field_id, 'template', templateID)` + `IncrRefCountTx`，返回受影响的 fieldIDs
-6. `tx.Commit()`
-7. Commit 后分别清两个模块缓存：
-   - `templateService.InvalidateList(ctx)`
-   - `fieldService.InvalidateDetails(ctx, affected)`
+- **Handler**（`TemplateHandler.Create`）格式校验：
+  - `identPattern` 校验 `name`
+  - `label` 非空且长度 ≤ `valCfg.FieldLabelMaxLength`
+  - `description` 长度 ≤ 512 字符
+  - `fields` 非空且 `field_id > 0` 不重复
+- **事务外预检**：
+  - `templateService.ExistsByName(ctx, name)` 查 name 唯一性（给前端早失败）→ `41001`
+  - `fieldService.ValidateFieldsForTemplate(ctx, fieldIDs)` 校验勾选字段全部存在 + 启用 + 非 reference 类型 → `41005` / `41006` / `41012`
+- **事务内**（`TemplateService.CreateTx`）：
+  - fields 基础校验 + name 唯一性（兜底）+ 序列化 `fields` JSON
 
-**涉及错误码**：
-- `41001 ErrTemplateNameExists` — name 已存在
-- `41002 ErrTemplateNameInvalid` — name 格式不合法（handler 前置）
-- `41004 ErrTemplateNoFields` — 未勾选任何字段
-- `41005 ErrTemplateFieldDisabled` — 勾选了停用字段（由 `FieldService.ValidateFieldsForTemplate` 抛出）
-- `41006 ErrTemplateFieldNotFound` — 勾选的字段不存在（由 `FieldService.ValidateFieldsForTemplate` 抛出）
-- `41012 ErrTemplateFieldIsReference` — 勾选了 reference 类型字段（由 `FieldService.ValidateFieldsForTemplate` 抛出，见"与字段管理的集成"第 7 条）
-
-**调用链路：**
+### 调用链
 
 | 层 | 入口 |
 |---|---|
@@ -151,15 +154,57 @@
 | Service | `TemplateService.CreateTx`（事务内）+ `FieldService.ValidateFieldsForTemplate`（事务外）+ `FieldService.AttachToTemplateTx`（事务内）|
 | Store | `TemplateStore.CreateTx` → `FieldRefStore.Add` + `FieldStore.IncrRefCountTx` |
 
+**后端跨模块事务流程（Handler 编排）：**
+
+1. 格式校验
+2. 事务外预检：`ExistsByName` + `ValidateFieldsForTemplate`
+3. `h.db.BeginTxx(ctx, nil)` 开事务，`defer tx.Rollback()`
+4. `templateService.CreateTx(ctx, tx, req)` — 序列化 fields JSON + 写入
+5. `fieldService.AttachToTemplateTx(ctx, tx, templateID, fieldIDs)` — 写 `field_refs` + `IncrRefCountTx`
+6. `tx.Commit()`
+7. Commit 后分别清两个模块缓存：`templateService.InvalidateList` + `fieldService.InvalidateDetails`
+
+### 错误码
+
+| 错误码 | 常量 | 触发场景 |
+|--------|------|---------|
+| 41001 | `ErrTemplateNameExists` | name 已存在 |
+| 41002 | `ErrTemplateNameInvalid` | name 格式不合法（handler 前置） |
+| 41004 | `ErrTemplateNoFields` | 未勾选任何字段 |
+| 41005 | `ErrTemplateFieldDisabled` | 勾选了停用字段（由 `FieldService.ValidateFieldsForTemplate` 抛出） |
+| 41006 | `ErrTemplateFieldNotFound` | 勾选的字段不存在（由 `FieldService.ValidateFieldsForTemplate` 抛出） |
+| 41012 | `ErrTemplateFieldIsReference` | 勾选了 reference 类型字段（由 `FieldService.ValidateFieldsForTemplate` 抛出） |
+| 40000 | `ErrBadRequest` | label / description / fields 格式错误 |
+
+### 边界 case
+
+- `name` 含软删除记录也不可复用。
+- reference 类型字段不能直接加入模板（前端的 reference popover 只是快捷选择器，写入的只有 leaf 子字段 ID）。
+
 ---
 
 ## 功能 3：模板详情（跨模块拼装）
+
+### 场景描述
 
 **场景 A — 编辑入口**：管理员在列表点"编辑"，前端先调 detail 接口拿到完整模板（含字段精简信息），再渲染 `TemplateForm.vue`。
 
 **场景 B — NPC 创建**：NPC 管理页选中模板后要知道模板有哪些字段、哪些必填，然后按字段 `id` 再调**字段详情接口**拿 `properties` 渲染动态表单。
 
-### 后端职责分层 & 跨模块拼装流程
+### 校验规则
+
+- **Handler**：`id > 0`。
+
+### 调用链
+
+| 层 | 入口 |
+|---|---|
+| Router | `POST /api/v1/templates/detail` |
+| Handler | `TemplateHandler.Get` — 校验 `id > 0` → 取模板裸行 → 解 `fields` → 跨模块调 `fieldService.GetByIDsLite` → 拼装 `TemplateDetail` |
+| Service | `TemplateService.GetByID`（Cache-Aside + 防击穿防穿透）+ `TemplateService.ParseFieldEntries`（公开工具方法）+ `FieldService.GetByIDsLite`（跨模块）|
+| Store | `TemplateCache.GetDetail` → `TryLock` → `TemplateStore.GetByID` → `TemplateCache.SetDetail` |
+
+**后端职责分层 & 跨模块拼装流程：**
 
 `TemplateService.GetByID` **只返回 `*model.Template` 裸行**（含未解析的 `fields` JSON），它内部走自己的 Cache-Aside：
 1. 查 `TemplateCache.GetDetail`，命中即返（命中空标记时返回 `ErrTemplateNotFound`）
@@ -176,26 +221,30 @@
 
 **为什么 `TemplateDetail` 不进缓存**：`FieldLite.Enabled` 依赖字段**当前**状态，如果把组装后的详情缓存到模板方，字段被停用时就得同时清模板详情缓存，耦合链太长。分层做法是：模板方只缓存裸行（受字段写影响小），字段方有自己的 detail 缓存（受模板写影响大），拼装每次都在 handler 层发生——两边命中各自的 cache，拼装本身开销极小。
 
-### 详情响应字段
-
+**详情响应字段：**
 - **模板基本信息**：`id, name, label, description, enabled, version, ref_count, created_at, updated_at`
 - **字段列表（精简）**：每项 `{field_id, name, label, type, category, category_label, enabled, required}`
   - **不返回完整 `properties`**（NPC 管理页要渲染表单时会再调字段详情接口拿 properties）
   - **包含 `category` 与 `category_label`**，前端按分类分组展示
   - **字段已被停用时 `enabled=false`**，前端在字段卡中标灰色 + 警告图标，提示运营人员但仍保留引用关系
 
-**调用链路：**
+### 错误码
 
-| 层 | 入口 |
-|---|---|
-| Router | `POST /api/v1/templates/detail` |
-| Handler | `TemplateHandler.Get` — 校验 `id > 0` → 取模板裸行 → 解 `fields` → 跨模块调 `fieldService.GetByIDsLite` → 拼装 `TemplateDetail` |
-| Service | `TemplateService.GetByID`（Cache-Aside + 防击穿防穿透）+ `TemplateService.ParseFieldEntries`（公开工具方法）+ `FieldService.GetByIDsLite`（跨模块）|
-| Store | `TemplateCache.GetDetail` → `TryLock` → `TemplateStore.GetByID` → `TemplateCache.SetDetail` |
+| 错误码 | 常量 | 触发场景 |
+|--------|------|---------|
+| 41003 | `ErrTemplateNotFound` | 模板不存在（或命中空标记） |
+| 40000 | `ErrBadRequest` | `id` 不合法 |
+
+### 边界 case
+
+- 停用字段在详情中 `enabled=false`，前端标灰但保留引用关系。
+- 缺失字段（理论上不应发生）`slog.Warn` 并跳过。
 
 ---
 
 ## 功能 4：编辑模板（兼具查看，跨模块事务）
+
+### 场景描述
 
 **场景 A — 管理员点击列表行的「编辑」，查看或修改一个未引用的模板。** 字段列表、必填配置、label/描述全部可改（但仍必须先停用）。
 
@@ -212,12 +261,11 @@
 
 **只有未启用状态才能编辑** —— 启用中的模板已对外可见，允许随意编辑会导致 NPC 管理页看到不稳定的配置。试图编辑启用中的模板时返回 `41010 ErrTemplateEditNotDisabled`，前端弹"无法编辑"引导弹窗（详见功能 9）。
 
-### Service 层的 `fieldsChanged` 语义
+#### Service 层的 `fieldsChanged` 语义
 
 `TemplateService.UpdateTx` 内用 `isFieldsChanged(old, new)` 判断 `fields` 是否变更——**集合、顺序、`required` 任一不同都算"变更"**：
 
 ```go
-// service/template.go
 func isFieldsChanged(old, new []model.TemplateFieldEntry) bool {
     if len(old) != len(new) { return true }
     for i := range old {
@@ -232,14 +280,14 @@ func isFieldsChanged(old, new []model.TemplateFieldEntry) bool {
 
 **注意对 add/remove 的处理**：`isFieldsChanged=true` 但 `diffFieldIDs` 算出的 `toAdd` / `toRemove` 都为空（即"纯排序或纯 required 变化"）时，Service 仍然会更新 `fields` JSON（因为 `fields` 字段顺序本身有业务语义），但**不操作 `field_refs`**——handler 识别 `fieldsChanged && (len(toAdd)+len(toRemove) > 0)` 才调 Detach/Attach。此时只清模板自己的缓存，不打扰字段方缓存。
 
-### 前端实现：一个 `TemplateForm.vue` 同时承载新建 + 两种编辑状态
+#### 前端实现：一个 `TemplateForm.vue` 同时承载新建 + 两种编辑状态
 
 布局结构与新建页**完全一致**（基本信息 + 字段选择 + 已选字段配置 + 底部按钮），只通过下面 3 个 prop 切换：
 
 | prop | 说明 |
 |---|---|
 | `mode: 'create' \| 'edit'` | 决定 标题文案、调 create / update 接口、`name` 字段是否 readonly |
-| `refCount: number` | `>0` 时整体进入锁定态：顶部显示黄色警告条、字段卡和必填卡 opacity 0.55 + 卡标题旁加 `🔒 已锁定` tag |
+| `refCount: number` | `>0` 时整体进入锁定态：顶部显示黄色警告条、字段卡和必填卡 opacity 0.55 + 卡标题旁加锁定 tag |
 | `template: TemplateDetail` | edit 模式下回填，create 模式下为空 |
 
 **编辑页与新建页的差异点（编辑特有）：**
@@ -247,37 +295,21 @@ func isFieldsChanged(old, new []model.TemplateFieldEntry) bool {
 - 模板标识 input：灰底 + lock 图标 + readonly；hint 改为"模板标识创建后不可修改"；不显示 `*`
 - 已被引用时（`refCount > 0`）：顶部添加黄色警告条 "该模板已被 N 个 NPC 引用，字段勾选与必填配置不可修改"
 - 已被引用时：SubHeader 右侧多一个橙色 tag "被 N 个 NPC 引用"
-- 已被引用时：字段选择卡 + 已选字段配置卡整体 opacity 0.55，卡片标题右侧加 `🔒 已锁定` tag
+- 已被引用时：字段选择卡 + 已选字段配置卡整体 opacity 0.55，卡片标题右侧加锁定 tag
 
 **reference 字段在编辑页的特殊语义**：reference 字段本身**不存在于模板数据中**（详见功能 8），模板只存了展开后的扁平字段 ID 列表。但在编辑页仍需展示 reference 字段单元格，因为用户当初是通过点击 reference 来批量选字段的，再次编辑时仍然要保留这个交互入口。reference 弹层每次都实时拉最新子字段列表，把"当前模板里已经有的子字段"勾选回来。不做"+N 新子字段"的差异提示——实现成本不抵收益。
 
-### 后端跨模块事务流程
+### 校验规则
 
-1. **格式校验**：`id > 0`、`label` 长度、`description ≤ 512`、`fields` 非空且不重复、`version > 0`
-2. **拿旧状态**：`templateService.GetByID(ctx, id)` 取旧模板（走自己的 Cache-Aside）+ `ParseFieldEntries(old.Fields)` 取 `oldEntries`
-3. **事务外预校验新增字段**：Handler 本地 `diffNewFieldIDs(oldEntries, req.Fields)` 快速算出 `toAddPre`，仅对**新增**字段调 `fieldService.ValidateFieldsForTemplate(ctx, toAddPre)`——校验存在 / 启用 / 非 reference 三项（`41005` / `41006` / `41012`）。`toRemove` 无需校验启用或类型（已经在模板里，保持"存量不动"）
-4. `h.db.BeginTxx(ctx, nil)` 开事务，`defer tx.Rollback()`
-5. `templateService.UpdateTx(ctx, tx, req, old, oldEntries)` — Service 内做：
-   - fields 基础校验
-   - `old.Enabled` 必须为 false → `41010`
-   - `isFieldsChanged`（集合 / 顺序 / required 任一不同）
-   - `old.RefCount > 0 && fieldsChanged` → `41008 ErrTemplateRefEditFields`
-   - 计算 `toAdd` / `toRemove`（仅当 `fieldsChanged=true` 时，纯排序/required 变化时会返回空切片）
-   - 序列化新 `fields` JSON → `TemplateStore.UpdateTx`（乐观锁）
-   - 乐观锁错误 → `41011 ErrTemplateVersionConflict`
-   - 返回 `(fieldsChanged, toAdd, toRemove, error)`
-6. **若 `fieldsChanged && (len(toAdd) > 0 || len(toRemove) > 0)`**（纯 required / 纯排序变更时跳过这步）：
-   - 先 `fieldService.DetachFromTemplateTx(ctx, tx, id, toRemove)` — 同事务内删 `field_refs` + `DecrRefCountTx`
-   - 再 `fieldService.AttachToTemplateTx(ctx, tx, id, toAdd)` — 同事务内写 `field_refs` + `IncrRefCountTx`
-   - 顺序无关，但保持一致便于排查死锁
-7. `tx.Commit()`
-8. **清缓存**：
-   - `templateService.InvalidateDetail(ctx, id)`
-   - `templateService.InvalidateList(ctx)`
-   - 若有 Detach：`fieldService.InvalidateDetails(ctx, detachAffected)`
-   - 若有 Attach：`fieldService.InvalidateDetails(ctx, attachAffected)`
+- **Handler**：`id > 0`、`label` 长度、`description ≤ 512`、`fields` 非空且不重复、`version > 0`
+- **事务外预校验新增字段**：Handler 本地 `diffNewFieldIDs(oldEntries, req.Fields)` 快速算出 `toAddPre`，仅对**新增**字段调 `fieldService.ValidateFieldsForTemplate(ctx, toAddPre)`——校验存在 / 启用 / 非 reference 三项（`41005` / `41006` / `41012`）
+- **Service**（`TemplateService.UpdateTx`）：
+  - `old.Enabled` 必须为 false → `41010`
+  - `isFieldsChanged` 判断
+  - `old.RefCount > 0 && fieldsChanged` → `41008`
+  - 乐观锁写入 → `41011`
 
-**调用链路：**
+### 调用链
 
 | 层 | 入口 |
 |---|---|
@@ -286,11 +318,44 @@ func isFieldsChanged(old, new []model.TemplateFieldEntry) bool {
 | Service | `TemplateService.UpdateTx`（enabled / ref / diff / 乐观锁）+ `FieldService.ValidateFieldsForTemplate` / `DetachFromTemplateTx` / `AttachToTemplateTx` |
 | Store | `TemplateStore.GetByID` → `TemplateStore.UpdateTx` WHERE id=? AND version=? → `FieldRefStore.Remove` / `FieldRefStore.Add` + `FieldStore.DecrRefCountTx` / `IncrRefCountTx` |
 
+**后端跨模块事务流程：**
+
+1. 格式校验
+2. 拿旧状态：`templateService.GetByID` + `ParseFieldEntries`
+3. 事务外预校验新增字段：`fieldService.ValidateFieldsForTemplate(toAddPre)`
+4. `h.db.BeginTxx(ctx, nil)` 开事务
+5. `templateService.UpdateTx(ctx, tx, req, old, oldEntries)` — enabled / ref / diff / 乐观锁 → 返回 `(fieldsChanged, toAdd, toRemove, error)`
+6. 若 `fieldsChanged && (len(toAdd) > 0 || len(toRemove) > 0)`：先 Detach 再 Attach
+7. `tx.Commit()`
+8. 清缓存：模板 detail + 列表 + 字段 details（若有 Detach/Attach）
+
+### 错误码
+
+| 错误码 | 常量 | 触发场景 |
+|--------|------|---------|
+| 41003 | `ErrTemplateNotFound` | 模板不存在 |
+| 41004 | `ErrTemplateNoFields` | 未勾选任何字段 |
+| 41005 | `ErrTemplateFieldDisabled` | 新增字段已停用 |
+| 41006 | `ErrTemplateFieldNotFound` | 新增字段不存在 |
+| 41008 | `ErrTemplateRefEditFields` | 被 NPC 引用，无法编辑字段列表 |
+| 41010 | `ErrTemplateEditNotDisabled` | 编辑前必须先停用 |
+| 41011 | `ErrTemplateVersionConflict` | 乐观锁版本冲突 |
+| 41012 | `ErrTemplateFieldIsReference` | 新增字段是 reference 类型 |
+| 40000 | `ErrBadRequest` | 格式/必填校验失败 |
+
+### 边界 case
+
+- `name` 不可修改。
+- 纯排序/纯 required 变化时更新 `fields` JSON 但不操作 `field_refs`。
+- `toRemove` 无需校验启用或类型（已经在模板里，保持"存量不动"）。
+
 ---
 
 ## 功能 5：删除模板（跨模块事务）
 
-**场景 — 在模板管理页，管理员要彻底移除一个不再需要的模板。**
+### 场景描述
+
+在模板管理页，管理员要彻底移除一个不再需要的模板。
 
 删除有两道门槛：
 1. **必须先停用**（`41009 ErrTemplateDeleteNotDisabled`）。这是给管理员一个缓冲期——停用后观察一段时间，确认没有问题再删。
@@ -298,19 +363,12 @@ func isFieldsChanged(old, new []model.TemplateFieldEntry) bool {
 
 删除是软删除（标记 `deleted=1`），不是物理删除。删除时会在同一事务中清理模板对所有字段的引用关系（`field_refs` 中所有 `ref_type='template'` 且 `ref_id=templateID` 的记录），并把对应字段的 `ref_count` 减回去。
 
-### 后端跨模块事务流程
+### 校验规则
 
-1. Handler 校验 `id > 0`
-2. `templateService.GetByID(ctx, id)` 查模板；若 `enabled=true` 返回 `41009`
-3. `templateService.ParseFieldEntries(tpl.Fields)` 拿到要 detach 的 `fieldIDs`（保持顺序）
-4. `h.db.BeginTxx(ctx, nil)` 开事务，`defer tx.Rollback()`
-5. **`templateService.GetRefCountForDeleteTx(ctx, tx, id)` 用 `FOR SHARE` 加读锁查 `ref_count`**（防 TOCTOU：在"前面查 tpl"和"现在删"之间被 NPC 新引用的情况）。若 `ref_count > 0` 返回 `41007`
-6. `templateService.SoftDeleteTx(ctx, tx, id)` — 软删 `templates` 行
-7. `fieldService.DetachFromTemplateTx(ctx, tx, id, fieldIDs)` — 批量删 `field_refs` + `DecrRefCountTx`
-8. `tx.Commit()`
-9. **清缓存**：`templateService.InvalidateDetail` + `templateService.InvalidateList` + `fieldService.InvalidateDetails(affected)`
+- **Handler**：`id > 0`
+- **Service/Handler**：`enabled=false` → 事务内 `GetRefCountForDeleteTx`（FOR SHARE）→ `ref_count == 0`
 
-**调用链路：**
+### 调用链
 
 | 层 | 入口 |
 |---|---|
@@ -319,19 +377,47 @@ func isFieldsChanged(old, new []model.TemplateFieldEntry) bool {
 | Service | `TemplateService.GetByID` / `GetRefCountForDeleteTx` / `SoftDeleteTx` + `FieldService.DetachFromTemplateTx` |
 | Store | `TemplateStore.GetByID` → `TemplateStore.GetRefCountTx`（FOR SHARE）→ `TemplateStore.SoftDeleteTx` → `FieldRefStore.Remove` + `FieldStore.DecrRefCountTx` |
 
+**后端跨模块事务流程：**
+
+1. Handler 校验 `id > 0`
+2. `templateService.GetByID(ctx, id)` 查模板；若 `enabled=true` 返回 `41009`
+3. `templateService.ParseFieldEntries(tpl.Fields)` 拿到要 detach 的 `fieldIDs`
+4. `h.db.BeginTxx(ctx, nil)` 开事务，`defer tx.Rollback()`
+5. `templateService.GetRefCountForDeleteTx(ctx, tx, id)` 用 `FOR SHARE` 加读锁查 `ref_count`（防 TOCTOU）。若 `ref_count > 0` 返回 `41007`
+6. `templateService.SoftDeleteTx(ctx, tx, id)` — 软删 `templates` 行
+7. `fieldService.DetachFromTemplateTx(ctx, tx, id, fieldIDs)` — 批量删 `field_refs` + `DecrRefCountTx`
+8. `tx.Commit()`
+9. 清缓存：`templateService.InvalidateDetail` + `templateService.InvalidateList` + `fieldService.InvalidateDetails(affected)`
+
+### 错误码
+
+| 错误码 | 常量 | 触发场景 |
+|--------|------|---------|
+| 41003 | `ErrTemplateNotFound` | 模板不存在 |
+| 41007 | `ErrTemplateRefDelete` | 被 NPC 引用，无法删除 |
+| 41009 | `ErrTemplateDeleteNotDisabled` | 删除前必须先停用 |
+| 40000 | `ErrBadRequest` | `id` 不合法 |
+
+### 边界 case
+
+- 事务内 `GetRefCountForDeleteTx` 用 `FOR SHARE` 防 TOCTOU 竞态。
+- 删除时同一事务内清理所有字段引用关系 + 递减 `ref_count`。
+
 ---
 
 ## 功能 6：模板引用详情
+
+### 场景描述
 
 **场景 A — 在模板管理页，管理员想停用或删除某个模板之前，先看看哪些 NPC 在用它。** 列表页直接点击"被引用数"单元格上的蓝色数字即可拉起此弹窗。
 
 **场景 B — 删除接口返回 `41007` 后，前端自动调用此接口展示引用详情，告诉管理员应该先去哪里解除引用。**
 
-**当前实现**：NPC 模块未上线前，handler 先调 `templateService.GetByID` 拿模板基本信息，然后返回 `NPCs: make([]TemplateReferenceItem, 0)` 空数组占位（用 `make` 而不是 nil，以避免 JSON 序列化成 `null`）。NPC 模块上线后再在 handler 层跨模块调 `NPCService` 填充真实数据。
+### 校验规则
 
-弹窗内容（前端规划）：模板基本信息（label / name / 总引用数）+ NPC 名称搜索框 + NPC 列表（id / name / 创建时间 / 「查看」跳转按钮），下方支持「加载更多」分页。
+- **Handler**：`id > 0`。
 
-**调用链路：**
+### 调用链
 
 | 层 | 入口 |
 |---|---|
@@ -339,9 +425,26 @@ func isFieldsChanged(old, new []model.TemplateFieldEntry) bool {
 | Handler | `TemplateHandler.GetReferences` — 校验 `id > 0` → `templateService.GetByID` → 返回 `{template_id, template_label, npcs: []}` 占位 |
 | Service | `TemplateService.GetByID` |
 
+**当前实现**：NPC 模块未上线前，handler 先调 `templateService.GetByID` 拿模板基本信息，然后返回 `NPCs: make([]TemplateReferenceItem, 0)` 空数组占位（用 `make` 而不是 nil，以避免 JSON 序列化成 `null`）。NPC 模块上线后再在 handler 层跨模块调 `NPCService` 填充真实数据。
+
+弹窗内容（前端规划）：模板基本信息（label / name / 总引用数）+ NPC 名称搜索框 + NPC 列表（id / name / 创建时间 / 「查看」跳转按钮），下方支持「加载更多」分页。
+
+### 错误码
+
+| 错误码 | 常量 | 触发场景 |
+|--------|------|---------|
+| 41003 | `ErrTemplateNotFound` | 模板不存在 |
+| 40000 | `ErrBadRequest` | `id` 不合法 |
+
+### 边界 case
+
+- NPC 模块未上线前返回空数组占位。
+
 ---
 
 ## 功能 7：启用 / 停用切换
+
+### 场景描述
 
 **场景 A — 在模板管理页，管理员新建完模板、确认配置无误后，启用它。** 启用后 NPC 管理页的模板下拉列表才能看到这个模板。
 
@@ -354,7 +457,12 @@ func isFieldsChanged(old, new []model.TemplateFieldEntry) bool {
 
 切换用乐观锁，版本冲突返回 `41011 ErrTemplateVersionConflict`。此操作**不涉及字段模块**，纯 `TemplateService.ToggleEnabled` 单模块路径。
 
-**调用链路：**
+### 校验规则
+
+- **Handler**：`id > 0`、`version > 0`。
+- **Service**：按 ID 查 → 乐观锁更新。
+
+### 调用链
 
 | 层 | 入口 |
 |---|---|
@@ -363,41 +471,67 @@ func isFieldsChanged(old, new []model.TemplateFieldEntry) bool {
 | Service | `TemplateService.ToggleEnabled` — 按 ID 查 → 乐观锁更新 → 清 detail + 列表缓存 |
 | Store | `TemplateStore.ToggleEnabled(id, enabled, version)` WHERE id=? AND version=? |
 
+### 错误码
+
+| 错误码 | 常量 | 触发场景 |
+|--------|------|---------|
+| 41003 | `ErrTemplateNotFound` | 模板不存在 |
+| 41011 | `ErrTemplateVersionConflict` | 乐观锁版本冲突 |
+| 40000 | `ErrBadRequest` | `id` / `version` 不合法 |
+
+### 边界 case
+
+- 被 NPC 引用的模板也可以停用。
+
 ---
 
 ## 功能 8：reference 字段弹层勾选（前端交互）
 
-**场景 — 在新建/编辑模板的字段勾选区，管理员看到一个 reference 类型字段的单元格。** 该单元格在网格中和普通字段一样占一格，但有特殊视觉标记（紫色边框 + `link-2` 图标 + reference 紫色徽章 + 右侧 chevron）。**鼠标点击该单元格时弹出一个浮层（popover）**，浮层中展示该 reference 引用的所有子字段，管理员可以从中**勾选一部分**（不必全选），点击浮层外部或确认按钮关闭浮层。
+### 场景描述
 
-**前置约束（重要）：reference 字段禁止嵌套** —— 由字段管理 `validateReferenceRefs` + `detectCyclicRef` 强制保证（参见字段管理 features 功能 11）。这意味着：
-- reference 的子字段一定是 leaf 字段（`integer / float / string / boolean / select`），**不可能是另一个 reference**
-- 弹层永远只有一层 popover，不存在"点开子字段又弹出新层"的情况
-- 模板侧不需要做递归展开，所有逻辑都是单层的
+在新建/编辑模板的字段勾选区，管理员看到一个 reference 类型字段的单元格。该单元格在网格中和普通字段一样占一格，但有特殊视觉标记（紫色边框 + `link-2` 图标 + reference 紫色徽章 + 右侧 chevron）。**鼠标点击该单元格时弹出一个浮层（popover）**，浮层中展示该 reference 引用的所有子字段，管理员可以从中**勾选一部分**（不必全选），点击浮层外部或确认按钮关闭浮层。
 
-**关键设计：**
-- reference 字段在模板里**不存在**——它只是 UI 上的"快捷选择器"
-- 模板存的是展开后的**实际字段 ID 列表**，扁平结构（`[{field_id:8, required:true}, {field_id:12, required:false}, ...]`）
-- 同一字段被多个 reference 引用、或既被直接勾选又被某个 reference 包含时，自动去重
-- 后端不知道哪些字段是从哪个 reference 来的
-- reference 字段后续修改其引用列表，**不影响已创建的模板**（因为模板根本没存 reference 引用关系）
-- 在编辑页，弹层永远拉最新的 reference 子字段列表，已被模板包含的子字段自动回勾
+### 校验规则
 
-**浮层 UI 要点：**
-- 浮层标题：reference 字段的中文标签 + 标识 + reference 紫色徽章
-- 蓝色信息条提示"勾选的子字段会扁平地写入模板，与其他来源去重"
-- **工具栏**：左侧"子字段 (N)"计数，右侧 `☑ 全选` `☐ 全不选` 两个快捷按钮——子字段较多时一键操作。两个按钮只影响**该弹层**内的勾选状态，不会污染其它分类
-- 子字段列表：每行带 checkbox + 字段标签 + 字段标识 + 类型徽章
-- 已勾选的子字段保持勾选状态（即使浮层关闭重开）
-- 勾选/取消勾选的同时，外部"已选字段配置区"实时同步增删行
-- 底部：左侧"已选 X / N"计数 + 右侧 `取消` `确定` 按钮
+前端交互功能，无后端校验。
+
+### 调用链
 
 此功能内嵌在功能 2（新建）、功能 4（编辑）的前端逻辑中，后端不做特殊处理。
+
+### 错误码
+
+无。
+
+### 边界 case
+
+- **前置约束（重要）：reference 字段禁止嵌套** —— 由字段管理 `validateReferenceRefs` + `detectCyclicRef` 强制保证。这意味着：
+  - reference 的子字段一定是 leaf 字段（`integer / float / string / boolean / select`），**不可能是另一个 reference**
+  - 弹层永远只有一层 popover，不存在"点开子字段又弹出新层"的情况
+  - 模板侧不需要做递归展开，所有逻辑都是单层的
+- **关键设计：**
+  - reference 字段在模板里**不存在**——它只是 UI 上的"快捷选择器"
+  - 模板存的是展开后的**实际字段 ID 列表**，扁平结构
+  - 同一字段被多个 reference 引用、或既被直接勾选又被某个 reference 包含时，**自动去重**
+  - 后端不知道哪些字段是从哪个 reference 来的
+  - reference 字段后续修改其引用列表，**不影响已创建的模板**
+  - 在编辑页，弹层永远拉最新的 reference 子字段列表，已被模板包含的子字段自动回勾
+- **浮层 UI 要点：**
+  - 浮层标题：reference 字段的中文标签 + 标识 + reference 紫色徽章
+  - 蓝色信息条提示"勾选的子字段会扁平地写入模板，与其他来源去重"
+  - **工具栏**：左侧"子字段 (N)"计数，右侧全选 / 全不选两个快捷按钮
+  - 子字段列表：每行带 checkbox + 字段标签 + 字段标识 + 类型徽章
+  - 已勾选的子字段保持勾选状态（即使浮层关闭重开）
+  - 勾选/取消勾选的同时，外部"已选字段配置区"实时同步增删行
+  - 底部：左侧"已选 X / N"计数 + 右侧取消/确定按钮
 
 ---
 
 ## 功能 9：启用状态前置校验弹窗（前端交互）
 
-**场景 — 管理员在列表上点击一个启用中模板的「编辑」或「删除」按钮。**
+### 场景描述
+
+管理员在列表上点击一个启用中模板的「编辑」或「删除」按钮。
 
 后端会拒绝并返回错误码：
 - 编辑：`41010 ErrTemplateEditNotDisabled`
@@ -405,35 +539,51 @@ func isFieldsChanged(old, new []model.TemplateFieldEntry) bool {
 
 但更好的做法是**前端在请求发出之前就拦截**——列表数据里已经有 `enabled` 字段，前端可以直接根据 `enabled === true` 判断并弹出引导式弹窗，避免一次无效的网络往返。后端的错误码作为兜底防御。
 
-**弹窗设计（编辑场景）：**
-- 标题：`无法编辑模板` + 橙色警告图标（不是红色，因为不是破坏性后果）
-- 正文：解释"启用中模板对 NPC 管理页可见，允许任意修改可能导致策划在配置不稳定时选用"
-- 操作步骤区：
-  1. 在列表中点击该模板的「启用」开关停用它
-  2. 完成编辑后再次启用
-- 底部按钮：`知道了`（次要） + `立即停用`（橙色主按钮，点击直接调 `toggle-enabled` 把模板停用，并自动跳进编辑页）
+### 校验规则
 
-**弹窗设计（删除场景）：**
-- 标题：`无法删除模板` + 橙色警告图标
-- 正文：解释"删除是不可恢复的操作，先停用可以提供一个观察期"
-- 删除前置条件区：列出两条
-  - ✗ 模板已停用（红色 ✗，未满足）
-  - ✓ 没有 NPC 在使用该模板（绿色 ✓，已满足，作为附带信息）
-- 底部按钮：`知道了` + `立即停用`
+前端交互功能，无后端校验。后端错误码 `41010` / `41009` 作为兜底。
 
-两个弹窗复用同一个 `<EnabledGuardDialog>` 组件，通过 `action='edit' | 'delete'` 切换文案与跳转目标。
+### 调用链
+
+前端拦截，无独立后端接口。
+
+### 错误码
+
+| 错误码 | 常量 | 触发场景 |
+|--------|------|---------|
+| 41009 | `ErrTemplateDeleteNotDisabled` | 删除启用中的模板（兜底） |
+| 41010 | `ErrTemplateEditNotDisabled` | 编辑启用中的模板（兜底） |
+
+### 边界 case
+
+- **弹窗设计（编辑场景）：**
+  - 标题：`无法编辑模板` + 橙色警告图标
+  - 正文：解释"启用中模板对 NPC 管理页可见，允许任意修改可能导致策划在配置不稳定时选用"
+  - 操作步骤区：1. 点击开关停用 2. 完成编辑后再次启用
+  - 底部按钮：`知道了`（次要） + `立即停用`（橙色主按钮，点击直接调 `toggle-enabled` 并跳进编辑页）
+- **弹窗设计（删除场景）：**
+  - 标题：`无法删除模板` + 橙色警告图标
+  - 正文：解释"删除是不可恢复的操作，先停用可以提供一个观察期"
+  - 删除前置条件区：两条（模板已停用 / 无 NPC 引用）
+  - 底部按钮：`知道了` + `立即停用`
+- 两个弹窗复用同一个 `<EnabledGuardDialog>` 组件，通过 `action='edit' | 'delete'` 切换。
 
 ---
 
 ## 功能 10：模板名唯一性校验
 
-**场景 — 在模板管理页新建模板时，管理员输入模板标识后离开输入框，前端实时告知这个名字能不能用。**
+### 场景描述
+
+在模板管理页新建模板时，管理员输入模板标识后离开输入框，前端实时告知这个名字能不能用。
 
 即使某个模板已经被软删除，它的标识也不能被新模板复用——历史 NPC 可能持有这个标识的快照，复用会导致难以排查的语义混乱。
 
-Handler 层校验 `name` 格式（`^[a-z][a-z0-9_]*$` + 长度上限），Service 层调 `TemplateStore.ExistsByName`（含软删除记录）查 MySQL。
+### 校验规则
 
-**调用链路：**
+- **Handler**：`name` 格式（`^[a-z][a-z0-9_]*$` + 长度上限）。
+- **Service**：`TemplateStore.ExistsByName`（含软删除记录）查 MySQL。
+
+### 调用链
 
 | 层 | 入口 |
 |---|---|
@@ -441,18 +591,45 @@ Handler 层校验 `name` 格式（`^[a-z][a-z0-9_]*$` + 长度上限），Servic
 | Handler | `TemplateHandler.CheckName` — 校验 `name` 格式 |
 | Service | `TemplateService.CheckName` — `TemplateStore.ExistsByName(name)` 含软删除 → `{available, message}` |
 
+### 错误码
+
+| 错误码 | 常量 | 触发场景 |
+|--------|------|---------|
+| 41002 | `ErrTemplateNameInvalid` | `name` 格式不合法 |
+| 40000 | `ErrBadRequest` | `name` 为空 |
+
+### 边界 case
+
+- 含软删除记录也视为已占用。
+
 ---
 
 ## 功能 11：跨模块对外接口（给字段管理调用）
 
-为了让字段管理的 `FieldHandler.GetReferences` 能在跨模块编排时补上模板 label，`TemplateService` 暴露了以下只读方法：
+### 场景描述
+
+为了让字段管理的 `FieldHandler.GetReferences` 能在跨模块编排时补上模板 label，`TemplateService` 暴露了以下只读方法。
+
+### 校验规则
+
+各方法内嵌校验。
 
 | 方法 | 用途 |
 |------|------|
 | `GetByIDsLite(ctx, ids)` | 批量查模板精简信息 `[]TemplateLite{ID, Name, Label}`，底层 `TemplateStore.GetByIDs` |
 | `ExistsByName(ctx, name)` | 模板管理内部 handler 预查复用，也可供其他跨模块路径使用 |
 
-**原则**：`TemplateService` 不持有 `FieldStore` / `FieldCache`，也不调 `FieldService`；反向的 `FieldService` 也不持有 `TemplateStore` / `TemplateCache`。两个 Service 互相"不认识"，所有跨模块编排都在 Handler 层显式串起来。
+### 调用链
+
+由字段管理的 `FieldHandler.GetReferences` 编排调用，不独立暴露 HTTP 接口。
+
+### 错误码
+
+无专属错误码。
+
+### 边界 case
+
+- `TemplateService` 不持有 `FieldStore` / `FieldCache`，也不调 `FieldService`；反向的 `FieldService` 也不持有 `TemplateStore` / `TemplateCache`。两个 Service 互相"不认识"，所有跨模块编排都在 Handler 层显式串起来。
 
 ---
 

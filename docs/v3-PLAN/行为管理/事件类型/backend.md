@@ -1,275 +1,224 @@
-# 事件类型管理 — 后端架构
+# 事件类型管理 — 后端设计
 
-> 本文档补充 [features.md](features.md) 未覆盖的架构层信息：文件组织、存储设计、缓存策略、配置项、与功能点的对应关系。
-> **实现状态**：规划中。前置依赖见 features.md 顶部说明。
+> 通用架构/规范见 `docs/architecture/overview.md` 和 `docs/development/`。
+> 本文档只记录事件类型管理模块的实现事实与特有约束。
 
 ---
 
-## 目录结构
+## 1. 目录结构
 
 ```
 backend/
-  cmd/admin/
-    main.go                           # 新增路由注册 + EventTypeSchemaCache 启动装载
   internal/
     handler/
-      event_type.go                   # CRUD + 列表 + 详情 + toggle
-      event_type_schema.go             # 扩展字段 Schema CRUD
-      export.go                        # 新增 EventTypes 分支
+      event_type.go                   # 事件类型 CRUD + 列表 + 详情 + toggle + check-name
+      event_type_schema.go            # 扩展字段 Schema CRUD + toggle
     service/
-      event_type.go                    # 业务逻辑 + 扩展字段约束校验
-      event_type_schema.go             # 扩展字段 Schema 业务逻辑
+      event_type.go                   # 事件类型业务逻辑（含扩展字段值校验、config_json 拼装）
+      event_type_schema.go            # 扩展字段 Schema 业务逻辑（含约束自洽校验）
       constraint/
-        validate.go                    # 【新增】从字段管理抽出的约束校验工具，两模块共用
+        validate.go                   # 公共约束校验工具（ValidateValue + ValidateConstraintsSelf）
     store/
       mysql/
-        event_type.go                  # event_types 表
-        event_type_schema.go           # event_type_schema 表
+        event_type.go                 # event_types 表 CRUD
+        event_type_schema.go          # event_type_schema 表 CRUD
       redis/
-        event_type_cache.go            # detail + list 缓存
+        event_type_cache.go           # 事件类型 Redis 缓存（detail + list + 分布式锁）
+        keys.go                       # key 前缀 & 构造函数（event_types:detail/list/lock）
     cache/
-      event_type_schema_cache.go       # 启动时全量内存缓存
+      event_type_schema_cache.go      # 扩展字段 Schema 内存缓存（启动 Load + 写后 Reload）
     model/
-      event_type.go                    # EventType / EventTypeListItem / EventTypeDetail
-      event_type_schema.go             # EventTypeSchema
+      event_type.go                   # EventType / EventTypeListItem / EventTypeListData / EventTypeDetail / EventTypeExportItem / 请求体
+      event_type_schema.go            # EventTypeSchema / EventTypeSchemaLite / 请求体
     errcode/
-      event_type.go                    # 42001-42039
+      codes.go                        # 42001-42031 错误码
+    router/
+      router.go                       # /api/v1/event-types/* + /api/v1/event-type-schema/* + /api/configs/event_types
   migrations/
-    202604xx_create_event_types.sql
-    202604xx_create_event_type_schema.sql
+    004_create_event_types.sql
+    005_create_event_type_schema.sql
 ```
 
-**注意复用点**：`service/constraint/validate.go` 是在做本模块时**从字段管理抽出的**独立约束校验工具。字段管理原来的 `service/field.go::checkConstraintTightened` 和 `validateReferenceRefs` 里的值级校验逻辑需要重构到这个包，字段管理自己也切换到用这个包。这是本期的一项辅助重构，落在"扩展字段值约束校验"这条路径上顺带做掉。
+`service/constraint/validate.go` 是从字段管理抽出的公共约束校验工具，字段管理和事件类型扩展字段共用。支持的字段类型：`int` / `integer` / `float` / `string` / `bool` / `select`。
 
 ---
 
-## 存储设计
+## 2. 数据表
 
-### event_types 表
+### event_types
 
 ```sql
-CREATE TABLE event_types (
-  id              BIGINT       NOT NULL AUTO_INCREMENT,
-  name            VARCHAR(64)  NOT NULL,
-  display_name    VARCHAR(128) NOT NULL,
-  perception_mode VARCHAR(16)  NOT NULL,
-  config_json     JSON         NOT NULL,
-  enabled         TINYINT      NOT NULL DEFAULT 0,
-  version         INT          NOT NULL DEFAULT 1,
-  created_at      DATETIME     NOT NULL,
-  updated_at      DATETIME     NOT NULL,
-  deleted         TINYINT      NOT NULL DEFAULT 0,
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_name (name, deleted),
-  KEY idx_list (deleted, enabled, id DESC),
-  KEY idx_perception (deleted, perception_mode)
-);
+CREATE TABLE IF NOT EXISTS event_types (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name            VARCHAR(64)  NOT NULL,              -- 事件标识，唯一，创建后不可变
+    display_name    VARCHAR(128) NOT NULL,              -- 中文名（搜索用）
+    perception_mode VARCHAR(16)  NOT NULL,              -- 感知模式：visual / auditory / global
+    config_json     JSON         NOT NULL,              -- 系统字段 + 扩展字段的完整合并，导出 API 原样输出
+
+    enabled         TINYINT(1)   NOT NULL DEFAULT 0,    -- 创建默认停用
+    version         INT          NOT NULL DEFAULT 1,    -- 乐观锁
+    created_at      DATETIME     NOT NULL,
+    updated_at      DATETIME     NOT NULL,
+    deleted         TINYINT(1)   NOT NULL DEFAULT 0,    -- 软删除
+
+    UNIQUE KEY uk_name (name),                          -- 不含 deleted：软删后 name 不可复用
+    INDEX idx_list (deleted, enabled, id DESC),          -- 列表分页覆盖索引
+    INDEX idx_perception (deleted, perception_mode)      -- facet 筛选索引
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
 **设计要点：**
+- `config_json` 是系统字段（`display_name` / `default_severity` / `default_ttl` / `perception_mode` / `range`）与扩展字段值的合并 JSON，导出 API 直接原样输出，不经过 Go struct 中转。
+- `uk_name` 不含 `deleted` 列：软删后 name 永久不可复用。`ExistsByName` 查询不带 `deleted` 过滤。
+- `enabled` 默认 0：创建后给"配置窗口期"，编辑/删除要求先停用。
 
-1. **只提 `perception_mode` 一列做 facet 筛选**。`default_severity` / `default_ttl` / `range` 留在 `config_json` 里，不做索引筛选（未来如需再加列 + 回填）。这是决策点"不提"的实现
-2. **`config_json` 是系统字段 + 扩展字段的完整合并**，导出 API 直接原样输出到 HTTP 响应体，**不经过 Go struct 中转**。这样新增任意扩展字段 ADMIN 后端零代码改动
-3. **`uk_name (name, deleted)` 含 deleted 列**：软删后 `deleted=1`，理论允许同名新记录和旧软删记录并存；**但** `ExistsByName` 查询**不带 `deleted` 过滤**，确保软删 name 不可复用（和字段/模板同构）
-4. **`idx_list` 覆盖索引**满足列表分页：主查询只需要 `id / name / display_name / perception_mode / enabled / created_at`，从 `config_json` 抽展示值的 `default_severity` / `default_ttl` / `range` 在 Service 层 unmarshal 时取——覆盖索引命中后再回表一次拿 `config_json`，可以接受（量小）。如果未来量上来，`config_json` 可以独立放一个"延迟加载"列（MySQL 8.0 的 invisible column / 或拆二级表）
-
-### event_type_schema 表
+### event_type_schema
 
 ```sql
-CREATE TABLE event_type_schema (
-  id            BIGINT       NOT NULL AUTO_INCREMENT,
-  field_name    VARCHAR(64)  NOT NULL,
-  field_label   VARCHAR(128) NOT NULL,
-  field_type    VARCHAR(16)  NOT NULL,
-  constraints   JSON         NOT NULL,
-  default_value JSON         NOT NULL,
-  sort_order    INT          NOT NULL DEFAULT 0,
-  enabled       TINYINT      NOT NULL DEFAULT 1,
-  version       INT          NOT NULL DEFAULT 1,
-  created_at    DATETIME     NOT NULL,
-  updated_at    DATETIME     NOT NULL,
-  deleted       TINYINT      NOT NULL DEFAULT 0,
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_field_name (field_name, deleted)
-);
+CREATE TABLE IF NOT EXISTS event_type_schema (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    field_name      VARCHAR(64)  NOT NULL,              -- 扩展字段 key，^[a-z][a-z0-9_]*$
+    field_label     VARCHAR(128) NOT NULL,              -- 中文名
+    field_type      VARCHAR(16)  NOT NULL,              -- int / float / string / bool / select
+    constraints     JSON         NOT NULL,              -- 按 type 的约束（min/max/options 等）
+    default_value   JSON         NOT NULL,              -- 前端表单初始值
+    sort_order      INT          NOT NULL DEFAULT 0,    -- 表单展示顺序
+
+    enabled         TINYINT(1)   NOT NULL DEFAULT 1,    -- 默认启用（与事件类型的 enabled=0 相反）
+    version         INT          NOT NULL DEFAULT 1,    -- 乐观锁
+    created_at      DATETIME     NOT NULL,
+    updated_at      DATETIME     NOT NULL,
+    deleted         TINYINT(1)   NOT NULL DEFAULT 0,    -- 软删除
+
+    UNIQUE KEY uk_field_name (field_name)               -- 不含 deleted：软删后 field_name 不可复用
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
 **设计要点：**
-
-1. **独立主键**，不复用字段管理的 `fields.id`（作用域隔离方案 B）。`field_name` 命名空间也独立——同名 `priority` 在字段管理和事件类型扩展中语义不同
-2. **数据量小**（预计常态 < 50 条，绝对上限 100）：不建复杂索引，ORM 直查 MySQL 即可
-3. **默认 `enabled=1`**：与事件类型的 `enabled=0` 相反，扩展字段定义默认立即生效，因为 schema 本身不会"半配置"（filled 完就 filled）
-4. **`default_value` 类型为 JSON** 而非 VARCHAR：允许 int/bool/string/array 不同类型的默认值统一存储
+- 独立主键，不复用字段管理的 `fields.id`。`field_name` 命名空间也独立。
+- 数据量极小（< 100 条），不建复杂索引。
+- `default_value` 类型为 JSON：允许 int / bool / string / array 不同类型的默认值统一存储。
+- 不支持 `reference` 类型。
 
 ---
 
-## 缓存策略
+## 3. API 接口
+
+### 事件类型管理（7 个接口）
+
+| 方法 | 路径 | Handler | 说明 |
+|------|------|---------|------|
+| POST | `/api/v1/event-types/list` | `EventTypeHandler.List` | 分页列表，支持 label 模糊搜索 + perception_mode 精确筛选 + enabled 筛选 |
+| POST | `/api/v1/event-types/create` | `EventTypeHandler.Create` | 创建事件类型，校验 name/displayName/perceptionMode/severity/ttl/range + 扩展字段值 |
+| POST | `/api/v1/event-types/detail` | `EventTypeHandler.Get` | 详情，返回 config_json 展开 + 当前启用的 extension_schema |
+| POST | `/api/v1/event-types/update` | `EventTypeHandler.Update` | 编辑（必须先停用），乐观锁，name 不可变 |
+| POST | `/api/v1/event-types/delete` | `EventTypeHandler.Delete` | 软删除（必须先停用） |
+| POST | `/api/v1/event-types/check-name` | `EventTypeHandler.CheckName` | name 唯一性校验 |
+| POST | `/api/v1/event-types/toggle-enabled` | `EventTypeHandler.ToggleEnabled` | 启用/停用切换，乐观锁 |
+
+**系统字段校验规则（Handler 层）：**
+- `name`：非空 + `^[a-z][a-z0-9_]*$` + 长度 <= NameMaxLength
+- `display_name`：非空 + 字符数 <= DisplayNameMaxLength
+- `perception_mode`：必须是 `visual` / `auditory` / `global` 之一
+- `default_severity`：0-100
+- `default_ttl`：> 0
+- `range`：>= 0；`global` 模式后端强制置 0
+
+**业务规则（Service 层）：**
+- Create：name 唯一性检查（含软删除）→ 扩展字段值校验 → 拼 config_json → 写 MySQL → 清列表缓存
+- Update：查存在性 → 必须已停用 → 扩展字段值校验 → 拼 config_json → 乐观锁更新 → 清缓存
+- Delete：查存在性 → 必须已停用 → 软删除 → 清缓存
+- GetByID：Cache-Aside + 分布式锁防击穿 + 空标记防穿透
+- 扩展字段值校验（`validateExtensions`）：遍历 extensions map，按 field_name 查内存缓存拿 schema，调 `constraint.ValidateValue` 校验
+
+### 扩展字段 Schema 管理（5 个接口）
+
+| 方法 | 路径 | Handler | 说明 |
+|------|------|---------|------|
+| POST | `/api/v1/event-type-schema/list` | `EventTypeSchemaHandler.List` | 列表（可按 enabled 筛选，sort_order ASC, id ASC） |
+| POST | `/api/v1/event-type-schema/create` | `EventTypeSchemaHandler.Create` | 创建扩展字段定义 |
+| POST | `/api/v1/event-type-schema/update` | `EventTypeSchemaHandler.Update` | 编辑（field_name / field_type 不可变），乐观锁 |
+| POST | `/api/v1/event-type-schema/delete` | `EventTypeSchemaHandler.Delete` | 软删除（必须先停用） |
+| POST | `/api/v1/event-type-schema/toggle-enabled` | `EventTypeSchemaHandler.ToggleEnabled` | 启用/停用切换，乐观锁 |
+
+**业务规则（Service 层）：**
+- Create：field_name 唯一性（含软删除）→ field_type 枚举校验 → `constraint.ValidateConstraintsSelf` → `constraint.ValidateValue(default_value)` → 数量上限检查 → 写 MySQL → Reload 内存缓存
+- Update：查存在性 → 约束自洽校验 → default_value 符合新约束 → 乐观锁更新 → Reload 内存缓存
+- Delete：查存在性 → 必须已停用 → 软删除 → Reload 内存缓存
+
+### 导出接口
+
+| 方法 | 路径 | Handler | 说明 |
+|------|------|---------|------|
+| GET | `/api/configs/event_types` | `ExportHandler.EventTypes` | 导出所有已启用事件类型，`{items: [{name, config}]}` |
+
+导出查询：`SELECT name, config_json AS config FROM event_types WHERE deleted = 0 AND enabled = 1 ORDER BY id`，config_json 原样输出。
+
+---
+
+## 4. 缓存策略
 
 ### event_types 缓存（Redis）
 
-| Key | 含义 | TTL |
-|---|---|---|
-| `event_types:detail:{id}` | 单条详情（含空标记防穿透） | 10min + jitter |
-| `event_types:list:v{ver}:q={hash}` | 列表分页缓存 | 5min + jitter |
-| `event_types:list:version` | 列表缓存版本号 | 永久 |
-| `event_types:lock:{id}` | 分布式锁（防击穿） | 3s |
+| Key 模式 | 含义 | TTL |
+|----------|------|-----|
+| `event_types:detail:{id}` | 单条详情（含空标记防穿透） | 5min + 30s jitter |
+| `event_types:list:v{ver}:{label}:{mode}:{enabled}:{page}:{pageSize}` | 列表分页缓存（带版本号） | 1min + 10s jitter |
+| `event_types:list:version` | 列表缓存版本号（INCR 使旧 key 自然过期） | 永久 |
+| `event_types:lock:{id}` | 分布式锁（SETNX 防缓存击穿） | 3s（可配置） |
 
 **失效规则：**
-- 单条写操作（Create/Update/Delete/ToggleEnabled）：`DEL event_types:detail:{id}` + `INCR event_types:list:version`
-- schema 写操作：不清 event_types 缓存（因为 detail 响应里的 extension_schema 来自另一个独立缓存）
+- 单条写操作（Create / Update / Delete / ToggleEnabled）：`DEL event_types:detail:{id}` + `INCR event_types:list:version`
+- 列表失效采用版本号递增方式，禁止 SCAN+DEL
+
+**详情读取流程（Cache-Aside + 分布式锁 + 空标记）：**
+1. 查 Redis 缓存，命中则返回（空标记 → 返回 404）
+2. 未命中 → SETNX 获取分布式锁 → double-check 缓存
+3. 查 MySQL → 写缓存（nil 写空标记）
 
 ### event_type_schema 缓存（内存）
 
-**采用内存缓存，不走 Redis**。原因：
+**采用内存缓存，不走 Redis。** 原因：数据量极小（< 100 条）、命中频率极高（每次事件类型 CRUD 都要读）、写频率极低（运营月级别偶尔改一次）。
 
-- 数据量极小（< 100 条），全量放内存 O(N) 遍历足够快
-- 命中频率极高（每次事件类型新建/编辑/详情都要读）
-- 和 `DictCache` 同构，服务启动时 `Load()` 一次性灌入
-- 写频率极低（运营月级别偶尔改一次）
+实现类 `cache.EventTypeSchemaCache`，与 `DictCache` 同构：
+- **启动时** `Load(ctx)` 全量拉 `event_type_schema WHERE deleted=0 AND enabled=1`，按 sort_order ASC 排序
+- **写后同步** `Reload(ctx)`：Create / Update / Delete / ToggleEnabled 完成后立即调用
+- **运行时只读**：`ListEnabled()` 返回副本，`GetByFieldName(name)` 按 name 查找
 
-**失效规则**：`EventTypeSchemaService.Create` / `Update` / `ToggleEnabled` / `Delete` 完成后**同步调用** `EventTypeSchemaCache.Reload()` 重新全量加载。
-
-**多实例部署的一致性问题**：单实例下 `Reload()` 就够；多实例下一个实例写入后其他实例的内存缓存会陈旧几秒。解决方案延后处理：
-- 短期：接受陈旧窗口（运营写后等 30s 再验证）
-- 长期：通过 Redis Pub/Sub 广播 reload 信号，所有实例收到后各自 `Reload()`
-
-本期单实例开发，不处理多实例一致性。
+**多实例一致性**：本期单实例，不处理。长期方案：Redis Pub/Sub 广播 reload 信号。
 
 ---
 
-## 扩展字段值校验（约束复用）
+## 5. 错误码
 
-事件类型新建/编辑功能 2/4 里，Service 层需要校验运营提交的扩展字段值是否符合 `event_type_schema.constraints` 定义的约束。**复用字段管理的约束校验代码**。
+### 事件类型管理（42001-42015）
 
-计划重构：
+| 错误码 | 常量 | 触发场景 |
+|--------|------|----------|
+| 42001 | `ErrEventTypeNameExists` | 创建时 name 已存在（含软删除） |
+| 42002 | `ErrEventTypeNameInvalid` | name 为空 / 不匹配 `^[a-z][a-z0-9_]*$` / 超长 |
+| 42003 | `ErrEventTypeModeInvalid` | perception_mode 不是 visual/auditory/global |
+| 42004 | `ErrEventTypeSeverityInvalid` | default_severity 不在 0-100 范围 |
+| 42005 | `ErrEventTypeTTLInvalid` | default_ttl <= 0 |
+| 42006 | `ErrEventTypeRangeInvalid` | range < 0 |
+| 42007 | `ErrEventTypeExtValueInvalid` | 扩展字段值不符合 schema 约束（key 不存在 / 值校验失败） |
+| 42008 | `ErrEventTypeRefDelete` | 被 FSM/BT 引用无法删除（占位，本期 ref_count 恒 0） |
+| 42010 | `ErrEventTypeVersionConflict` | 乐观锁 version 不匹配（编辑 / toggle） |
+| 42011 | `ErrEventTypeNotFound` | ID 对应记录不存在或已软删 |
+| 42012 | `ErrEventTypeDeleteNotDisabled` | 删除时 enabled=1，必须先停用 |
+| 42015 | `ErrEventTypeEditNotDisabled` | 编辑时 enabled=1，必须先停用 |
 
-1. 把 `service/field.go::checkConstraintTightened` 里的值级校验逻辑抽出到 `service/constraint/validate.go`：
-   ```go
-   package constraint
-   
-   // ValidateValue 检查 value 是否符合 (fieldType, constraints) 定义的约束
-   func ValidateValue(fieldType string, constraints json.RawMessage, value json.RawMessage) error
-   
-   // ValidateConstraintsSelf 检查 constraints 自身是否自洽（比如 int 的 min <= max）
-   func ValidateConstraintsSelf(fieldType string, constraints json.RawMessage) error
-   ```
+### 扩展字段 Schema（42020-42031）
 
-2. 字段管理的 `Create` / `Update` 改调 `constraint.ValidateValue`（在约束收紧检查之前先做值级校验）
-3. 事件类型的 `EventTypeService.validateExtensions` 也调 `constraint.ValidateValue`
-4. `EventTypeSchemaService.Create` 调 `constraint.ValidateConstraintsSelf` + `constraint.ValidateValue(type, constraints, default_value)`
-
-**这项重构落在本期"事件类型管理"模块里**，是一次性成本。字段管理的原有功能不变，只是内部抽了层。
-
-**不复用的部分**：
-- `reference` 类型的校验（`validateReferenceRefs` / `detectCyclicRef`）留在字段管理自己那里，因为事件类型扩展字段不支持 reference
-- 字段管理的"收紧检查"（`checkConstraintTightened`）留在字段管理自己那里，因为事件类型扩展字段编辑不做收紧拦截
-
----
-
-## 配置项
-
-在 `config.yaml` / `config.go` 新增：
-
-```yaml
-event_type:
-  name_max_length: 64
-  display_name_max_length: 128
-  cache_detail_ttl: 10m
-  cache_list_ttl: 5m
-  cache_lock_ttl: 3s
-
-event_type_schema:
-  field_name_max_length: 64
-  field_label_max_length: 128
-  max_schemas: 100          # 扩展字段数量上限，防失控
-```
-
----
-
-## 功能与代码入口对应
-
-| feature | handler | service | store |
-|---|---|---|---|
-| 1. 列表 | `EventTypeHandler.List` | `EventTypeService.List` | `EventTypeStore.List` |
-| 2. 新建 | `EventTypeHandler.Create` | `EventTypeService.Create` | `EventTypeStore.Create` |
-| 3. 详情 | `EventTypeHandler.Get` | `EventTypeService.GetByID` + `EventTypeSchemaService.ListEnabled` | `EventTypeStore.GetByID` |
-| 4. 编辑 | `EventTypeHandler.Update` | `EventTypeService.Update` | `EventTypeStore.Update` |
-| 5. 删除 | `EventTypeHandler.Delete` | `EventTypeService.Delete` | `EventTypeStore.SoftDelete` |
-| 6. 唯一性 | `EventTypeHandler.CheckName` | `EventTypeService.CheckName` | `EventTypeStore.ExistsByName` |
-| 7. 启/停 | `EventTypeHandler.ToggleEnabled` | `EventTypeService.ToggleEnabled` | `EventTypeStore.ToggleEnabled` |
-| 8. schema 列表 | `EventTypeSchemaHandler.List` | `EventTypeSchemaService.List` | `EventTypeSchemaStore.List` |
-| 9. schema 新建 | `EventTypeSchemaHandler.Create` | `EventTypeSchemaService.Create` | `EventTypeSchemaStore.Create` |
-| 10. schema 编辑 | `EventTypeSchemaHandler.Update` | `EventTypeSchemaService.Update` | `EventTypeSchemaStore.Update` |
-| 11. schema 启停删 | `EventTypeSchemaHandler.{ToggleEnabled,Delete}` | `EventTypeSchemaService.{ToggleEnabled,Delete}` | `EventTypeSchemaStore.{ToggleEnabled,SoftDelete}` |
-| 12. 导出 | `ExportHandler.EventTypes` | `EventTypeService.ExportAll` | `EventTypeStore.ExportAll` |
-
----
-
-## 数据模型（Go struct 骨架）
-
-```go
-// model/event_type.go
-
-type EventType struct {
-    ID             int64           `db:"id"`
-    Name           string          `db:"name"`
-    DisplayName    string          `db:"display_name"`
-    PerceptionMode string          `db:"perception_mode"`
-    ConfigJSON     json.RawMessage `db:"config_json"`
-    Enabled        bool            `db:"enabled"`
-    Version        int             `db:"version"`
-    CreatedAt      time.Time       `db:"created_at"`
-    UpdatedAt      time.Time       `db:"updated_at"`
-}
-
-type EventTypeListItem struct {
-    ID              int64     `json:"id"`
-    Name            string    `json:"name"`
-    DisplayName     string    `json:"display_name"`
-    PerceptionMode  string    `json:"perception_mode"`
-    DefaultSeverity int       `json:"default_severity"`  // 从 config_json 抽
-    DefaultTTL      float64   `json:"default_ttl"`       // 从 config_json 抽
-    Range           float64   `json:"range"`             // 从 config_json 抽
-    Enabled         bool      `json:"enabled"`
-    CreatedAt       time.Time `json:"created_at"`
-}
-
-type EventTypeDetail struct {
-    ID              int64                  `json:"id"`
-    Name            string                 `json:"name"`
-    DisplayName     string                 `json:"display_name"`
-    Enabled         bool                   `json:"enabled"`
-    Version         int                    `json:"version"`
-    Config          map[string]interface{} `json:"config"`            // 整个 config_json 解包
-    ExtensionSchema []EventTypeSchemaLite  `json:"extension_schema"`  // 当前启用的扩展字段定义
-    CreatedAt       time.Time              `json:"created_at"`
-    UpdatedAt       time.Time              `json:"updated_at"`
-}
-```
-
-```go
-// model/event_type_schema.go
-
-type EventTypeSchema struct {
-    ID           int64           `db:"id"`
-    FieldName    string          `db:"field_name"`
-    FieldLabel   string          `db:"field_label"`
-    FieldType    string          `db:"field_type"`
-    Constraints  json.RawMessage `db:"constraints"`
-    DefaultValue json.RawMessage `db:"default_value"`
-    SortOrder    int             `db:"sort_order"`
-    Enabled      bool            `db:"enabled"`
-    Version      int             `db:"version"`
-    CreatedAt    time.Time       `db:"created_at"`
-    UpdatedAt    time.Time       `db:"updated_at"`
-}
-
-type EventTypeSchemaLite struct {
-    FieldName    string          `json:"field_name"`
-    FieldLabel   string          `json:"field_label"`
-    FieldType    string          `json:"field_type"`
-    Constraints  json.RawMessage `json:"constraints"`
-    DefaultValue json.RawMessage `json:"default_value"`
-    SortOrder    int             `json:"sort_order"`
-}
-```
+| 错误码 | 常量 | 触发场景 |
+|--------|------|----------|
+| 42020 | `ErrExtSchemaNameExists` | field_name 已存在（含软删除） |
+| 42021 | `ErrExtSchemaNameInvalid` | field_name 为空 / 不匹配标识格式 / 超长 |
+| 42022 | `ErrExtSchemaNotFound` | 扩展字段定义 ID 不存在或已软删 |
+| 42023 | `ErrExtSchemaDisabled` | 扩展字段已停用，不能被事件类型引用 |
+| 42024 | `ErrExtSchemaTypeInvalid` | field_type 不是 int/float/string/bool/select |
+| 42025 | `ErrExtSchemaConstraintsInvalid` | constraints 不自洽（如 min > max / minLength > maxLength / minSelect > maxSelect） |
+| 42026 | `ErrExtSchemaDefaultInvalid` | default_value 不符合 constraints 约束 |
+| 42027 | `ErrExtSchemaDeleteNotDisabled` | 删除时 enabled=1，必须先停用 |
+| 42030 | `ErrExtSchemaVersionConflict` | 乐观锁 version 不匹配（编辑 / toggle） |
+| 42031 | `ErrExtSchemaEditNotDisabled` | 编辑前必须先停用（占位，当前 Update 未检查 enabled） |

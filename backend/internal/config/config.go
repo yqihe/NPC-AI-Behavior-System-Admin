@@ -49,8 +49,10 @@ type PaginationConfig struct {
 
 // ValidationConfig 校验配置
 type ValidationConfig struct {
-	FieldNameMaxLength  int `yaml:"field_name_max_length"`
-	FieldLabelMaxLength int `yaml:"field_label_max_length"`
+	FieldNameMaxLength     int `yaml:"field_name_max_length"`
+	FieldLabelMaxLength    int `yaml:"field_label_max_length"`
+	TemplateNameMaxLength  int `yaml:"template_name_max_length"`
+	DescriptionMaxLength   int `yaml:"description_max_length"`
 }
 
 // EventTypeConfig 事件类型配置

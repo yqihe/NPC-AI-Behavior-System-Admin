@@ -1,6 +1,4 @@
-# MongoDB 常见陷阱
-
-编写 MongoDB 相关代码时主动检查。
+# MongoDB 开发规范
 
 ## 连接与生命周期
 

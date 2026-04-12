@@ -1,6 +1,6 @@
 # 缓存模式禁止红线
 
-适用于所有使用缓存的项目。描述的是缓存模式（Cache-Aside 等），不针对具体中间件（Redis 专属见 `redis-red-lines.md`）。
+适用于所有使用缓存的项目。描述的是缓存模式（Cache-Aside 等），不针对具体中间件。Redis 专属见 `redis.md`。开发规范见 `../dev-rules/cache.md`。
 
 ## 禁止缓存与数据库不一致
 

@@ -1,6 +1,6 @@
 # MySQL 禁止红线
 
-适用于所有使用 MySQL 的项目。
+适用于所有使用 MySQL 的项目。Go 见 `go.md`，Redis 见 `redis.md`，缓存模式见 `cache.md`。开发规范见 `../dev-rules/mysql.md`。
 
 ## 禁止事务一致性破坏
 

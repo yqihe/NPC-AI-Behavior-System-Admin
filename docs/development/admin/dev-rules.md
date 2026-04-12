@@ -1,4 +1,6 @@
-# 开发规则
+# ADMIN 项目开发规则
+
+通用开发规范见 `../standards/dev-rules/`。架构总览见 `../../architecture/overview.md`。
 
 ## 分层职责（硬性规定）
 
@@ -187,25 +189,6 @@ docker compose up --build -d    # 后台启动
 docker compose down             # 停止
 ```
 
-## 经验沉淀指引
-
-发现新规则/新坑时，按技术领域添加到对应文档：
-
-| 发现类型 | 红线（禁令） | 陷阱（踩坑） |
-|----------|-------------|-------------|
-| 通用 | `standards/red-lines.md` | — |
-| Go 语言 | `standards/go-red-lines.md` | `development/go-pitfalls.md` |
-| MySQL | `standards/mysql-red-lines.md` | `development/mysql-pitfalls.md` |
-| Redis | `standards/redis-red-lines.md` | `development/redis-pitfalls.md` |
-| MongoDB | — | `development/mongodb-pitfalls.md` |
-| 缓存模式 | `standards/cache-red-lines.md` | `development/cache-pitfalls.md` |
-| 前端 | `standards/frontend-red-lines.md` | `development/frontend-pitfalls.md` |
-| 后端架构 | `architecture/backend-red-lines.md` | — |
-| UI/UX | `architecture/ui-red-lines.md` | — |
-| Skill 流程 | — | 对应的 `.claude/commands/*.md` |
-
-**写新脚本/组件前必须先查文档**：新写一个 bash seed 脚本 / 新建一个 Vue 组件 / 新写一个 handler 之前，先翻这份表里对应领域的 pitfalls + red-lines 文档。反模式案例：`tests/seed_data.sh` 首版直接写 `curl -d "$body"`，忽略了 `dev-rules.md` 「Bash 集成测试脚本（Windows 环境）」章节明确写的 "必须用 stdin 管道"，导致中文全部变成 U+FFFD replacement character，等到发现乱码又走 upsert 修复重跑，浪费一整轮。**已写在文档里的坑重复踩 = 没看文档**。
-
 ## Bash 集成测试脚本（Windows 环境）
 
 ### 中文编码
@@ -222,7 +205,25 @@ printf '%s' "$body" | curl --data-binary @- -H "Content-Type: application/json; 
 
 ### jq 输出 CRLF
 
-Windows 上 `jq -r` 输出带 `\r`（CR），导致 bash 字符串比较失败。所有 assert 函数的 jq 输出必须 `| tr -d '\r'`。
+Windows 上 `jq -r` 输出带 `\r`（CR），导致 bash 字符串比较失败。**所有** jq 提取（不仅是 assert 内，包括 ID 提取、version 提取等）都必须 `| tr -d '\r'`。遗漏一处就会导致 JSON 拼接出 `{"id":3\r}`，curl 报 `40000 请求参数格式错误`，且在首次运行（无缓存干扰）时才暴露。
+
+### 测试环境重置（Phase 0）
+
+**每次运行测试前必须完成以下重置**（脚本已自动执行）：
+
+1. **Redis FLUSHALL**：清除上一次运行残留的 detail/list 缓存。不清会导致 MySQL 已重建但 Redis 返回旧数据（enabled=true, version=2 等脏数据）
+2. **DROP + CREATE 业务表**：fields、field_refs、templates、event_types、event_type_schema — 这些表测试会写入数据，必须每次重建以重置 AUTO_INCREMENT
+3. **保留字典表**：dictionaries 只有种子数据，CREATE IF NOT EXISTS 后检查行数 > 0 即跳过 seed，加速二次运行
+4. **先 seed 后重启后端**：DictCache / SchemaCache 在后端启动时一次性加载。如果先启动后端再 seed，缓存为空，所有类型校验返回 `40003 字段类型不存在`
+5. **等待后端就绪**：重启后轮询 `/health` 直到返回 `{"status":"ok"}`
+
+### 测试脚本编写规范
+
+- **所有 ID 提取必须 `| tr -d '\r'`**：`ID=$(echo "$R" | jq -r '.data.id' | tr -d '\r')`，不能省略
+- **辅助函数内联定义时注意转义**：bash `cat << 'EOF'` 和 `echo "..."` 对 `$` 的处理不同。直接写入文件用 heredoc，动态拼接用 `echo`
+- **helper 函数错误不要吞**：`fld_enable` / `tpl_disable` 等 helper 的 `> /dev/null` 只压输出不压逻辑，如果 toggle 失败后续断言会级联失败且无日志。调试时去掉 `> /dev/null`
+- **断言错误码要对准 errcode/codes.go**：`41001` 是 NameExists，`41002` 是 NameInvalid，搞混会导致测试假绿或假红
+- **测试 ID 不要跨 section 复用**：每个 section 用自己创建的 ID，不依赖其他 section 的残留状态
 
 ### Docker initdb.d
 

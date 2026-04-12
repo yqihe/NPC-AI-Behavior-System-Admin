@@ -1,6 +1,6 @@
-# Go 语言常见陷阱
+# Go 语言开发规范
 
-纯 Go 语言层面的陷阱。MySQL 见 `mysql-pitfalls.md`，MongoDB 见 `mongodb-pitfalls.md`，Redis 见 `redis-pitfalls.md`，缓存模式见 `cache-pitfalls.md`。禁止红线见 `../standards/go-red-lines.md`。
+禁止红线见 `../red-lines/go.md`。
 
 ## JSON / BSON 序列化
 

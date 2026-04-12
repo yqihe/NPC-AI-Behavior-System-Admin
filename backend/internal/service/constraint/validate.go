@@ -7,6 +7,7 @@ package constraint
 import (
 	"encoding/json"
 	"fmt"
+	"unicode/utf8"
 
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 )
@@ -141,11 +142,12 @@ func validateString(cm map[string]json.RawMessage, value json.RawMessage) *errco
 		// null / 缺失视为空串
 		s = ""
 	}
-	if minLen, ok := GetFloat(cm["minLength"]); ok && float64(len(s)) < minLen {
-		return errcode.Newf(errcode.ErrBadRequest, "字符串长度 %d 小于最小长度 %v", len(s), minLen)
+	runeLen := utf8.RuneCountInString(s)
+	if minLen, ok := GetFloat(cm["minLength"]); ok && float64(runeLen) < minLen {
+		return errcode.Newf(errcode.ErrBadRequest, "字符串长度 %d 小于最小长度 %v", runeLen, minLen)
 	}
-	if maxLen, ok := GetFloat(cm["maxLength"]); ok && float64(len(s)) > maxLen {
-		return errcode.Newf(errcode.ErrBadRequest, "字符串长度 %d 大于最大长度 %v", len(s), maxLen)
+	if maxLen, ok := GetFloat(cm["maxLength"]); ok && float64(runeLen) > maxLen {
+		return errcode.Newf(errcode.ErrBadRequest, "字符串长度 %d 大于最大长度 %v", runeLen, maxLen)
 	}
 	return nil
 }

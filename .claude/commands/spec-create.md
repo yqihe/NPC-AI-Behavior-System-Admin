@@ -39,22 +39,21 @@
 - **方案描述**：技术方案、数据结构、接口定义
 - **方案对比**：至少列出一个备选方案，说明为什么不选
 - **红线检查**：逐条对照以下红线文档，确认不违反。如果方案触及任何一条红线，必须修改方案或说明为什么需要修改红线本身（需用户批准）
-    - 通用：`docs/standards/red-lines.md`
-    - Go：`docs/standards/go-red-lines.md`
-    - MySQL：`docs/standards/mysql-red-lines.md`
-    - Redis：`docs/standards/redis-red-lines.md`
-    - 缓存：`docs/standards/cache-red-lines.md`
-    - 前端：`docs/standards/frontend-red-lines.md`
-    - 后端架构：`docs/architecture/backend-red-lines.md`
-    - UI/UX：`docs/architecture/ui-red-lines.md`
+    - 通用：`docs/development/standards/red-lines/general.md`
+    - Go：`docs/development/standards/red-lines/go.md`
+    - MySQL：`docs/development/standards/red-lines/mysql.md`
+    - Redis：`docs/development/standards/red-lines/redis.md`
+    - 缓存：`docs/development/standards/red-lines/cache.md`
+    - 前端：`docs/development/standards/red-lines/frontend.md`
+    - ADMIN 专属：`docs/development/admin/red-lines.md`
 - **扩展性影响**：这个设计是否影响运营平台的扩展方向（新增配置类型 / 新增表单字段），正面还是负面
 - **依赖方向**：画出涉及的包之间的依赖关系，确认单向向下
-- **陷阱检查**：按涉及的技术领域查阅对应陷阱文档（`docs/development/` 下按技术拆分：`go-pitfalls.md`、`mysql-pitfalls.md`、`redis-pitfalls.md`、`mongodb-pitfalls.md`、`cache-pitfalls.md`、`frontend-pitfalls.md`）
+- **陷阱检查**：按涉及的技术领域查阅对应开发规范（`docs/development/standards/dev-rules/` 下按技术拆分：`go.md`、`mysql.md`、`redis.md`、`mongodb.md`、`cache.md`、`frontend.md`）
 - **配置变更**：是否需要新增/修改 JSON 配置文件，schema 是什么
 - **测试策略**：怎么测，单元测试覆盖什么，e2e 覆盖什么
 
 **禁止**：
-- 不准设计违反 `docs/standards/` 或 `docs/architecture/` 红线的方案（除非审批修改红线）
+- 不准设计违反 `docs/development/standards/red-lines/` 或 `docs/development/admin/red-lines.md` 红线的方案（除非审批修改红线）
 - 不准跳过方案对比直接给一个方案
 - 不准设计新增配置类型时需要改已有模块代码的方案
 
@@ -85,4 +84,4 @@
 
 ## 经验沉淀
 
-执行过程中发现的新规则/禁令，按类型追加到对应文档（参考 `docs/development/dev-rules.md` 经验沉淀指引）。发现本 Skill 遗漏的检查项，追加到本文件对应阶段。
+执行过程中发现的新规则/禁令，按类型追加到对应文档（参考 `docs/development/admin/dev-rules.md` 经验沉淀指引）。发现本 Skill 遗漏的检查项，追加到本文件对应阶段。

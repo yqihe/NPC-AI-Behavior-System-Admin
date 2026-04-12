@@ -49,8 +49,8 @@ func (h *TemplateHandler) checkTemplateName(name string) *errcode.Error {
 	if !identPattern.MatchString(name) {
 		return errcode.New(errcode.ErrTemplateNameInvalid)
 	}
-	if len(name) > h.valCfg.FieldNameMaxLength {
-		return errcode.Newf(errcode.ErrTemplateNameInvalid, "模板标识长度不能超过 %d 个字符", h.valCfg.FieldNameMaxLength)
+	if len(name) > h.valCfg.TemplateNameMaxLength {
+		return errcode.Newf(errcode.ErrTemplateNameInvalid, "模板标识长度不能超过 %d 个字符", h.valCfg.TemplateNameMaxLength)
 	}
 	return nil
 }
@@ -65,10 +65,10 @@ func (h *TemplateHandler) checkTemplateLabel(label string) *errcode.Error {
 	return nil
 }
 
-// checkDescription 描述长度校验（按 UTF-8 字符数 ≤ 512）
-func checkDescription(description string) *errcode.Error {
-	if utf8.RuneCountInString(description) > 512 {
-		return errcode.Newf(errcode.ErrBadRequest, "描述长度不能超过 512 个字符")
+// checkDescription 描述长度校验
+func (h *TemplateHandler) checkDescription(description string) *errcode.Error {
+	if utf8.RuneCountInString(description) > h.valCfg.DescriptionMaxLength {
+		return errcode.Newf(errcode.ErrBadRequest, "描述长度不能超过 %d 个字符", h.valCfg.DescriptionMaxLength)
 	}
 	return nil
 }
@@ -169,7 +169,7 @@ func (h *TemplateHandler) Create(ctx context.Context, req *model.CreateTemplateR
 	if err := h.checkTemplateLabel(req.Label); err != nil {
 		return nil, err
 	}
-	if err := checkDescription(req.Description); err != nil {
+	if err := h.checkDescription(req.Description); err != nil {
 		return nil, err
 	}
 	if err := checkTemplateFields(req.Fields); err != nil {
@@ -310,7 +310,7 @@ func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateR
 	if err := h.checkTemplateLabel(req.Label); err != nil {
 		return nil, err
 	}
-	if err := checkDescription(req.Description); err != nil {
+	if err := h.checkDescription(req.Description); err != nil {
 		return nil, err
 	}
 	if err := checkTemplateFields(req.Fields); err != nil {

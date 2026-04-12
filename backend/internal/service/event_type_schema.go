@@ -118,16 +118,9 @@ func (s *EventTypeSchemaService) Create(ctx context.Context, req *model.CreateEv
 func (s *EventTypeSchemaService) Update(ctx context.Context, req *model.UpdateEventTypeSchemaRequest) error {
 	slog.Debug("service.event_type_schema.update", "id", req.ID)
 
-	_, err := s.getOrNotFound(ctx, req.ID)
+	ets, err := s.getOrNotFound(ctx, req.ID)
 	if err != nil {
 		return err
-	}
-
-	// constraints 自洽校验（field_type 不可变，但这里只用 constraints 自身校验）
-	// 需要拿到 field_type —— 从 DB 读
-	ets, _ := s.store.GetByID(ctx, req.ID)
-	if ets == nil {
-		return errcode.New(errcode.ErrExtSchemaNotFound)
 	}
 
 	if e := constraint.ValidateConstraintsSelf(ets.FieldType, req.Constraints); e != nil {
