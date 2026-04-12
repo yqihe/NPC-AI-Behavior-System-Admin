@@ -284,10 +284,33 @@ const rules = {
 // ---------- 初始化 ----------
 
 onMounted(async () => {
-  if (!isCreate) {
+  if (isCreate) {
+    await loadExtensionSchema()
+  } else {
     await loadDetail()
   }
 })
+
+async function loadExtensionSchema() {
+  try {
+    const res = await eventTypeApi.schemaListEnabled()
+    const items = res.data?.items || []
+    extensionSchema.value = items.map((s) => ({
+      field_name: s.field_name,
+      field_label: s.field_label,
+      field_type: s.field_type,
+      constraints: s.constraints,
+      default_value: s.default_value,
+      sort_order: s.sort_order,
+    }))
+    // 用默认值初始化扩展字段值（不标记 dirty）
+    for (const ext of extensionSchema.value) {
+      extensionValues[ext.field_name] = ext.default_value
+    }
+  } catch {
+    // 拦截器已 toast
+  }
+}
 
 async function loadDetail() {
   const id = Number(route.params.id)

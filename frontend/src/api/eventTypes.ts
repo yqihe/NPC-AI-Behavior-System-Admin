@@ -102,6 +102,21 @@ export const EVENT_TYPE_ERR = {
   EDIT_NOT_DISABLED:   42015,
 } as const
 
+/** 扩展字段 Schema 完整信息（schema list 接口返回） */
+export interface EventTypeSchemaFull {
+  id: number
+  field_name: string
+  field_label: string
+  field_type: string
+  constraints: Record<string, unknown>
+  default_value: unknown
+  sort_order: number
+  enabled: boolean
+  version: number
+  created_at: string
+  updated_at: string
+}
+
 // ─── API 函数 ───
 
 export const eventTypeApi = {
@@ -125,4 +140,8 @@ export const eventTypeApi = {
 
   toggleEnabled: (id: number, enabled: boolean, version: number) =>
     request.post('/event-types/toggle-enabled', { id, enabled, version }) as Promise<ApiResponse<string>>,
+
+  /** 获取已启用的扩展字段 Schema 列表（新建表单用） */
+  schemaListEnabled: () =>
+    request.post('/event-type-schema/list', { enabled: true }) as Promise<ApiResponse<{ items: EventTypeSchemaFull[] }>>,
 }
