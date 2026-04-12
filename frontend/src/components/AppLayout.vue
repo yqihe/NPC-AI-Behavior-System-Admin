@@ -32,7 +32,7 @@
           </el-menu-item>
           <el-menu-item index="/event-type-schemas">
             <el-icon><Tickets /></el-icon>
-            <span>扩展字段</span>
+            <span>事件扩展字段</span>
           </el-menu-item>
         </el-sub-menu>
       </el-menu>
