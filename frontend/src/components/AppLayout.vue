@@ -26,6 +26,10 @@
             <el-icon><List /></el-icon>
             <span>字段管理</span>
           </el-menu-item>
+          <el-menu-item index="/event-types">
+            <el-icon><Lightning /></el-icon>
+            <span>事件类型</span>
+          </el-menu-item>
         </el-sub-menu>
       </el-menu>
     </el-aside>
@@ -38,7 +42,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { List, Files, Setting } from '@element-plus/icons-vue'
+import { List, Files, Setting, Lightning } from '@element-plus/icons-vue'
 
 const route = useRoute()
 
