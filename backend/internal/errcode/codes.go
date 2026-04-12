@@ -51,6 +51,38 @@ const (
 	ErrTemplateFieldIsReference  = 41012 // 模板不能直接挂载 reference 类型字段
 )
 
+// --- 事件类型管理 420xx ---
+
+const (
+	ErrEventTypeNameExists       = 42001 // 事件标识已存在（含软删除）
+	ErrEventTypeNameInvalid      = 42002 // 事件标识格式不合法
+	ErrEventTypeModeInvalid      = 42003 // 感知模式枚举非法
+	ErrEventTypeSeverityInvalid  = 42004 // 威胁值不在 0-100
+	ErrEventTypeTTLInvalid       = 42005 // TTL <= 0
+	ErrEventTypeRangeInvalid     = 42006 // 传播范围 < 0
+	ErrEventTypeExtValueInvalid  = 42007 // 扩展字段值不符合 schema 约束
+	ErrEventTypeRefDelete        = 42008 // 被引用无法删除（占位，本期 ref_count 恒 0）
+	ErrEventTypeVersionConflict  = 42010 // 版本冲突（乐观锁）
+	ErrEventTypeNotFound         = 42011 // 事件类型不存在
+	ErrEventTypeDeleteNotDisabled = 42012 // 删除前必须先停用
+	ErrEventTypeEditNotDisabled   = 42015 // 编辑前必须先停用
+)
+
+// --- 扩展字段 Schema 420[20-39] ---
+
+const (
+	ErrExtSchemaNameExists         = 42020 // field_name 已存在（含软删除）
+	ErrExtSchemaNameInvalid        = 42021 // field_name 格式不合法
+	ErrExtSchemaNotFound           = 42022 // 扩展字段定义不存在
+	ErrExtSchemaDisabled           = 42023 // 扩展字段已停用，不能被引用
+	ErrExtSchemaTypeInvalid        = 42024 // field_type 枚举非法
+	ErrExtSchemaConstraintsInvalid = 42025 // constraints 不自洽
+	ErrExtSchemaDefaultInvalid     = 42026 // default_value 不符合 constraints
+	ErrExtSchemaDeleteNotDisabled  = 42027 // 删除前必须先停用
+	ErrExtSchemaVersionConflict    = 42030 // 版本冲突（乐观锁）
+	ErrExtSchemaEditNotDisabled    = 42031 // 编辑前必须先停用
+)
+
 // --- 错误消息 ---
 
 var messages = map[int]string{
@@ -88,6 +120,30 @@ var messages = map[int]string{
 	ErrTemplateEditNotDisabled:   "请先停用该模板再编辑",
 	ErrTemplateVersionConflict:   "该模板已被其他人修改，请刷新后重试",
 	ErrTemplateFieldIsReference:  "reference 类型字段不能直接加入模板，请点击 reference 字段选择其子字段",
+
+	ErrEventTypeNameExists:       "事件标识已存在",
+	ErrEventTypeNameInvalid:      "事件标识格式不合法，需小写字母开头，仅允许 a-z、0-9、下划线",
+	ErrEventTypeModeInvalid:      "感知模式必须是 visual / auditory / global 之一",
+	ErrEventTypeSeverityInvalid:  "默认威胁必须在 0-100 之间",
+	ErrEventTypeTTLInvalid:       "默认 TTL 必须大于 0",
+	ErrEventTypeRangeInvalid:     "传播范围不能小于 0",
+	ErrEventTypeExtValueInvalid:  "扩展字段的值不符合约束",
+	ErrEventTypeRefDelete:        "当前事件类型仍被引用，不能删除",
+	ErrEventTypeVersionConflict:  "该事件类型已被其他人修改，请刷新后重试",
+	ErrEventTypeNotFound:         "事件类型不存在",
+	ErrEventTypeDeleteNotDisabled: "请先停用该事件类型再删除",
+	ErrEventTypeEditNotDisabled:   "请先停用该事件类型再编辑",
+
+	ErrExtSchemaNameExists:         "扩展字段标识已存在",
+	ErrExtSchemaNameInvalid:        "扩展字段标识格式不合法，需小写字母开头，仅允许 a-z、0-9、下划线",
+	ErrExtSchemaNotFound:           "扩展字段定义不存在",
+	ErrExtSchemaDisabled:           "扩展字段已停用",
+	ErrExtSchemaTypeInvalid:        "扩展字段类型必须是 int / float / string / bool / select 之一",
+	ErrExtSchemaConstraintsInvalid: "约束配置不自洽",
+	ErrExtSchemaDefaultInvalid:     "默认值不符合约束",
+	ErrExtSchemaDeleteNotDisabled:  "请先停用该扩展字段再删除",
+	ErrExtSchemaVersionConflict:    "该扩展字段已被其他人修改，请刷新后重试",
+	ErrExtSchemaEditNotDisabled:    "请先停用该扩展字段再编辑",
 }
 
 // Msg 获取错误码对应的默认消息
