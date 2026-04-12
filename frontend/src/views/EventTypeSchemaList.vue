@@ -121,7 +121,10 @@ async function fetchList() {
       params.enabled = query.enabled
     }
     const res = await eventTypeApi.schemaList(params)
-    tableData.value = res.data?.items || []
+    const items = res.data?.items || []
+    // 后端按 sort_order ASC 排序，前端统一按 ID 倒序展示（与其他列表一致）
+    items.sort((a, b) => b.id - a.id)
+    tableData.value = items
   } catch {
     // 拦截器已 toast
   } finally {
