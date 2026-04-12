@@ -8,7 +8,7 @@ import (
 )
 
 // Setup 注册所有路由
-func Setup(r *gin.Engine, fh *handler.FieldHandler, dh *handler.DictionaryHandler, th *handler.TemplateHandler) {
+func Setup(r *gin.Engine, fh *handler.FieldHandler, dh *handler.DictionaryHandler, th *handler.TemplateHandler, eth *handler.EventTypeHandler, etsh *handler.EventTypeSchemaHandler, exh *handler.ExportHandler) {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -43,4 +43,32 @@ func Setup(r *gin.Engine, fh *handler.FieldHandler, dh *handler.DictionaryHandle
 
 	// 字典选项
 	v1.POST("/dictionaries", handler.WrapCtx(dh.List))
+
+	// 事件类型管理（7 个接口）
+	eventTypes := v1.Group("/event-types")
+	{
+		eventTypes.POST("/list", handler.WrapCtx(eth.List))
+		eventTypes.POST("/create", handler.WrapCtx(eth.Create))
+		eventTypes.POST("/detail", handler.WrapCtx(eth.Get))
+		eventTypes.POST("/update", handler.WrapCtx(eth.Update))
+		eventTypes.POST("/delete", handler.WrapCtx(eth.Delete))
+		eventTypes.POST("/check-name", handler.WrapCtx(eth.CheckName))
+		eventTypes.POST("/toggle-enabled", handler.WrapCtx(eth.ToggleEnabled))
+	}
+
+	// 扩展字段 Schema 管理（5 个接口）
+	eventTypeSchema := v1.Group("/event-type-schema")
+	{
+		eventTypeSchema.POST("/list", handler.WrapCtx(etsh.List))
+		eventTypeSchema.POST("/create", handler.WrapCtx(etsh.Create))
+		eventTypeSchema.POST("/update", handler.WrapCtx(etsh.Update))
+		eventTypeSchema.POST("/delete", handler.WrapCtx(etsh.Delete))
+		eventTypeSchema.POST("/toggle-enabled", handler.WrapCtx(etsh.ToggleEnabled))
+	}
+
+	// 配置导出 API
+	configs := r.Group("/api/configs")
+	{
+		configs.GET("/event_types", exh.EventTypes)
+	}
 }
