@@ -104,6 +104,19 @@ func (s *EventTypeSchemaStore) ListEnabled(ctx context.Context) ([]model.EventTy
 	return items, nil
 }
 
+// ListAllLite 全量拉所有未删除的 Lite 格式（给详情页合并禁用但有值的 schema 用）
+func (s *EventTypeSchemaStore) ListAllLite(ctx context.Context) ([]model.EventTypeSchemaLite, error) {
+	items := make([]model.EventTypeSchemaLite, 0)
+	err := s.db.SelectContext(ctx, &items,
+		`SELECT field_name, field_label, field_type, constraints, default_value, sort_order
+		 FROM event_type_schema WHERE deleted = 0
+		 ORDER BY sort_order ASC, id ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("list all event_type_schema lite: %w", err)
+	}
+	return items, nil
+}
+
 // Update 编辑扩展字段定义（乐观锁）
 func (s *EventTypeSchemaStore) Update(ctx context.Context, req *model.UpdateEventTypeSchemaRequest) error {
 	result, err := s.db.ExecContext(ctx,

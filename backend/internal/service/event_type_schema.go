@@ -60,6 +60,11 @@ func (s *EventTypeSchemaService) ListEnabled() []model.EventTypeSchemaLite {
 	return s.schemaCache.ListEnabled()
 }
 
+// ListAllLite 返回所有未删除的扩展字段定义（含禁用的，给详情页合并用）
+func (s *EventTypeSchemaService) ListAllLite(ctx context.Context) ([]model.EventTypeSchemaLite, error) {
+	return s.store.ListAllLite(ctx)
+}
+
 // Create 创建扩展字段定义
 func (s *EventTypeSchemaService) Create(ctx context.Context, req *model.CreateEventTypeSchemaRequest) (int64, error) {
 	slog.Debug("service.event_type_schema.create", "field_name", req.FieldName)

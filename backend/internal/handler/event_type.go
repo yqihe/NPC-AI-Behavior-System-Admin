@@ -169,8 +169,43 @@ func (h *EventTypeHandler) Get(ctx context.Context, req *model.IDRequest) (*mode
 		config = make(map[string]interface{})
 	}
 
-	// 拿扩展字段 schema
+	// 拿扩展字段 schema：启用的 + 虽然禁用但 config 里有值的
 	schemas := h.eventTypeSchemaService.ListEnabled()
+	enabledNames := make(map[string]bool, len(schemas))
+	for _, s := range schemas {
+		enabledNames[s.FieldName] = true
+	}
+
+	// 系统字段集合（不是扩展字段）
+	systemKeys := map[string]bool{
+		"display_name": true, "default_severity": true,
+		"default_ttl": true, "perception_mode": true, "range": true,
+	}
+
+	// 检查 config 中是否有禁用 schema 的值
+	var missingNames []string
+	for k := range config {
+		if !systemKeys[k] && !enabledNames[k] {
+			missingNames = append(missingNames, k)
+		}
+	}
+	if len(missingNames) > 0 {
+		// 拉全量 schema（含禁用），补上缺失的
+		allSchemas, err := h.eventTypeSchemaService.ListAllLite(ctx)
+		if err != nil {
+			slog.Error("handler.event_type.get.list_all_schemas", "error", err)
+		} else {
+			missingSet := make(map[string]bool, len(missingNames))
+			for _, n := range missingNames {
+				missingSet[n] = true
+			}
+			for _, s := range allSchemas {
+				if missingSet[s.FieldName] {
+					schemas = append(schemas, s)
+				}
+			}
+		}
+	}
 
 	detail := &model.EventTypeDetail{
 		ID:              et.ID,
