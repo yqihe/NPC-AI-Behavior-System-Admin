@@ -1,5 +1,6 @@
 import request from './request'
 import type { ApiResponse } from './request'
+import type { ListData, CheckNameResult } from './fields'
 
 // ─── 类型定义 ───
 
@@ -23,14 +24,6 @@ export interface EventTypeListItem {
   default_severity: number
   default_ttl: number
   range: number
-}
-
-/** 列表响应 */
-export interface EventTypeListData {
-  items: EventTypeListItem[]
-  total: number
-  page: number
-  page_size: number
 }
 
 /** 扩展字段 Schema（detail 接口返回） */
@@ -80,11 +73,8 @@ export interface UpdateEventTypeRequest {
   version: number
 }
 
-/** 名称校验结果 */
-export interface CheckNameResult {
-  available: boolean
-  message: string
-}
+// Re-export CheckNameResult for consumers that import from this file
+export type { CheckNameResult } from './fields'
 
 // ─── 错误码（与 backend/internal/errcode/codes.go 42001-42015 保持一致）───
 
@@ -162,7 +152,7 @@ export const EXT_SCHEMA_ERR = {
 
 export const eventTypeApi = {
   list: (params: EventTypeListQuery) =>
-    request.post('/event-types/list', params) as Promise<ApiResponse<EventTypeListData>>,
+    request.post('/event-types/list', params) as Promise<ApiResponse<ListData<EventTypeListItem>>>,
 
   create: (data: CreateEventTypeRequest) =>
     request.post('/event-types/create', data) as Promise<ApiResponse<{ id: number; name: string }>>,
@@ -174,7 +164,7 @@ export const eventTypeApi = {
     request.post('/event-types/update', data) as Promise<ApiResponse<string>>,
 
   delete: (id: number) =>
-    request.post('/event-types/delete', { id }) as Promise<ApiResponse<string>>,
+    request.post('/event-types/delete', { id }) as Promise<ApiResponse<{ id: number; name: string; label: string }>>,
 
   checkName: (name: string) =>
     request.post('/event-types/check-name', { name }) as Promise<ApiResponse<CheckNameResult>>,

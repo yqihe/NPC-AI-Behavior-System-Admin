@@ -125,10 +125,9 @@ func (s *EventTypeService) List(ctx context.Context, q *model.EventTypeListQuery
 		q.PageSize = s.pagCfg.MaxPageSize
 	}
 
-	// 查缓存
-	cached, hit, _ := s.cache.GetList(ctx, q)
-	if hit && cached != nil {
-		slog.Debug("service.event_type.list.cache_hit")
+	// 查缓存（Redis 挂了跳过，降级直查 MySQL）
+	if cached, hit, err := s.cache.GetList(ctx, q); err == nil && hit {
+		slog.Debug("service.事件类型列表.缓存命中")
 		return cached.ToListData(), nil
 	}
 
@@ -179,12 +178,13 @@ func (s *EventTypeService) List(ctx context.Context, q *model.EventTypeListQuery
 
 // Create 创建事件类型
 func (s *EventTypeService) Create(ctx context.Context, req *model.CreateEventTypeRequest) (int64, error) {
-	slog.Debug("service.event_type.create", "name", req.Name)
+	slog.Debug("service.创建事件类型", "name", req.Name)
 
 	// name 唯一性（含软删除）
 	exists, err := s.store.ExistsByName(ctx, req.Name)
 	if err != nil {
-		return 0, err
+		slog.Error("service.创建事件类型-检查唯一性失败", "error", err, "name", req.Name)
+		return 0, fmt.Errorf("check name exists: %w", err)
 	}
 	if exists {
 		return 0, errcode.Newf(errcode.ErrEventTypeNameExists, "事件标识 '%s' 已存在", req.Name)
@@ -208,27 +208,27 @@ func (s *EventTypeService) Create(ctx context.Context, req *model.CreateEventTyp
 	}
 
 	// 写 MySQL
-	id, err := s.store.Create(ctx, req.Name, req.DisplayName, req.PerceptionMode, configJSON)
+	id, err := s.store.Create(ctx, req, configJSON)
 	if err != nil {
-		return 0, err
+		slog.Error("service.创建事件类型失败", "error", err, "name", req.Name)
+		return 0, fmt.Errorf("create event_type: %w", err)
 	}
 
 	// 清列表缓存
 	s.cache.InvalidateList(ctx)
 
-	slog.Info("service.event_type.created", "id", id, "name", req.Name)
+	slog.Info("service.创建事件类型成功", "id", id, "name", req.Name)
 	return id, nil
 }
 
 // GetByID 查详情（Cache-Aside + 分布式锁 + 空标记）
 func (s *EventTypeService) GetByID(ctx context.Context, id int64) (*model.EventType, error) {
-	// 1. 查缓存
-	et, hit, _ := s.cache.GetDetail(ctx, id)
-	if hit {
-		if et == nil {
+	// 1. 查缓存（Redis 挂了跳过，降级直查 MySQL）
+	if cached, hit, err := s.cache.GetDetail(ctx, id); err == nil && hit {
+		if cached == nil {
 			return nil, errcode.New(errcode.ErrEventTypeNotFound)
 		}
-		return et, nil
+		return cached, nil
 	}
 
 	// 2. 分布式锁防击穿
@@ -236,16 +236,18 @@ func (s *EventTypeService) GetByID(ctx context.Context, id int64) (*model.EventT
 	if s.etCfg.CacheLockTTL > 0 {
 		lockTTL = s.etCfg.CacheLockTTL
 	}
-	locked, _ := s.cache.TryLock(ctx, id, lockTTL)
+	locked, lockErr := s.cache.TryLock(ctx, id, lockTTL)
+	if lockErr != nil {
+		slog.Warn("service.获取锁失败，降级直查MySQL", "error", lockErr, "id", id)
+	}
 	if locked {
 		defer s.cache.Unlock(ctx, id)
 		// double-check
-		et, hit, _ = s.cache.GetDetail(ctx, id)
-		if hit {
-			if et == nil {
+		if cached, hit, err := s.cache.GetDetail(ctx, id); err == nil && hit {
+			if cached == nil {
 				return nil, errcode.New(errcode.ErrEventTypeNotFound)
 			}
-			return et, nil
+			return cached, nil
 		}
 	}
 
@@ -266,7 +268,7 @@ func (s *EventTypeService) GetByID(ctx context.Context, id int64) (*model.EventT
 
 // Update 编辑事件类型
 func (s *EventTypeService) Update(ctx context.Context, req *model.UpdateEventTypeRequest) error {
-	slog.Debug("service.event_type.update", "id", req.ID)
+	slog.Debug("service.编辑事件类型", "id", req.ID)
 
 	et, err := s.getOrNotFound(ctx, req.ID)
 	if err != nil {
@@ -296,33 +298,32 @@ func (s *EventTypeService) Update(ctx context.Context, req *model.UpdateEventTyp
 	}
 
 	// 乐观锁更新
-	if err := s.store.Update(ctx, req.ID, req.DisplayName, req.PerceptionMode, configJSON, req.Version); err != nil {
+	if err := s.store.Update(ctx, req, configJSON); err != nil {
 		if errors.Is(err, storemysql.ErrVersionConflict) {
 			return errcode.New(errcode.ErrEventTypeVersionConflict)
 		}
-		return err
+		slog.Error("service.编辑事件类型失败", "error", err, "id", req.ID)
+		return fmt.Errorf("update event_type: %w", err)
 	}
 
 	// 清缓存
 	s.cache.DelDetail(ctx, req.ID)
 	s.cache.InvalidateList(ctx)
 
-	slog.Info("service.event_type.updated", "id", req.ID)
+	slog.Info("service.编辑事件类型成功", "id", req.ID)
 	return nil
 }
 
 // Delete 软删除事件类型
-func (s *EventTypeService) Delete(ctx context.Context, id int64) error {
-	slog.Debug("service.event_type.delete", "id", id)
-
+func (s *EventTypeService) Delete(ctx context.Context, id int64) (*model.DeleteResult, error) {
 	et, err := s.getOrNotFound(ctx, id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// 启用中禁止删除
 	if et.Enabled {
-		return errcode.New(errcode.ErrEventTypeDeleteNotDisabled)
+		return nil, errcode.New(errcode.ErrEventTypeDeleteNotDisabled)
 	}
 
 	// 本期 ref_count 不接入，直接删
@@ -330,54 +331,52 @@ func (s *EventTypeService) Delete(ctx context.Context, id int64) error {
 
 	if err := s.store.SoftDelete(ctx, id); err != nil {
 		if errors.Is(err, storemysql.ErrNotFound) {
-			return errcode.New(errcode.ErrEventTypeNotFound)
+			return nil, errcode.New(errcode.ErrEventTypeNotFound)
 		}
-		return err
+		slog.Error("service.删除事件类型失败", "error", err, "id", id)
+		return nil, fmt.Errorf("soft delete event_type: %w", err)
 	}
 
 	// 清缓存
 	s.cache.DelDetail(ctx, id)
 	s.cache.InvalidateList(ctx)
 
-	slog.Info("service.event_type.deleted", "id", id)
-	return nil
+	slog.Info("service.删除事件类型成功", "id", id, "name", et.Name)
+	return &model.DeleteResult{ID: id, Name: et.Name, Label: et.DisplayName}, nil
 }
 
 // CheckName 唯一性校验
 func (s *EventTypeService) CheckName(ctx context.Context, name string) (*model.CheckNameResult, error) {
 	exists, err := s.store.ExistsByName(ctx, name)
 	if err != nil {
-		return nil, err
+		slog.Error("service.校验事件标识失败", "error", err, "name", name)
+		return nil, fmt.Errorf("check name: %w", err)
 	}
-	result := &model.CheckNameResult{Available: !exists}
 	if exists {
-		result.Message = "该事件标识已存在"
+		return &model.CheckNameResult{Available: false, Message: "该事件标识已存在"}, nil
 	}
-	return result, nil
+	return &model.CheckNameResult{Available: true, Message: "该标识可用"}, nil
 }
 
-// ToggleEnabled 切换启用/停用
-func (s *EventTypeService) ToggleEnabled(ctx context.Context, id int64, version int) error {
-	slog.Debug("service.event_type.toggle_enabled", "id", id)
-
-	et, err := s.getOrNotFound(ctx, id)
-	if err != nil {
+// ToggleEnabled 切换启用/停用（由调用方指定目标状态，幂等安全）
+func (s *EventTypeService) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) error {
+	if _, err := s.getOrNotFound(ctx, req.ID); err != nil {
 		return err
 	}
 
-	newEnabled := !et.Enabled
-	if err := s.store.ToggleEnabled(ctx, id, newEnabled, version); err != nil {
+	if err := s.store.ToggleEnabled(ctx, req.ID, req.Enabled, req.Version); err != nil {
 		if errors.Is(err, storemysql.ErrVersionConflict) {
 			return errcode.New(errcode.ErrEventTypeVersionConflict)
 		}
-		return err
+		slog.Error("service.切换启用失败", "error", err, "id", req.ID)
+		return fmt.Errorf("toggle enabled: %w", err)
 	}
 
 	// 清缓存
-	s.cache.DelDetail(ctx, id)
+	s.cache.DelDetail(ctx, req.ID)
 	s.cache.InvalidateList(ctx)
 
-	slog.Info("service.event_type.toggled", "id", id, "enabled", newEnabled)
+	slog.Info("service.切换启用成功", "id", req.ID, "enabled", req.Enabled)
 	return nil
 }
 

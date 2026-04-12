@@ -101,14 +101,12 @@ func checkExtensionsShape(extensions map[string]interface{}) *errcode.Error {
 
 // List 事件类型列表
 func (h *EventTypeHandler) List(ctx context.Context, req *model.EventTypeListQuery) (*model.ListData, error) {
-	slog.Debug("handler.event_type.list", "label", req.Label, "mode", req.PerceptionMode)
+	slog.Debug("handler.事件类型列表", "label", req.Label, "mode", req.PerceptionMode)
 	return h.eventTypeService.List(ctx, req)
 }
 
 // Create 创建事件类型
 func (h *EventTypeHandler) Create(ctx context.Context, req *model.CreateEventTypeRequest) (*model.CreateEventTypeResponse, error) {
-	slog.Debug("handler.event_type.create", "name", req.Name)
-
 	// Handler 格式校验
 	if e := h.checkName(req.Name); e != nil {
 		return nil, e
@@ -136,6 +134,8 @@ func (h *EventTypeHandler) Create(ctx context.Context, req *model.CreateEventTyp
 		return nil, e
 	}
 
+	slog.Debug("handler.创建事件类型", "name", req.Name, "mode", req.PerceptionMode)
+
 	id, err := h.eventTypeService.Create(ctx, req)
 	if err != nil {
 		return nil, err
@@ -146,11 +146,11 @@ func (h *EventTypeHandler) Create(ctx context.Context, req *model.CreateEventTyp
 
 // Get 事件类型详情（跨模块拼装：事件类型 + 扩展字段 schema）
 func (h *EventTypeHandler) Get(ctx context.Context, req *model.IDRequest) (*model.EventTypeDetail, error) {
-	slog.Debug("handler.event_type.get", "id", req.ID)
-
-	if req.ID <= 0 {
-		return nil, errcode.Newf(errcode.ErrBadRequest, "ID 必须 > 0")
+	if err := checkID(req.ID); err != nil {
+		return nil, err
 	}
+
+	slog.Debug("handler.事件类型详情", "id", req.ID)
 
 	et, err := h.eventTypeService.GetByID(ctx, req.ID)
 	if err != nil {
@@ -211,6 +211,7 @@ func (h *EventTypeHandler) Get(ctx context.Context, req *model.IDRequest) (*mode
 		ID:              et.ID,
 		Name:            et.Name,
 		DisplayName:     et.DisplayName,
+		PerceptionMode:  et.PerceptionMode,
 		Enabled:         et.Enabled,
 		Version:         et.Version,
 		CreatedAt:       et.CreatedAt,
@@ -223,14 +224,12 @@ func (h *EventTypeHandler) Get(ctx context.Context, req *model.IDRequest) (*mode
 }
 
 // Update 编辑事件类型
-func (h *EventTypeHandler) Update(ctx context.Context, req *model.UpdateEventTypeRequest) (*model.Empty, error) {
-	slog.Debug("handler.event_type.update", "id", req.ID)
-
-	if req.ID <= 0 {
-		return nil, errcode.Newf(errcode.ErrBadRequest, "ID 必须 > 0")
+func (h *EventTypeHandler) Update(ctx context.Context, req *model.UpdateEventTypeRequest) (*string, error) {
+	if err := checkID(req.ID); err != nil {
+		return nil, err
 	}
-	if req.Version <= 0 {
-		return nil, errcode.Newf(errcode.ErrBadRequest, "version 必须 > 0")
+	if err := checkVersion(req.Version); err != nil {
+		return nil, err
 	}
 	if e := h.checkDisplayName(req.DisplayName); e != nil {
 		return nil, e
@@ -254,48 +253,50 @@ func (h *EventTypeHandler) Update(ctx context.Context, req *model.UpdateEventTyp
 		return nil, e
 	}
 
+	slog.Debug("handler.编辑事件类型", "id", req.ID, "version", req.Version)
+
 	if err := h.eventTypeService.Update(ctx, req); err != nil {
 		return nil, err
 	}
-	return &model.Empty{}, nil
+	return successMsg("保存成功"), nil
 }
 
 // Delete 删除事件类型
-func (h *EventTypeHandler) Delete(ctx context.Context, req *model.IDRequest) (*model.Empty, error) {
-	slog.Debug("handler.event_type.delete", "id", req.ID)
-
-	if req.ID <= 0 {
-		return nil, errcode.Newf(errcode.ErrBadRequest, "ID 必须 > 0")
-	}
-
-	if err := h.eventTypeService.Delete(ctx, req.ID); err != nil {
+func (h *EventTypeHandler) Delete(ctx context.Context, req *model.IDRequest) (*model.DeleteResult, error) {
+	if err := checkID(req.ID); err != nil {
 		return nil, err
 	}
-	return &model.Empty{}, nil
+
+	slog.Debug("handler.删除事件类型", "id", req.ID)
+
+	return h.eventTypeService.Delete(ctx, req.ID)
 }
 
 // CheckName 事件标识唯一性校验
 func (h *EventTypeHandler) CheckName(ctx context.Context, req *model.CheckNameRequest) (*model.CheckNameResult, error) {
-	if req.Name == "" {
-		return nil, errcode.Newf(errcode.ErrBadRequest, "name 不能为空")
+	if err := h.checkName(req.Name); err != nil {
+		return nil, err
 	}
+
+	slog.Debug("handler.校验事件标识", "name", req.Name)
+
 	return h.eventTypeService.CheckName(ctx, req.Name)
 }
 
 // ToggleEnabled 启用/停用切换
-func (h *EventTypeHandler) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) (*model.Empty, error) {
-	slog.Debug("handler.event_type.toggle_enabled", "id", req.ID)
-
-	if req.ID <= 0 {
-		return nil, errcode.Newf(errcode.ErrBadRequest, "ID 必须 > 0")
-	}
-	if req.Version <= 0 {
-		return nil, errcode.Newf(errcode.ErrBadRequest, "version 必须 > 0")
-	}
-
-	if err := h.eventTypeService.ToggleEnabled(ctx, req.ID, req.Version); err != nil {
+func (h *EventTypeHandler) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) (*string, error) {
+	if err := checkID(req.ID); err != nil {
 		return nil, err
 	}
-	return &model.Empty{}, nil
+	if err := checkVersion(req.Version); err != nil {
+		return nil, err
+	}
+
+	slog.Debug("handler.切换启用", "id", req.ID, "enabled", req.Enabled)
+
+	if err := h.eventTypeService.ToggleEnabled(ctx, req); err != nil {
+		return nil, err
+	}
+	return successMsg("操作成功"), nil
 }
 

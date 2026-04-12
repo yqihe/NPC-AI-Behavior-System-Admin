@@ -78,6 +78,7 @@ type EventTypeDetail struct {
 	ID             int64                  `json:"id"`
 	Name           string                 `json:"name"`
 	DisplayName    string                 `json:"display_name"`
+	PerceptionMode string                 `json:"perception_mode"`
 	Enabled        bool                   `json:"enabled"`
 	Version        int                    `json:"version"`
 	CreatedAt      time.Time              `json:"created_at"`

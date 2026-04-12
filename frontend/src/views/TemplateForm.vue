@@ -195,6 +195,7 @@ const formState = reactive({
 })
 
 const template = ref<TemplateDetail | null>(null)
+const version = ref(0)
 const fieldPool = ref<FieldListItem[]>([])
 const selectedIds = ref<number[]>([])
 const requiredMap = ref<Record<number, boolean>>({})
@@ -270,6 +271,7 @@ onMounted(async () => {
       ])
       const detail = detailRes.data
       template.value = detail
+      version.value = detail.version
       formState.name = detail.name
       formState.label = detail.label
       formState.description = detail.description
@@ -367,7 +369,7 @@ async function onSubmit() {
       await templateApi.update({
         ...payload,
         id: props.id!,
-        version: template.value!.version,
+        version: version.value,
       })
       ElMessage.success('保存成功')
     }
@@ -415,7 +417,7 @@ async function reloadFieldPool() {
       page: 1,
       page_size: 1000,
     })
-    fieldPool.value = res.data?.items || []
+    fieldPool.value = [...(res.data?.items || [])].sort((a, b) => a.id - b.id)
   } catch {
     // 拦截器已 toast
   }

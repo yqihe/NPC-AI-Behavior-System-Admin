@@ -31,12 +31,12 @@ func (s *EventTypeStore) DB() *sqlx.DB {
 }
 
 // Create 创建事件类型，返回自增 ID
-func (s *EventTypeStore) Create(ctx context.Context, name, displayName, perceptionMode string, configJSON json.RawMessage) (int64, error) {
+func (s *EventTypeStore) Create(ctx context.Context, req *model.CreateEventTypeRequest, configJSON json.RawMessage) (int64, error) {
 	now := time.Now()
 	result, err := s.db.ExecContext(ctx,
 		`INSERT INTO event_types (name, display_name, perception_mode, config_json, enabled, version, created_at, updated_at, deleted)
 		 VALUES (?, ?, ?, ?, 0, 1, ?, ?, 0)`,
-		name, displayName, perceptionMode, configJSON, now, now,
+		req.Name, req.DisplayName, req.PerceptionMode, configJSON, now, now,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("insert event_type: %w", err)
@@ -132,11 +132,11 @@ func (s *EventTypeStore) List(ctx context.Context, q *model.EventTypeListQuery) 
 // Update 编辑事件类型（乐观锁，按 ID）
 //
 // rows=0 → ErrVersionConflict（version 不匹配 或 记录已删除）。
-func (s *EventTypeStore) Update(ctx context.Context, id int64, displayName, perceptionMode string, configJSON json.RawMessage, version int) error {
+func (s *EventTypeStore) Update(ctx context.Context, req *model.UpdateEventTypeRequest, configJSON json.RawMessage) error {
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE event_types SET display_name = ?, perception_mode = ?, config_json = ?, version = version + 1, updated_at = ?
 		 WHERE id = ? AND version = ? AND deleted = 0`,
-		displayName, perceptionMode, configJSON, time.Now(), id, version,
+		req.DisplayName, req.PerceptionMode, configJSON, time.Now(), req.ID, req.Version,
 	)
 	if err != nil {
 		return fmt.Errorf("update event_type: %w", err)

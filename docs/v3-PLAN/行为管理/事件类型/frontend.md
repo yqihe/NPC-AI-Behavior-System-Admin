@@ -76,6 +76,9 @@ EventTypeSchemaForm.vue (三模式：create / edit / view)
 ```ts
 // --- api/eventTypes.ts ---
 
+// 共享类型从 fields.ts 导入（单一权威定义，不重复声明）
+import type { ListData, CheckNameResult } from './fields'
+
 // 事件类型错误码（42001-42015）
 export const EVENT_TYPE_ERR = {
   NAME_EXISTS: 42001, NAME_INVALID: 42002, MODE_INVALID: 42003,
@@ -183,3 +186,13 @@ interface ExtensionSchemaItem {
 ### 约束组件复用
 
 `FieldConstraintInteger` 的 `typeName` prop 同时支持 `'integer'`（字段管理）和 `'int'`（Schema），标题显示均为「整数类型 — 约束配置」。
+
+### 与 Field/Template 的一致性对齐
+
+以下模式已统一对齐，新模块开发时必须遵循：
+
+- **共享类型**：`ListData<T>` 和 `CheckNameResult` 统一从 `fields.ts` 导入，`eventTypes.ts` 不重复定义
+- **delete 返回类型**：`ApiResponse<{ id: number; name: string; label: string }>`（与 Field/Template 一致）
+- **版本冲突后刷新**：`handleToggle` 的 catch 中检测 `VERSION_CONFLICT` 后调 `fetchList()` 刷新列表数据
+- **错误码命名常量**：所有 catch 分支使用 `EVENT_TYPE_ERR.xxx`，禁止魔法数字
+- **EventTypeForm version**：使用独立 `ref(0)` 存储版本号（与 FieldForm 一致），不用 `detail.value!.version` 非空断言

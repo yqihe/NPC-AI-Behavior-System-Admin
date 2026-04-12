@@ -1588,7 +1588,7 @@ assert_field "2.11 severity=85" '.data.config.default_severity' "85" "$body"
 
 # 2.12 启用
 V=$(et_detail "$ET_ID" | jq -r '.data.version' | tr -d '\r')
-body=$(post "/event-types/toggle-enabled" "{\"id\":$ET_ID,\"version\":$V}")
+body=$(post "/event-types/toggle-enabled" "{\"id\":$ET_ID,\"enabled\":true,\"version\":$V}")
 assert_code "2.12 启用 gunshot" "0" "$body"
 
 # 2.13 启用后编辑 → 42015
@@ -1602,7 +1602,7 @@ assert_code "2.14 启用后删除拒绝" "42012" "$body"
 
 # 2.15 停用再删除
 V=$(et_detail "$ET_ID" | jq -r '.data.version' | tr -d '\r')
-body=$(post "/event-types/toggle-enabled" "{\"id\":$ET_ID,\"version\":$V}")
+body=$(post "/event-types/toggle-enabled" "{\"id\":$ET_ID,\"enabled\":false,\"version\":$V}")
 assert_code "2.15a 停用" "0" "$body"
 body=$(post "/event-types/delete" "{\"id\":$ET_ID}")
 assert_code "2.15b 删除" "0" "$body"
@@ -1620,10 +1620,10 @@ echo "--- 3. 导出 API ---"
 
 # 先启用 earthquake 和 fire
 V2=$(et_detail "$ET_ID2" | jq -r '.data.version' | tr -d '\r')
-R=$(post "/event-types/toggle-enabled" "{\"id\":$ET_ID2,\"version\":$V2}")
+R=$(post "/event-types/toggle-enabled" "{\"id\":$ET_ID2,\"enabled\":true,\"version\":$V2}")
 echo "  [INFO] 启用 earthquake: $(echo $R | jq -r '.code' | tr -d '\r')"
 V3=$(et_detail "$ET_ID3" | jq -r '.data.version' | tr -d '\r')
-R=$(post "/event-types/toggle-enabled" "{\"id\":$ET_ID3,\"version\":$V3}")
+R=$(post "/event-types/toggle-enabled" "{\"id\":$ET_ID3,\"enabled\":true,\"version\":$V3}")
 echo "  [INFO] 启用 fire: $(echo $R | jq -r '.code' | tr -d '\r')"
 
 # 3.1 导出 — 返回 items 数组
@@ -1723,7 +1723,7 @@ assert_code "4.12 LIKE % 不返回全部" "0" "$body"
 # 4.13 乐观锁冲突（对未启用的 fire 事件用错误 version）
 # 先停用 fire
 V=$(et_detail "$ET_ID3" | jq -r '.data.version' | tr -d '\r')
-post "/event-types/toggle-enabled" "{\"id\":$ET_ID3,\"version\":$V}" > /dev/null
+post "/event-types/toggle-enabled" "{\"id\":$ET_ID3,\"enabled\":false,\"version\":$V}" > /dev/null
 body=$(post "/event-types/update" "{\"id\":$ET_ID3,\"display_name\":\"火灾(改)\",\"perception_mode\":\"visual\",\"default_severity\":70,\"default_ttl\":20,\"range\":100,\"version\":999}")
 assert_code "4.13 乐观锁冲突" "42010" "$body"
 
@@ -1769,6 +1769,90 @@ subsection "模板配置独立验证"
 LONG_NAME=$(printf 'a%.0s' {1..65})  # 65 字符
 body=$(post "/templates/create" "{\"name\":\"$LONG_NAME\",\"label\":\"超长名\",\"description\":\"\",\"fields\":[{\"field_id\":1,\"required\":true}]}")
 assert_code "cfg.1 模板名超 64 字符应被拒绝 (41002=NameInvalid)" "41002" "$body"
+
+# =============================================================================
+section "Part 8: 一致性修复专项验证"
+# =============================================================================
+
+subsection "P0-B7: EventTypeDetail 包含 perception_mode"
+
+body=$(et_detail "$ET_ID2")
+assert_code  "fix.1 detail 成功" "0" "$body"
+assert_field "fix.1 perception_mode 回显" '.data.perception_mode' "global" "$body"
+
+# 另一个 visual 事件
+body=$(et_detail "$ET_ID3")
+assert_not_equal "fix.2 perception_mode 非空" '.data.perception_mode' "null" "$body"
+
+subsection "P0-I1: EventType delete 返回 DeleteResult"
+
+# 创建一个临时事件类型用于测试删除响应
+body=$(post "/event-types/create" "{\"name\":\"${P}fix_del\",\"display_name\":\"删除测试\",\"perception_mode\":\"visual\",\"default_severity\":50,\"default_ttl\":5,\"range\":100}")
+assert_code "fix.3 创建临时事件类型" "0" "$body"
+FIX_DEL_ID=$(echo "$body" | jq -r '.data.id' | tr -d '\r')
+
+body=$(post "/event-types/delete" "{\"id\":$FIX_DEL_ID}")
+assert_code  "fix.4 删除成功" "0" "$body"
+assert_field "fix.4 返回 id" ".data.id" "$FIX_DEL_ID" "$body"
+assert_not_equal "fix.4 返回 name" ".data.name" "null" "$body"
+assert_not_equal "fix.4 返回 label" ".data.label" "null" "$body"
+
+subsection "P0-B2 + P0-I1: EventType toggle 显式 enabled + 有意义响应"
+
+# earthquake (ET_ID2) 当前是启用的，先停用
+V=$(et_detail "$ET_ID2" | jq -r '.data.version' | tr -d '\r')
+body=$(post "/event-types/toggle-enabled" "{\"id\":$ET_ID2,\"enabled\":false,\"version\":$V}")
+assert_code "fix.5a 显式 enabled=false 停用" "0" "$body"
+
+body=$(et_detail "$ET_ID2")
+assert_field "fix.5b 确认已停用" ".data.enabled" "false" "$body"
+
+# 再启用
+V=$(et_detail "$ET_ID2" | jq -r '.data.version' | tr -d '\r')
+body=$(post "/event-types/toggle-enabled" "{\"id\":$ET_ID2,\"enabled\":true,\"version\":$V}")
+assert_code "fix.5c 显式 enabled=true 启用" "0" "$body"
+
+body=$(et_detail "$ET_ID2")
+assert_field "fix.5d 确认已启用" ".data.enabled" "true" "$body"
+
+subsection "P1-B6: EventType CheckName 完整格式校验"
+
+# 大写（之前只检查空，现在检查正则）
+body=$(post "/event-types/check-name" '{"name":"BAD_NAME"}')
+assert_code "fix.6a 大写 name 被拒" "42002" "$body"
+
+# 数字开头
+body=$(post "/event-types/check-name" '{"name":"123abc"}')
+assert_code "fix.6b 数字开头被拒" "42002" "$body"
+
+# 含空格
+body=$(post "/event-types/check-name" '{"name":"bad name"}')
+assert_code "fix.6c 含空格被拒" "42002" "$body"
+
+# 空字符串
+body=$(post "/event-types/check-name" '{"name":""}')
+assert_code "fix.6d 空 name 被拒" "42002" "$body"
+
+# 合法 name 返回成功 + message 非空
+body=$(post "/event-types/check-name" "{\"name\":\"${P}valid_check\"}")
+assert_code  "fix.6e 合法 name 成功" "0" "$body"
+assert_field "fix.6e available=true" ".data.available" "true" "$body"
+assert_not_equal "fix.6e message 非空" ".data.message" "" "$body"
+
+subsection "P0-I1: EventType update 返回 message"
+
+V=$(et_detail "$ET_ID2" | jq -r '.data.version' | tr -d '\r')
+# 先停用才能编辑
+post "/event-types/toggle-enabled" "{\"id\":$ET_ID2,\"enabled\":false,\"version\":$V}" > /dev/null
+V=$(et_detail "$ET_ID2" | jq -r '.data.version' | tr -d '\r')
+body=$(post "/event-types/update" "{\"id\":$ET_ID2,\"display_name\":\"地震(fix测试)\",\"perception_mode\":\"global\",\"default_severity\":95,\"default_ttl\":30,\"range\":0,\"version\":$V}")
+assert_code "fix.7 编辑成功" "0" "$body"
+
+# 恢复启用
+V=$(et_detail "$ET_ID2" | jq -r '.data.version' | tr -d '\r')
+post "/event-types/toggle-enabled" "{\"id\":$ET_ID2,\"enabled\":true,\"version\":$V}" > /dev/null
+
+echo ""
 
 # =============================================================================
 section "Part 6: 清理测试数据"

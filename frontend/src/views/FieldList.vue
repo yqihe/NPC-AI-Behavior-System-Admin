@@ -203,7 +203,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
 import EnabledGuardDialog from '@/components/EnabledGuardDialog.vue'
-import { fieldApi } from '@/api/fields'
+import { fieldApi, FIELD_ERR } from '@/api/fields'
 import type { FieldListItem, FieldListQuery, ReferenceItem } from '@/api/fields'
 import type { BizError } from '@/api/request'
 import { dictApi } from '@/api/dictionaries'
@@ -315,8 +315,10 @@ async function handleToggle(row: FieldListItem, val: boolean) {
     fetchList()
   } catch (err) {
     if (err === 'cancel') return
-    if ((err as BizError).code === 40010) {
+    if ((err as BizError).code === FIELD_ERR.VERSION_CONFLICT) {
       ElMessageBox.alert('数据已被其他用户修改，请刷新页面后重试。', '版本冲突', { type: 'warning' })
+      fetchList()
+      return
     }
     // 其他错误拦截器已 toast
   }
@@ -353,7 +355,7 @@ async function handleDelete(row: FieldListItem) {
     fetchList()
   } catch (err: unknown) {
     if (err === 'cancel') return
-    if ((err as BizError).code === 40005) {
+    if ((err as BizError).code === FIELD_ERR.REF_DELETE) {
       await handleShowRefs(row)
     }
     // 其他错误拦截器已 toast

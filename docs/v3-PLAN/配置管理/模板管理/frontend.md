@@ -192,3 +192,11 @@ const TEMPLATE_ERR_MSG: Record<number, string> = {
 | 41010 | `EDIT_NOT_DISABLED` | 列表 `EnabledGuardDialog` 前置拦截，理论不到此分支 |
 | 41011 | `VERSION_CONFLICT` | `ElMessageBox.alert` 提示后 `router.push('/templates')` |
 | 41012 | `FIELD_IS_REFERENCE` | `ElMessage.error('reference 字段必须先展开子字段再加入模板')` + `reloadFieldPool()` |
+
+---
+
+## 7. 关键实现细节
+
+- **version 存储**：`TemplateForm.vue` 使用独立 `const version = ref(0)` 存储版本号（在 `onMounted` 加载详情时赋值），提交时用 `version.value`。不使用 `template.value!.version` 非空断言，避免加载失败时 TypeError。
+- **reloadFieldPool 排序**：`reloadFieldPool()` 和初始加载一样，必须对字段池按 `id ASC` 排序（`.sort((a, b) => a.id - b.id)`），保证字段选择卡的展示顺序一致。
+- **ListData 共享**：`templates.ts` 从 `fields.ts` 导入 `ListData<T>` 和 `CheckNameResult`，不重复定义。

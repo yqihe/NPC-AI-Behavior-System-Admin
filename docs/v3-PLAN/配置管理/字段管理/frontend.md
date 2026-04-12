@@ -174,7 +174,7 @@ const FIELD_ERR = {
 | 40001 | `NAME_EXISTS` | form 内联红字：`nameStatus='taken'` + `nameMessage` |
 | 40002 | `NAME_INVALID` | form 内联红字：同上 |
 | 40005 | `REF_DELETE` | 列表删除时自动打开引用详情弹窗（兜底 race condition） |
-| 40010 | `VERSION_CONFLICT` | `ElMessageBox.alert` 提示"数据已被其他用户修改，请刷新" |
+| 40010 | `VERSION_CONFLICT` | `ElMessageBox.alert` 提示"数据已被其他用户修改，请刷新" + `fetchList()` 刷新列表 |
 | 40011 | `NOT_FOUND` | 编辑页加载失败时 `router.push('/fields')` |
 | 40015 | `EDIT_NOT_DISABLED` | 列表 `EnabledGuardDialog` 前端拦截，理论不会到 form |
 | 40016 | `REF_NESTED` | `ElMessage.error('不能引用 reference 类型字段')` |

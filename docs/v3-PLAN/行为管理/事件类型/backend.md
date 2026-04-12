@@ -111,10 +111,10 @@ CREATE TABLE IF NOT EXISTS event_type_schema (
 | POST | `/api/v1/event-types/list` | `EventTypeHandler.List` | 分页列表，支持 label 模糊搜索 + perception_mode 精确筛选 + enabled 筛选 |
 | POST | `/api/v1/event-types/create` | `EventTypeHandler.Create` | 创建事件类型，校验 name/displayName/perceptionMode/severity/ttl/range + 扩展字段值 |
 | POST | `/api/v1/event-types/detail` | `EventTypeHandler.Get` | 详情，返回 config_json 展开 + 当前启用的 extension_schema |
-| POST | `/api/v1/event-types/update` | `EventTypeHandler.Update` | 编辑（必须先停用），乐观锁，name 不可变 |
-| POST | `/api/v1/event-types/delete` | `EventTypeHandler.Delete` | 软删除（必须先停用） |
-| POST | `/api/v1/event-types/check-name` | `EventTypeHandler.CheckName` | name 唯一性校验 |
-| POST | `/api/v1/event-types/toggle-enabled` | `EventTypeHandler.ToggleEnabled` | 启用/停用切换，乐观锁 |
+| POST | `/api/v1/event-types/update` | `EventTypeHandler.Update` | 编辑（必须先停用），乐观锁，name 不可变。返回 `"保存成功"` |
+| POST | `/api/v1/event-types/delete` | `EventTypeHandler.Delete` | 软删除（必须先停用）。返回 `{id, name, label}` |
+| POST | `/api/v1/event-types/check-name` | `EventTypeHandler.CheckName` | name 完整格式校验（正则+长度）+ 唯一性校验 |
+| POST | `/api/v1/event-types/toggle-enabled` | `EventTypeHandler.ToggleEnabled` | 启用/停用切换（调用方指定目标状态 `enabled`），乐观锁。返回 `"操作成功"` |
 
 **系统字段校验规则（Handler 层）：**
 - `name`：非空 + `^[a-z][a-z0-9_]*$` + 长度 <= NameMaxLength
@@ -124,12 +124,24 @@ CREATE TABLE IF NOT EXISTS event_type_schema (
 - `default_ttl`：> 0
 - `range`：>= 0；`global` 模式后端强制置 0
 
+**Handler 层校验（与 Field/Template 一致模式）：**
+- 统一使用共享 `checkID()` / `checkVersion()`（定义在 field.go，错误消息中文：`"ID 不合法"` / `"版本号不合法"`）
+- slog Debug 日志在校验**之后**打印，格式为中文点分（如 `"handler.创建事件类型"`），与 Field/Template 一致
+- CheckName 调用完整 `h.checkName()` 做正则 + 长度校验，不仅是空值检查
+
 **业务规则（Service 层）：**
-- Create：name 唯一性检查（含软删除）→ 扩展字段值校验 → 拼 config_json → 写 MySQL → 清列表缓存
-- Update：查存在性 → 必须已停用 → 扩展字段值校验 → 拼 config_json → 乐观锁更新 → 清缓存
-- Delete：查存在性 → 必须已停用 → 软删除 → 清缓存
-- GetByID：Cache-Aside + 分布式锁防击穿 + 空标记防穿透
+- Create：name 唯一性检查（含软删除）→ 扩展字段值校验 → 拼 config_json → store.Create(req, configJSON) → 清列表缓存
+- Update：查存在性 → 必须已停用 → 扩展字段值校验 → 拼 config_json → store.Update(req, configJSON) 乐观锁 → 清缓存
+- Delete：查存在性 → 必须已停用 → 软删除 → 清缓存。返回 `*model.DeleteResult{ID, Name, Label(=DisplayName)}`
+- ToggleEnabled：接收 `*model.ToggleEnabledRequest`（调用方指定目标 `enabled` 状态，幂等安全），与 Field/Template 一致
+- GetByID：Cache-Aside + 分布式锁防击穿 + 空标记防穿透。缓存错误处理使用 `err == nil && hit` 模式（Redis 错误降级直查 MySQL），与 Field/Template 一致
+- CheckName：成功时返回 `{available: true, message: "该标识可用"}`，与 Field/Template 一致
+- 所有 store 错误统一 `slog.Error` + `fmt.Errorf("xxx: %w", err)` 包装，与 Field/Template 一致
 - 扩展字段值校验（`validateExtensions`）：遍历 extensions map，按 field_name 查内存缓存拿 schema，调 `constraint.ValidateValue` 校验
+
+**Store 参数风格（与 Field/Template 一致）：**
+- `Create(ctx, *model.CreateEventTypeRequest, configJSON)` — 用请求结构体，不用展开的位置参数
+- `Update(ctx, *model.UpdateEventTypeRequest, configJSON)` — 同上
 
 ### 扩展字段 Schema 管理（5 个接口）
 
@@ -171,10 +183,10 @@ CREATE TABLE IF NOT EXISTS event_type_schema (
 - 单条写操作（Create / Update / Delete / ToggleEnabled）：`DEL event_types:detail:{id}` + `INCR event_types:list:version`
 - 列表失效采用版本号递增方式，禁止 SCAN+DEL
 
-**详情读取流程（Cache-Aside + 分布式锁 + 空标记）：**
-1. 查 Redis 缓存，命中则返回（空标记 → 返回 404）
-2. 未命中 → SETNX 获取分布式锁 → double-check 缓存
-3. 查 MySQL → 写缓存（nil 写空标记）
+**详情读取流程（Cache-Aside + 分布式锁 + 空标记，与 Field/Template 完全一致）：**
+1. 查 Redis 缓存：`err == nil && hit` 才使用缓存结果（Redis 错误降级直查 MySQL）
+2. 未命中 → SETNX 获取分布式锁（锁失败 `slog.Warn` 记录后继续）→ double-check 缓存
+3. 查 MySQL → 写缓存（nil 写空标记防穿透）
 
 ### event_type_schema 缓存（内存）
 

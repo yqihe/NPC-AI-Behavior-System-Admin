@@ -29,6 +29,23 @@
         搜索
       </el-button>
       <el-button @click="handleReset">重置</el-button>
+      <div class="filter-spacer"></div>
+      <el-button-group class="sort-toggle">
+        <el-button
+          :type="sortMode === 'id_desc' ? 'primary' : 'default'"
+          size="small"
+          @click="setSortMode('id_desc')"
+        >
+          ID 倒序
+        </el-button>
+        <el-button
+          :type="sortMode === 'sort_asc' ? 'primary' : 'default'"
+          size="small"
+          @click="setSortMode('sort_asc')"
+        >
+          排序正序
+        </el-button>
+      </el-button-group>
     </div>
 
     <!-- 数据表格 -->
@@ -107,6 +124,9 @@ const loading = ref(false)
 const tableData = ref<EventTypeSchemaFull[]>([])
 const guardRef = ref<InstanceType<typeof EnabledGuardDialog> | null>(null)
 
+type SortMode = 'id_desc' | 'sort_asc'
+const sortMode = ref<SortMode>('id_desc')
+
 const query = reactive<ExtSchemaListQuery>({
   enabled: undefined,
 })
@@ -122,8 +142,7 @@ async function fetchList() {
     }
     const res = await eventTypeApi.schemaList(params)
     const items = res.data?.items || []
-    // 后端按 sort_order ASC 排序，前端统一按 ID 倒序展示（与其他列表一致）
-    items.sort((a, b) => b.id - a.id)
+    applySorting(items)
     tableData.value = items
   } catch {
     // 拦截器已 toast
@@ -145,6 +164,20 @@ function handleSearch() {
 function handleReset() {
   query.enabled = undefined
   fetchList()
+}
+
+function applySorting(items: EventTypeSchemaFull[]) {
+  if (sortMode.value === 'sort_asc') {
+    items.sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
+  } else {
+    items.sort((a, b) => b.id - a.id)
+  }
+}
+
+function setSortMode(mode: SortMode) {
+  if (sortMode.value === mode) return
+  sortMode.value = mode
+  applySorting(tableData.value)
 }
 
 // ---------- 行操作 ----------
@@ -282,6 +315,14 @@ function formatTime(str: string) {
 
 .filter-item {
   width: 180px;
+}
+
+.filter-spacer {
+  flex: 1;
+}
+
+.sort-toggle {
+  flex-shrink: 0;
 }
 
 .table-wrap {

@@ -217,6 +217,8 @@ async function handleToggle(row: EventTypeListItem, val: boolean) {
     if (err === 'cancel') return
     if ((err as BizError).code === EVENT_TYPE_ERR.VERSION_CONFLICT) {
       ElMessageBox.alert('数据已被其他用户修改，请刷新页面后重试。', '版本冲突', { type: 'warning' })
+      fetchList()
+      return
     }
     // 其他错误拦截器已 toast
   }

@@ -110,19 +110,21 @@
 
           <!-- 感知范围 -->
           <el-form-item label="感知范围" prop="range">
-            <el-input-number
-              v-model="form.range"
-              :controls="false"
-              :min="0"
-              :disabled="form.perception_mode === 'global'"
-              placeholder=">= 0"
-              style="width: 200px"
-            />
-            <div v-if="form.perception_mode === 'global'" class="field-warn">
-              <el-icon><WarningFilled /></el-icon>
-              当感知模式为 Global 时范围自动置为 0
+            <div class="field-block">
+              <el-input-number
+                v-model="form.range"
+                :controls="false"
+                :min="0"
+                :disabled="form.perception_mode === 'global'"
+                placeholder=">= 0"
+                style="width: 200px"
+              />
+              <span v-if="form.perception_mode !== 'global'" class="field-extra">必须 ≥ 0</span>
+              <div v-if="form.perception_mode === 'global'" class="field-warn">
+                <el-icon><WarningFilled /></el-icon>
+                当感知模式为 Global 时范围自动置为 0
+              </div>
             </div>
-            <span v-else class="field-extra">必须 ≥ 0</span>
           </el-form-item>
         </el-form>
       </div>
@@ -598,11 +600,15 @@ async function handleSubmit() {
   color: #F56C6C;
 }
 
+.field-block {
+  width: 100%;
+}
+
 .field-warn {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-top: 4px;
+  margin-top: 6px;
   font-size: 12px;
   color: #E6A23C;
 }
@@ -626,7 +632,7 @@ async function handleSubmit() {
 }
 
 .ext-hint {
-  margin-top: 4px;
+  margin-top: 8px;
   font-size: 12px;
   color: #909399;
 }
