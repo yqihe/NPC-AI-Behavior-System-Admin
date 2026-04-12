@@ -30,6 +30,10 @@
             <el-icon><Lightning /></el-icon>
             <span>事件类型</span>
           </el-menu-item>
+          <el-menu-item index="/event-type-schemas">
+            <el-icon><Tickets /></el-icon>
+            <span>扩展字段</span>
+          </el-menu-item>
         </el-sub-menu>
       </el-menu>
     </el-aside>
@@ -42,7 +46,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { List, Files, Setting, Lightning } from '@element-plus/icons-vue'
+import { List, Files, Setting, Lightning, Tickets } from '@element-plus/icons-vue'
 
 const route = useRoute()
 

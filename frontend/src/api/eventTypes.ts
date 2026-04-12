@@ -117,6 +117,46 @@ export interface EventTypeSchemaFull {
   updated_at: string
 }
 
+/** Schema 创建请求 */
+export interface CreateExtSchemaRequest {
+  field_name: string
+  field_label: string
+  field_type: string
+  constraints: Record<string, unknown>
+  default_value: unknown
+  sort_order: number
+}
+
+/** Schema 编辑请求（field_name / field_type 不可变） */
+export interface UpdateExtSchemaRequest {
+  id: number
+  field_label: string
+  constraints: Record<string, unknown>
+  default_value: unknown
+  sort_order: number
+  version: number
+}
+
+/** Schema 列表查询参数 */
+export interface ExtSchemaListQuery {
+  enabled?: boolean
+}
+
+// ─── 扩展字段 Schema 错误码（与 backend errcode 42020-42031 保持一致）───
+
+export const EXT_SCHEMA_ERR = {
+  NAME_EXISTS:         42020,
+  NAME_INVALID:        42021,
+  NOT_FOUND:           42022,
+  DISABLED:            42023,
+  TYPE_INVALID:        42024,
+  CONSTRAINTS_INVALID: 42025,
+  DEFAULT_INVALID:     42026,
+  DELETE_NOT_DISABLED: 42027,
+  VERSION_CONFLICT:    42030,
+  EDIT_NOT_DISABLED:   42031,
+} as const
+
 // ─── API 函数 ───
 
 export const eventTypeApi = {
@@ -144,4 +184,24 @@ export const eventTypeApi = {
   /** 获取已启用的扩展字段 Schema 列表（新建表单用） */
   schemaListEnabled: () =>
     request.post('/event-type-schema/list', { enabled: true }) as Promise<ApiResponse<{ items: EventTypeSchemaFull[] }>>,
+
+  /** Schema 列表（可按 enabled 过滤） */
+  schemaList: (params?: ExtSchemaListQuery) =>
+    request.post('/event-type-schema/list', params || {}) as Promise<ApiResponse<{ items: EventTypeSchemaFull[] }>>,
+
+  /** 创建 Schema */
+  schemaCreate: (data: CreateExtSchemaRequest) =>
+    request.post('/event-type-schema/create', data) as Promise<ApiResponse<{ id: number; field_name: string }>>,
+
+  /** 编辑 Schema */
+  schemaUpdate: (data: UpdateExtSchemaRequest) =>
+    request.post('/event-type-schema/update', data) as Promise<ApiResponse<string>>,
+
+  /** 删除 Schema */
+  schemaDelete: (id: number) =>
+    request.post('/event-type-schema/delete', { id }) as Promise<ApiResponse<string>>,
+
+  /** 启用/禁用 Schema */
+  schemaToggleEnabled: (id: number, enabled: boolean, version: number) =>
+    request.post('/event-type-schema/toggle-enabled', { id, enabled, version }) as Promise<ApiResponse<string>>,
 }

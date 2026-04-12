@@ -2,7 +2,7 @@
   <div class="constraint-panel">
     <div class="constraint-title">
       <el-tag size="small">{{ typeName }}</el-tag>
-      <span class="constraint-label">{{ typeName === 'integer' ? '整数' : '浮点数' }}类型 — 约束配置</span>
+      <span class="constraint-label">{{ typeName === 'integer' || typeName === 'int' ? '整数' : '浮点数' }}类型 — 约束配置</span>
     </div>
     <div v-if="restricted" class="constraint-warn">
       <el-icon><WarningFilled /></el-icon>

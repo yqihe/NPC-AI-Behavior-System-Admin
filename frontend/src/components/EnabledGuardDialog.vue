@@ -73,11 +73,11 @@ import {
 } from '@element-plus/icons-vue'
 import { fieldApi, FIELD_ERR } from '@/api/fields'
 import { templateApi, TEMPLATE_ERR } from '@/api/templates'
-import { eventTypeApi, EVENT_TYPE_ERR } from '@/api/eventTypes'
+import { eventTypeApi, EVENT_TYPE_ERR, EXT_SCHEMA_ERR } from '@/api/eventTypes'
 import type { BizError } from '@/api/request'
 
 type GuardAction = 'edit' | 'delete'
-type EntityType = 'field' | 'template' | 'event-type'
+type EntityType = 'field' | 'template' | 'event-type' | 'event-type-schema'
 
 interface GuardEntity {
   id: number
@@ -96,6 +96,7 @@ const entity = ref<GuardEntity | null>(null)
 const entityTypeLabel = computed(() => {
   if (entityType.value === 'field') return '字段'
   if (entityType.value === 'event-type') return '事件类型'
+  if (entityType.value === 'event-type-schema') return '扩展字段'
   return '模板'
 })
 
@@ -103,6 +104,7 @@ const entityTypeLabel = computed(() => {
 const refTargetLabel = computed(() => {
   if (entityType.value === 'field') return '模板或字段'
   if (entityType.value === 'event-type') return 'FSM 或 BT'
+  if (entityType.value === 'event-type-schema') return '事件类型'
   return 'NPC'
 })
 
@@ -126,6 +128,9 @@ const reasonText = computed(() => {
     }
     if (entityType.value === 'event-type') {
       return '已启用的事件类型对 FSM/BT 可见，任意修改可能导致引用方看到不稳定的配置。请先停用，再进入编辑。'
+    }
+    if (entityType.value === 'event-type-schema') {
+      return '已启用的扩展字段对事件类型表单可见，任意修改可能导致表单配置不稳定。请先停用，再进入编辑。'
     }
     return '已启用的模板对 NPC 管理页可见，允许任意修改可能导致策划在配置不稳定时选用。请先停用，再进入编辑。'
   }
@@ -163,6 +168,16 @@ async function onActOnce() {
     } else if (entityType.value === 'event-type') {
       const detail = await eventTypeApi.detail(id)
       await eventTypeApi.toggleEnabled(id, false, detail.data.version)
+    } else if (entityType.value === 'event-type-schema') {
+      // Schema 无 detail 接口，用 list 查找目标项获取 version
+      const listRes = await eventTypeApi.schemaList()
+      const target = (listRes.data?.items || []).find((s) => s.id === id)
+      if (!target) {
+        ElMessage.error('扩展字段不存在')
+        visible.value = false
+        return
+      }
+      await eventTypeApi.schemaToggleEnabled(id, false, target.version)
     } else {
       const detail = await templateApi.detail(id)
       await templateApi.toggleEnabled(id, false, detail.data.version)
@@ -176,6 +191,8 @@ async function onActOnce() {
         path = `/fields/${id}/edit`
       } else if (entityType.value === 'event-type') {
         path = `/event-types/${id}/edit`
+      } else if (entityType.value === 'event-type-schema') {
+        path = `/event-type-schemas/${id}/edit`
       } else {
         path = `/templates/${id}/edit`
       }
@@ -192,6 +209,8 @@ async function onActOnce() {
       conflictCode = FIELD_ERR.VERSION_CONFLICT
     } else if (entityType.value === 'event-type') {
       conflictCode = EVENT_TYPE_ERR.VERSION_CONFLICT
+    } else if (entityType.value === 'event-type-schema') {
+      conflictCode = EXT_SCHEMA_ERR.VERSION_CONFLICT
     } else {
       conflictCode = TEMPLATE_ERR.VERSION_CONFLICT
     }

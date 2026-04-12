@@ -82,6 +82,30 @@ const router = createRouter({
       component: () => import('@/views/EventTypeForm.vue'),
       meta: { title: '编辑事件类型', isCreate: false },
     },
+    {
+      path: '/event-type-schemas',
+      name: 'event-type-schema-list',
+      component: () => import('@/views/EventTypeSchemaList.vue'),
+      meta: { title: '扩展字段管理' },
+    },
+    {
+      path: '/event-type-schemas/create',
+      name: 'event-type-schema-create',
+      component: () => import('@/views/EventTypeSchemaForm.vue'),
+      meta: { title: '新建扩展字段', isCreate: true },
+    },
+    {
+      path: '/event-type-schemas/:id/view',
+      name: 'event-type-schema-view',
+      component: () => import('@/views/EventTypeSchemaForm.vue'),
+      meta: { title: '查看扩展字段', isCreate: false, isView: true },
+    },
+    {
+      path: '/event-type-schemas/:id/edit',
+      name: 'event-type-schema-edit',
+      component: () => import('@/views/EventTypeSchemaForm.vue'),
+      meta: { title: '编辑扩展字段', isCreate: false },
+    },
   ],
 })
 
