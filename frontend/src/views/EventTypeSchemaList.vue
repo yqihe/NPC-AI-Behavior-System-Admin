@@ -45,7 +45,7 @@
         <el-table-column label="类型" width="100">
           <template #default="{ row }">
             <el-tag size="small" :type="typeBadgeType(row.field_type)">
-              {{ row.field_type }}
+              {{ typeLabel(row.field_type) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -226,6 +226,17 @@ function typeBadgeType(type: string) {
     select: 'info',
   }
   return map[type] || 'info'
+}
+
+function typeLabel(type: string) {
+  const map: Record<string, string> = {
+    int: '整数',
+    float: '浮点数',
+    string: '文本',
+    bool: '布尔',
+    select: '选择',
+  }
+  return map[type] || type
 }
 
 function formatTime(str: string) {

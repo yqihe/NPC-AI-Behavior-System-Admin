@@ -29,7 +29,7 @@
         class="filter-item"
       >
         <el-option label="已启用" :value="true" />
-        <el-option label="已停用" :value="false" />
+        <el-option label="已禁用" :value="false" />
       </el-select>
       <el-button type="primary" @click="handleSearch">
         <el-icon><Search /></el-icon>
@@ -355,8 +355,8 @@ function formatTime(str: string) {
   color: #909399;
 }
 
-/* 停用模板整行 opacity 0.5，但操作列（最后一列）保持高亮 */
-:deep(.row-disabled td:not(:last-child)) {
+/* 禁用行整行 opacity 0.5，但启用开关 + 创建时间 + 操作列保持高亮 */
+:deep(.row-disabled td:not(:nth-last-child(-n+3))) {
   opacity: 0.5;
 }
 </style>

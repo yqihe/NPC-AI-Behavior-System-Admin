@@ -28,9 +28,9 @@
         clearable
         class="filter-item"
       >
-        <el-option label="Visual" value="visual" />
-        <el-option label="Auditory" value="auditory" />
-        <el-option label="Global" value="global" />
+        <el-option label="视觉 (Visual)" value="visual" />
+        <el-option label="听觉 (Auditory)" value="auditory" />
+        <el-option label="全局 (Global)" value="global" />
       </el-select>
       <el-select
         v-model="query.enabled"
@@ -275,9 +275,9 @@ function modeBadgeType(mode: string): '' | 'success' | 'info' | 'warning' | 'dan
 
 function modeLabel(mode: string): string {
   const map: Record<string, string> = {
-    visual: 'Visual',
-    auditory: 'Auditory',
-    global: 'Global',
+    visual: '视觉',
+    auditory: '听觉',
+    global: '全局',
   }
   return map[mode] || mode
 }
@@ -353,7 +353,7 @@ function formatTime(str: string) {
   color: #909399;
 }
 
-:deep(.row-disabled td:not(:nth-last-child(-n+1))) {
+:deep(.row-disabled td:not(:nth-last-child(-n+3))) {
   opacity: 0.5;
 }
 </style>
