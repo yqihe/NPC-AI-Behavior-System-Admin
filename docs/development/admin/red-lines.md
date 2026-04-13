@@ -89,6 +89,16 @@
 - **禁止**同一 store 用 interface 类型接收 `db` 而其他 store 用 `*sqlx.DB`。全部统一 `*sqlx.DB`
 - **禁止**新模块 redis cache 文件命名不带 `_cache` 后缀。统一 `{module}_cache.go`（如 `field_cache.go`、`fsm_config_cache.go`）
 
+## 禁止 Element Plus 表单禁用状态被子组件覆盖
+
+- **禁止**在 `el-form :disabled="true"` 内的子组件用 `:disabled="someCondition"` 而不包含 `isView`。Element Plus 的 `useFormDisabled` 内部使用 `??`（nullish coalescing）而非 `||`，子组件显式传入 `:disabled="false"` 会**覆盖**表单级 disabled。所有需要自定义 disabled 条件的组件必须写成 `:disabled="isView || someCondition"`
+- **禁止**依赖 `el-form :disabled` 来禁用 `el-link`、`el-icon @click` 等非表单感知元素。这些元素不参与 Element Plus 的 form disabled 注入，必须用 `v-if="!disabled"` 显式隐藏或用 `:disabled` / `pointer-events: none` 单独控制
+
+## 禁止业务错误码漏处理
+
+- **禁止**表单提交的 `.catch` 只写通用兜底而不逐一处理 API 定义的错误码。每个 `errcode/codes.go` 中定义的业务错误码都必须在表单 catch 块中有对应的中文用户提示，不能依赖全局拦截器的 toast（拦截器只显示后端原始消息，对策划不友好）
+- **禁止**新增后端错误码后不同步更新前端 catch 块。错误码和前端处理必须在同一 PR 中完成
+
 ## 禁止表格排序按钮用 el-button text + Unicode 箭头
 
 - **禁止**已选字段配置、字段优先级等 table 内行排序按钮用 `el-button text` 包 Unicode `↑` `↓`。视觉太粗 + 带按钮 padding + 不统一。必须用纯 `el-icon` 包 `ArrowUp` / `ArrowDown`，禁用态 `#C0C4CC` 灰、可点态 `#409EFF` 蓝、hover 态浅蓝底 `#ECF5FF`，两按钮 gap 14，容器 width 90 居中对齐（对齐 mockup `oE1Hj` / `ylI4t`）

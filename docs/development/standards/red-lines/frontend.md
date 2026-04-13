@@ -25,6 +25,11 @@
 - **禁止**用驼峰/下划线/全小写变体重命名 key（`minLength` ≠ `min_length` ≠ `minimum_length`）。DB 层不会报错，但收紧检查、导出契约、跨端读取会全部静默失效
 - **禁止**在非表单组件里假设字段 detail 返回富对象。UI 富对象（如 `ref_fields: [{id, name, label}]`）只存在于 **编辑表单组件**（`FieldForm.vue`）的本地 state，只在 `loadFieldDetail` 转入、`buildSubmitProperties` 转出。**任何非表单组件读字段 detail 时必须读 `refs: number[]`**（后端权威），再自行并发拉子字段元数据。反模式：模板的 reference popover 假设 `ref_fields` 直接返回 → popover 永远空白
 
+## 禁止 Element Plus 表单禁用状态被子组件覆盖
+
+- **禁止**在 `el-form :disabled="true"` 内给子组件写 `:disabled="someCondition"` 而不前缀查看态。Element Plus `useFormDisabled` 使用 `??`（nullish coalescing）：子组件显式传入 `disabled` 值（包括 `false`）会覆盖表单级 disabled。正确写法：`:disabled="isView || someCondition"`
+- **禁止**假设 `el-link`、`el-icon @click` 等元素受 `el-form :disabled` 控制。这些元素不参与 Element Plus 的 form disabled 注入机制，必须用 `v-if="!disabled"` 显式隐藏或独立控制交互状态
+
 ## 禁止跳过类型检查就上线
 
 - **禁止**只跑 `vite build` 就认为前端没问题。`vite build` 不调用 `vue-tsc`，TS 错误能被静默打包。提交前/CI 必须显式跑 `npx vue-tsc --noEmit`

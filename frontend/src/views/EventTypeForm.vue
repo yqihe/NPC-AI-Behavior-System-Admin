@@ -115,7 +115,7 @@
                 v-model="form.range"
                 :controls="false"
                 :min="0"
-                :disabled="form.perception_mode === 'global'"
+                :disabled="isView || form.perception_mode === 'global'"
                 placeholder=">= 0"
                 style="width: 200px"
               />
@@ -158,7 +158,7 @@
               v-if="ext.field_type === 'int'"
               v-model="extensionValues[ext.field_name]"
               :controls="false"
-              :disabled="!ext.enabled"
+              :disabled="isView || !ext.enabled"
               :placeholder="`默认: ${ext.default_value}`"
               style="width: 200px"
               @change="() => markDirty(ext.field_name)"
@@ -169,7 +169,7 @@
               v-model="extensionValues[ext.field_name]"
               :controls="false"
               :step="0.1"
-              :disabled="!ext.enabled"
+              :disabled="isView || !ext.enabled"
               :placeholder="`默认: ${ext.default_value}`"
               style="width: 200px"
               @change="() => markDirty(ext.field_name)"
@@ -178,7 +178,7 @@
             <el-input
               v-else-if="ext.field_type === 'string'"
               v-model="extensionValues[ext.field_name]"
-              :disabled="!ext.enabled"
+              :disabled="isView || !ext.enabled"
               :placeholder="`默认: ${ext.default_value}`"
               style="width: 100%"
               @input="() => markDirty(ext.field_name)"
@@ -187,7 +187,7 @@
             <el-switch
               v-else-if="ext.field_type === 'bool'"
               :model-value="Boolean(extensionValues[ext.field_name])"
-              :disabled="!ext.enabled"
+              :disabled="isView || !ext.enabled"
               @change="(val: string | number | boolean) => { extensionValues[ext.field_name] = Boolean(val); markDirty(ext.field_name) }"
             />
             <!-- select -->
@@ -195,7 +195,7 @@
               v-else-if="ext.field_type === 'select'"
               v-model="extensionValues[ext.field_name]"
               placeholder="请选择"
-              :disabled="!ext.enabled"
+              :disabled="isView || !ext.enabled"
               style="width: 200px"
               @change="() => markDirty(ext.field_name)"
             >
@@ -214,7 +214,7 @@
       </div>
 
       <!-- 表单操作（查看模式隐藏） -->
-      <div v-if="!isView" class="form-card form-footer">
+      <div v-if="!isView" class="form-card form-actions">
         <el-button @click="$router.push('/event-types')">取消</el-button>
         <el-button type="primary" :loading="submitting" @click="handleSubmit">
           保存
@@ -492,6 +492,26 @@ async function handleSubmit() {
       router.push('/event-types')
       return
     }
+    if (bizErr.code === EVENT_TYPE_ERR.EDIT_NOT_DISABLED) {
+      ElMessage.warning('请先禁用该事件类型后再编辑')
+      return
+    }
+    if (bizErr.code === EVENT_TYPE_ERR.EXT_VALUE_INVALID) {
+      ElMessage.error(`扩展字段值不合法：${bizErr.message}`)
+      return
+    }
+    if (bizErr.code === EVENT_TYPE_ERR.SEVERITY_INVALID) {
+      ElMessage.error('严重度必须在 0 ~ 100 之间')
+      return
+    }
+    if (bizErr.code === EVENT_TYPE_ERR.TTL_INVALID) {
+      ElMessage.error('TTL 必须大于 0')
+      return
+    }
+    if (bizErr.code === EVENT_TYPE_ERR.RANGE_INVALID) {
+      ElMessage.error('感知范围必须 ≥ 0')
+      return
+    }
     // 其他错误拦截器已 toast
   } finally {
     submitting.value = false
@@ -608,7 +628,7 @@ async function handleSubmit() {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-top: 6px;
+  margin-top: 4px;
   font-size: 12px;
   color: #E6A23C;
 }
@@ -632,7 +652,7 @@ async function handleSubmit() {
 }
 
 .ext-hint {
-  margin-top: 8px;
+  margin-left: 12px;
   font-size: 12px;
   color: #909399;
 }
@@ -645,10 +665,10 @@ async function handleSubmit() {
   margin-bottom: 4px;
 }
 
-.form-footer {
+.form-actions {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  padding: 20px 32px;
+  padding-top: 16px;
 }
 </style>

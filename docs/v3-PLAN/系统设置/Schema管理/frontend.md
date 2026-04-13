@@ -49,4 +49,23 @@
 | 42027 删除须先禁用 | `ElMessage.warning` |
 | 42030 版本冲突 | `ElMessageBox.alert` 提示刷新 |
 | 42031 编辑须先禁用 | `ElMessage.warning` |
+| 42024 类型非法 | `ElMessage.error` 提示字段类型不合法 |
+| 42025 约束非法 | `ElMessage.error` 提示约束参数不合法 |
+| 42026 默认值非法 | `ElMessage.error` 提示默认值不符合约束条件 |
 | 其他校验错误 | 拦截器 toast |
+
+---
+
+## 关键实现细节
+
+### Toggle 预取版本号
+
+`EventTypeSchemaList.vue` 的 `handleToggle` 在调用 `schemaToggleEnabled` 前，先调用 `schemaList()` 重新获取最新列表，从中取出目标 Schema 的当前 `version`。这避免了列表页缓存的 version 与实际不一致导致的乐观锁冲突（race condition）。
+
+### 约束组件 `validate()` 校验
+
+`EventTypeSchemaForm.vue` 持有 `constraintRef`（模板引用），提交前调用 `constraintRef.value?.validate()` 进行约束级前端校验。同时表单提交前额外校验默认值是否在 min/max 约束范围内，校验失败直接 `ElMessage.error` 提示，不提交后端。
+
+### 约束组件 `disabled` prop
+
+`FieldConstraintSelect` 接受 `disabled` prop，在查看模式下传入 `true`，禁用所有内部控件。

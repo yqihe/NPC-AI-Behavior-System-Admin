@@ -88,12 +88,14 @@
           <el-form-item v-if="form.field_type" label="约束配置">
             <FieldConstraintInteger
               v-if="form.field_type === 'int' || form.field_type === 'float'"
+              ref="constraintRef"
               v-model="form.constraints"
               :restricted="false"
               :type-name="form.field_type"
             />
             <FieldConstraintString
               v-else-if="form.field_type === 'string'"
+              ref="constraintRef"
               v-model="form.constraints"
               :restricted="false"
             />
@@ -102,8 +104,10 @@
             </div>
             <FieldConstraintSelect
               v-else-if="form.field_type === 'select'"
+              ref="constraintRef"
               v-model="form.constraints"
               :restricted="false"
+              :disabled="isView"
             />
           </el-form-item>
 
@@ -204,6 +208,7 @@ const isCreate = route.meta.isCreate as boolean
 const isView = (route.meta.isView as boolean) || false
 
 const formRef = ref<FormInstance>()
+const constraintRef = ref<{ validate: () => string | null } | null>(null)
 const submitting = ref(false)
 const nameStatus = ref<'' | 'valid' | 'invalid' | 'taken'>('')
 const nameMessage = ref('')
@@ -364,9 +369,33 @@ async function handleSubmit() {
     return
   }
 
+  // 约束组件校验
+  if (constraintRef.value?.validate) {
+    const constraintErr = constraintRef.value.validate()
+    if (constraintErr) {
+      ElMessage.warning(constraintErr)
+      return
+    }
+  }
+
+  // 默认值范围校验（数值类型）
+  const defaultValue = buildDefaultValue()
+  if (form.field_type === 'int' || form.field_type === 'float') {
+    const numVal = defaultValue as number
+    const min = form.constraints.min as number | undefined
+    const max = form.constraints.max as number | undefined
+    if (min !== undefined && numVal < min) {
+      ElMessage.warning(`默认值不能小于最小值 ${min}`)
+      return
+    }
+    if (max !== undefined && numVal > max) {
+      ElMessage.warning(`默认值不能大于最大值 ${max}`)
+      return
+    }
+  }
+
   submitting.value = true
   try {
-    const defaultValue = buildDefaultValue()
 
     if (isCreate) {
       await eventTypeApi.schemaCreate({
@@ -415,7 +444,19 @@ async function handleSubmit() {
       router.push('/event-type-schemas')
       return
     }
-    // 其他错误（CONSTRAINTS_INVALID / DEFAULT_INVALID / TYPE_INVALID）拦截器已 toast
+    if (bizErr.code === EXT_SCHEMA_ERR.CONSTRAINTS_INVALID) {
+      ElMessage.error(`约束配置不合法：${bizErr.message}`)
+      return
+    }
+    if (bizErr.code === EXT_SCHEMA_ERR.DEFAULT_INVALID) {
+      ElMessage.error(`默认值不满足约束条件：${bizErr.message}`)
+      return
+    }
+    if (bizErr.code === EXT_SCHEMA_ERR.TYPE_INVALID) {
+      ElMessage.error('不支持的字段类型')
+      return
+    }
+    // 其他错误拦截器已 toast
   } finally {
     submitting.value = false
   }
@@ -511,7 +552,7 @@ async function handleSubmit() {
 }
 
 .field-extra-hint {
-  margin-top: 4px;
+  margin-left: 12px;
   font-size: 12px;
   color: #909399;
 }

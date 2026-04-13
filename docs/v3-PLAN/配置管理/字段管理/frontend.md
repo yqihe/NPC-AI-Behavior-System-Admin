@@ -179,5 +179,25 @@ const FIELD_ERR = {
 | 40015 | `EDIT_NOT_DISABLED` | 列表 `EnabledGuardDialog` 前端拦截，理论不会到 form |
 | 40016 | `REF_NESTED` | `ElMessage.error('不能引用 reference 类型字段')` |
 | 40017 | `REF_EMPTY` | `ElMessage.error('reference 字段必须至少选择一个目标字段')` |
-| 40006/40007 | `REF_CHANGE_TYPE` / `REF_TIGHTEN` | 走 request 拦截器默认 toast |
+| 40006 | `REF_CHANGE_TYPE` | `ElMessage.error` 提示被引用字段不允许改类型 |
+| 40007 | `REF_TIGHTEN` | `ElMessage.error` 提示约束收紧会影响引用方 |
+| 40009 | `CYCLIC_REF` | `ElMessage.error` 提示循环引用 |
+| 40013 | `REF_DISABLED` | `ElMessage.error` 提示引用的目标字段已停用 |
+| 40014 | `REF_NOT_FOUND` | `ElMessage.error` 提示引用的目标字段不存在 |
 | 其他 | — | 走 request 拦截器默认 toast |
+
+---
+
+## 7. 关键实现细节
+
+### 约束组件 `validate()` 模式
+
+所有约束组件（`FieldConstraintInteger`、`FieldConstraintString`、`FieldConstraintSelect`）通过 `defineExpose({ validate })` 暴露校验方法。`FieldForm.vue` 持有 `constraintRef`（模板引用），提交前调用 `constraintRef.value?.validate()` 进行约束级校验（如 min ≤ max、minLength ≤ maxLength 等）。校验失败返回 `false` 并内联提示，不走后端。
+
+### View 模式 disabled 修复
+
+`FieldForm.vue` 字段类型下拉的 disabled 条件为 `isView || (!isCreate && refCount > 0)`，而非仅 `!isCreate && refCount > 0`。原因：Element Plus 的 `el-select` 在 `disabled` 为 `undefined ?? false` 时会覆盖为 `false`，导致查看模式下类型下拉可操作。显式加 `isView ||` 前缀确保查看模式始终禁用。
+
+### 约束组件 `disabled` prop
+
+`FieldConstraintSelect` 和 `FieldConstraintReference` 接受 `disabled` prop，在查看模式下传入 `true`，禁用所有内部控件（选项列表、添加/删除按钮等）。

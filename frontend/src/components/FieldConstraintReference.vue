@@ -12,7 +12,7 @@
     <!-- 引用列表头 -->
     <div class="ref-header">
       <span class="ref-label">引用字段列表</span>
-      <el-link type="primary" :underline="false" @click="showAddDropdown = true">
+      <el-link v-if="!disabled" type="primary" :underline="false" @click="showAddDropdown = true">
         <el-icon><Plus /></el-icon>
         添加引用
       </el-link>
@@ -51,7 +51,7 @@
         <span class="ref-name">{{ item.name }}</span>
         <span class="ref-label-text">{{ item.label }}</span>
         <span class="ref-spacer"></span>
-        <el-icon class="del-icon" @click="removeRef(idx)"><Close /></el-icon>
+        <el-icon v-if="!disabled" class="del-icon" @click="removeRef(idx)"><Close /></el-icon>
       </div>
       <div v-if="refFields.length === 0" class="ref-empty">
         暂无引用字段，请点击「添加引用」
@@ -99,6 +99,7 @@ interface RefConstraints {
 const props = defineProps<{
   modelValue?: RefConstraints
   restricted?: boolean
+  disabled?: boolean
   currentFieldId?: number
 }>()
 

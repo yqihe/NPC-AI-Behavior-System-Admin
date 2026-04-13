@@ -31,6 +31,8 @@
 - **el-slider 精度**：step 默认 1，小数需显式 `:step="0.1"`
 - **ElMessage/ElMessageBox 样式缺失**：auto-import 插件只处理模板组件，`ElMessage`、`ElMessageBox`、`ElNotification` 是命令式 JS API，样式不会自动引入。必须在 `main.ts` 手动导入：`import 'element-plus/theme-chalk/el-message.css'` 等，否则弹窗不显示
 - **多级侧栏必须用 `el-sub-menu` 而不是 `el-menu-item-group`**：`el-menu-item-group` 只是一个静态分组标题 + 子项容器，**不支持点击折叠/展开**。看起来能用，但当子模块增加到 5+ 个时侧栏会被撑爆没有收起机制。多级菜单必须用 `el-sub-menu`（原生支持折叠、展开箭头、`default-openeds` 初始展开），一级组名用 `#title` slot 定义大号加粗字样，二级项用 `el-menu-item` 缩进展示
+- **`el-form :disabled` 与子组件 `:disabled` 的交互**：Element Plus 的 `useFormDisabled` 内部用 `??`（nullish coalescing）合并表单级和组件级 disabled。当子组件显式传入 `:disabled="false"` 时，`false ?? true` 结果为 `false`，表单级禁用被覆盖。需要自定义 disabled 条件的子组件必须写成 `:disabled="isView || someCondition"`，确保查看态下不会被覆盖
+- **自定义组件 `defineExpose({ validate })` 模式**：自定义约束/子表单组件通过 `defineExpose` 暴露 `validate(): string | null` 方法，父组件通过 ref 在提交前调用。返回 `null` 表示通过，返回字符串为错误消息。用于 el-form rules 无法覆盖的跨字段逻辑校验（min > max、空选项、重复值等）
 
 ## Axios / HTTP
 

@@ -75,6 +75,22 @@ function update(key: string, val: number | null | undefined) {
   }
   emit('update:modelValue', next)
 }
+
+/** 供父组件调用的校验方法 */
+function validate(): string | null {
+  const min = constraints.value.min as number | undefined
+  const max = constraints.value.max as number | undefined
+  const step = constraints.value.step as number | undefined
+  if (min !== undefined && max !== undefined && min > max) {
+    return '最小值不能大于最大值'
+  }
+  if (step !== undefined && step <= 0) {
+    return '步长必须大于 0'
+  }
+  return null
+}
+
+defineExpose({ validate })
 </script>
 
 <style scoped>

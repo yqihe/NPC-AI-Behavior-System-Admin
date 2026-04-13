@@ -121,7 +121,7 @@
         <TemplateFieldPicker
           v-model:selectedIds="selectedIds"
           :field-pool="fieldPool"
-          :disabled="isLocked"
+          :disabled="isView || isLocked"
         />
       </div>
 
@@ -136,7 +136,7 @@
         </div>
         <TemplateSelectedFields
           :selected-fields="selectedFieldsView"
-          :disabled="isLocked"
+          :disabled="isView || isLocked"
           @update:order="onOrderChange"
           @update:required="onRequiredChange"
         />
@@ -544,6 +544,6 @@ async function reloadFieldPool() {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  padding: 16px 0 32px;
+  padding-top: 16px;
 }
 </style>

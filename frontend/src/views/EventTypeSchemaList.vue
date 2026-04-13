@@ -193,13 +193,22 @@ async function handleToggle(row: EventTypeSchemaFull, val: boolean) {
       cancelButtonText: '取消',
       type: val ? 'success' : 'warning',
     })
-    await eventTypeApi.schemaToggleEnabled(row.id, val, row.version)
+    // 预取最新 version（无 detail API，走 list 刷新）
+    const freshRes = await eventTypeApi.schemaList()
+    const freshRow = (freshRes.data?.items || []).find((s) => s.id === row.id)
+    if (!freshRow) {
+      ElMessage.error('扩展字段不存在，可能已被删除')
+      fetchList()
+      return
+    }
+    await eventTypeApi.schemaToggleEnabled(row.id, val, freshRow.version)
     ElMessage.success(`已${action}`)
     fetchList()
   } catch (err) {
     if (err === 'cancel') return
     if ((err as BizError).code === EXT_SCHEMA_ERR.VERSION_CONFLICT) {
       ElMessageBox.alert('数据已被其他用户修改，请刷新页面后重试。', '版本冲突', { type: 'warning' })
+      fetchList()
     }
     // 其他错误拦截器已 toast
   }

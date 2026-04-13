@@ -84,7 +84,7 @@
               v-model="form.type"
               placeholder="请选择字段类型"
               style="width: 100%"
-              :disabled="!isCreate && refCount > 0"
+              :disabled="isView || (!isCreate && refCount > 0)"
               @change="handleTypeChange"
             >
               <el-option
@@ -120,7 +120,7 @@
           <el-form-item label="暴露 BB Key">
             <el-radio-group v-model="form.properties.expose_bb">
               <el-radio :value="false">否</el-radio>
-              <el-radio :value="true">是（行为树可读取该字段）</el-radio>
+              <el-radio :value="true">是（状态机和行为树可读取该字段）</el-radio>
             </el-radio-group>
           </el-form-item>
 
@@ -160,12 +160,14 @@
           <el-form-item v-if="form.type" label="约束配置">
             <FieldConstraintInteger
               v-if="form.type === 'integer' || form.type === 'float'"
+              ref="constraintRef"
               v-model="form.properties.constraints"
               :restricted="refCount > 0"
               :type-name="form.type"
             />
             <FieldConstraintString
               v-else-if="form.type === 'string'"
+              ref="constraintRef"
               v-model="form.properties.constraints"
               :restricted="refCount > 0"
             />
@@ -174,13 +176,16 @@
             </div>
             <FieldConstraintSelect
               v-else-if="form.type === 'select'"
+              ref="constraintRef"
               v-model="form.properties.constraints"
               :restricted="refCount > 0"
+              :disabled="isView"
             />
             <FieldConstraintReference
               v-else-if="form.type === 'reference'"
               v-model="form.properties.constraints"
               :restricted="refCount > 0"
+              :disabled="isView"
               :current-field-id="isCreate ? 0 : Number(route.params.id)"
             />
           </el-form-item>
@@ -223,6 +228,7 @@ const isCreate = route.meta.isCreate as boolean
 const isView = (route.meta.isView as boolean) || false
 
 const formRef = ref<FormInstance>()
+const constraintRef = ref<{ validate: () => string | null } | null>(null)
 const submitting = ref(false)
 const nameStatus = ref<'' | 'checking' | 'available' | 'taken'>('')
 const nameMessage = ref('')
@@ -391,6 +397,15 @@ async function handleSubmit() {
     return
   }
 
+  // 约束组件校验
+  if (constraintRef.value?.validate) {
+    const constraintErr = constraintRef.value.validate()
+    if (constraintErr) {
+      ElMessage.warning(constraintErr)
+      return
+    }
+  }
+
   submitting.value = true
   try {
     const submitProps = buildSubmitProperties()
@@ -432,6 +447,30 @@ async function handleSubmit() {
     }
     if (bizErr.code === FIELD_ERR.REF_EMPTY) {
       ElMessage.error('reference 字段必须至少选择一个目标字段')
+      return
+    }
+    if (bizErr.code === FIELD_ERR.CYCLIC_REF) {
+      ElMessage.error('检测到循环引用，请检查引用字段链路')
+      return
+    }
+    if (bizErr.code === FIELD_ERR.REF_CHANGE_TYPE) {
+      ElMessage.error('该字段已被模板引用，无法更改类型')
+      return
+    }
+    if (bizErr.code === FIELD_ERR.REF_TIGHTEN) {
+      ElMessage.error(`该字段已被引用，约束只能放宽不能收紧���${bizErr.message}`)
+      return
+    }
+    if (bizErr.code === FIELD_ERR.EDIT_NOT_DISABLED) {
+      ElMessage.warning('请先禁用该字段后再编辑')
+      return
+    }
+    if (bizErr.code === FIELD_ERR.REF_DISABLED) {
+      ElMessage.error('引用的目标字段已被禁用，请先启用或更换')
+      return
+    }
+    if (bizErr.code === FIELD_ERR.REF_NOT_FOUND) {
+      ElMessage.error('引用的目标字段不存在，可能已被删除')
       return
     }
   } finally {

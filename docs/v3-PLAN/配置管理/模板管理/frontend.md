@@ -200,3 +200,4 @@ const TEMPLATE_ERR_MSG: Record<number, string> = {
 - **version 存储**：`TemplateForm.vue` 使用独立 `const version = ref(0)` 存储版本号（在 `onMounted` 加载详情时赋值），提交时用 `version.value`。不使用 `template.value!.version` 非空断言，避免加载失败时 TypeError。
 - **reloadFieldPool 排序**：`reloadFieldPool()` 和初始加载一样，必须对字段池按 `id ASC` 排序（`.sort((a, b) => a.id - b.id)`），保证字段选择卡的展示顺序一致。
 - **ListData 共享**：`templates.ts` 从 `fields.ts` 导入 `ListData<T>` 和 `CheckNameResult`，不重复定义。
+- **View 模式 disabled 修复**：`TemplateFieldPicker` 和 `TemplateSelectedFields` 的 `:disabled` 绑定为 `isView || isLocked`，而非仅 `isLocked`。`isLocked` 仅在编辑模式下 `refCount > 0` 时为 `true`，但查看模式（`isView=true`）需要独立禁用所有字段操作（勾选、必填切换、排序），因此必须用 `||` 组合两个条件。

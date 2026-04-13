@@ -17,7 +17,7 @@
     <div class="filter-bar">
       <el-input
         v-model="query.label"
-        placeholder="搜索中文名称"
+        placeholder="搜索中文标签"
         clearable
         class="filter-item filter-item-wide"
         @keyup.enter="handleSearch"

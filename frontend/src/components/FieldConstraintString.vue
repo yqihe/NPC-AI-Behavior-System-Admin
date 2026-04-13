@@ -71,6 +71,26 @@ function update(key: string, val: string | number | null | undefined) {
   }
   emit('update:modelValue', next)
 }
+
+/** 供父组件调用的校验方法 */
+function validate(): string | null {
+  const minLen = constraints.value.minLength as number | undefined
+  const maxLen = constraints.value.maxLength as number | undefined
+  if (minLen !== undefined && maxLen !== undefined && minLen > maxLen) {
+    return '最小长度不能大于最大长度'
+  }
+  const pattern = constraints.value.pattern as string | undefined
+  if (pattern) {
+    try {
+      new RegExp(pattern)
+    } catch {
+      return '正则表达式格式不合法'
+    }
+  }
+  return null
+}
+
+defineExpose({ validate })
 </script>
 
 <style scoped>

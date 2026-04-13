@@ -13,10 +13,10 @@
         active-text-color="#409EFF"
         router
       >
-        <el-sub-menu index="group-config">
+        <el-sub-menu index="group-npc">
           <template #title>
-            <el-icon class="group-icon"><Setting /></el-icon>
-            <span class="group-title">配置管理</span>
+            <el-icon class="group-icon"><User /></el-icon>
+            <span class="group-title">NPC 配置管理</span>
           </template>
           <el-menu-item index="/templates">
             <el-icon><Files /></el-icon>
@@ -26,13 +26,19 @@
             <el-icon><List /></el-icon>
             <span>字段管理</span>
           </el-menu-item>
+        </el-sub-menu>
+        <el-sub-menu index="group-event">
+          <template #title>
+            <el-icon class="group-icon"><Lightning /></el-icon>
+            <span class="group-title">事件源配置管理</span>
+          </template>
           <el-menu-item index="/event-types">
             <el-icon><Lightning /></el-icon>
-            <span>事件类型</span>
+            <span>事件类型管理</span>
           </el-menu-item>
           <el-menu-item index="/event-type-schemas">
             <el-icon><Tickets /></el-icon>
-            <span>事件扩展字段</span>
+            <span>扩展字段</span>
           </el-menu-item>
         </el-sub-menu>
       </el-menu>
@@ -46,7 +52,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { List, Files, Setting, Lightning, Tickets } from '@element-plus/icons-vue'
+import { List, Files, Lightning, Tickets, User } from '@element-plus/icons-vue'
 
 const route = useRoute()
 
@@ -57,7 +63,7 @@ const activeMenu = computed(() => {
 })
 
 // 哪些分组默认展开（所有一级分组 index）
-const defaultOpeneds = ['group-config']
+const defaultOpeneds = ['group-npc', 'group-event']
 </script>
 
 <style scoped>

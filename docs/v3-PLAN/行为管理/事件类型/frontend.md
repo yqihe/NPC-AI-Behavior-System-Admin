@@ -187,6 +187,31 @@ interface ExtensionSchemaItem {
 
 `FieldConstraintInteger` 的 `typeName` prop 同时支持 `'integer'`（字段管理）和 `'int'`（Schema），标题显示均为「整数类型 — 约束配置」。
 
+### View 模式显式 disabled 条件
+
+EventTypeForm 中各字段的 disabled 条件显式包含 `isView`：
+
+- **range**：`isView || form.perception_mode === 'global'`（查看模式始终禁用，编辑模式仅 global 时禁用）
+- **扩展字段**：`isView || !ext.enabled`（查看模式始终禁用，编辑模式仅禁用未启用的扩展字段）
+
+不能省略 `isView` 前缀，否则 Element Plus 控件在查看模式下可能仍可交互。
+
+### CSS 类名对齐
+
+表单底部按钮区域 CSS 类名从 `.form-footer` 改为 `.form-actions`，与项目其他表单页保持一致。
+
+### 事件类型表单错误码补充
+
+EventTypeForm 提交时额外处理以下错误码：
+
+| 错误码 | 常量名 | UI 反馈 |
+|---|---|---|
+| 42015 | `EDIT_NOT_DISABLED` | `ElMessage.warning` 提示须先禁用再编辑 |
+| 42007 | `EXT_VALUE_INVALID` | `ElMessage.error` 提示扩展字段值不合法 |
+| 42004 | `SEVERITY_INVALID` | `ElMessage.error` 提示严重度参数非法（前端 select 已限制，兜底） |
+| 42005 | `TTL_INVALID` | `ElMessage.error` 提示 TTL 参数非法（前端 input-number 已限制，兜底） |
+| 42006 | `RANGE_INVALID` | `ElMessage.error` 提示感知范围参数非法（前端 input-number 已限制，兜底） |
+
 ### 与 Field/Template 的一致性对齐
 
 以下模式已统一对齐，新模块开发时必须遵循：

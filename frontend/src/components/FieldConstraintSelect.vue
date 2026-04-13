@@ -12,7 +12,7 @@
     <!-- 选项列表 -->
     <div class="options-header">
       <span class="options-label">选项列表</span>
-      <el-link type="primary" :underline="false" @click="addOption">
+      <el-link v-if="!disabled" type="primary" :underline="false" @click="addOption">
         <el-icon><Plus /></el-icon>
         添加选项
       </el-link>
@@ -41,7 +41,7 @@
           size="default"
           @update:model-value="(v: string) => updateOption(idx, 'label', v)"
         />
-        <el-icon class="del-icon" @click="removeOption(idx)"><Delete /></el-icon>
+        <el-icon v-if="!disabled" class="del-icon" @click="removeOption(idx)"><Delete /></el-icon>
       </div>
       <div v-if="options.length === 0" class="options-empty">
         暂无选项，请点击「添加选项」
@@ -105,6 +105,7 @@ interface SelectConstraints {
 const props = defineProps<{
   modelValue?: SelectConstraints
   restricted?: boolean
+  disabled?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -144,6 +145,30 @@ function updateField(key: string, val: number | null | undefined) {
   }
   emit('update:modelValue', next)
 }
+
+/** 供父组件调用的校验方法 */
+function validate(): string | null {
+  if (options.value.length === 0) {
+    return '选择类型至少需要一个选项'
+  }
+  for (let i = 0; i < options.value.length; i++) {
+    if (!options.value[i].value.trim()) {
+      return `第 ${i + 1} 个选项的值不能为空`
+    }
+  }
+  const values = options.value.map((o) => o.value.trim())
+  if (new Set(values).size !== values.length) {
+    return '选项值不能重复'
+  }
+  const minSel = constraints.value.minSelect as number | undefined
+  const maxSel = constraints.value.maxSelect as number | undefined
+  if (minSel !== undefined && maxSel !== undefined && minSel > maxSel) {
+    return '最少选择数不能大于最多选择数'
+  }
+  return null
+}
+
+defineExpose({ validate })
 </script>
 
 <style scoped>
