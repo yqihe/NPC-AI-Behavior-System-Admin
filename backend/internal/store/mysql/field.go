@@ -32,8 +32,8 @@ func (s *FieldStore) DB() *sqlx.DB {
 func (s *FieldStore) Create(ctx context.Context, req *model.CreateFieldRequest) (int64, error) {
 	now := time.Now()
 	result, err := s.db.ExecContext(ctx,
-		`INSERT INTO fields (name, label, type, category, properties, ref_count, enabled, version, deleted, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, 0, 0, 1, 0, ?, ?)`,
+		`INSERT INTO fields (name, label, type, category, properties, enabled, version, deleted, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, 0, 1, 0, ?, ?)`,
 		req.Name, req.Label, req.Type, req.Category, string(req.Properties), now, now,
 	)
 	if err != nil {
@@ -50,7 +50,7 @@ func (s *FieldStore) Create(ctx context.Context, req *model.CreateFieldRequest) 
 func (s *FieldStore) GetByID(ctx context.Context, id int64) (*model.Field, error) {
 	var f model.Field
 	err := s.db.GetContext(ctx, &f,
-		`SELECT id, name, label, type, category, properties, ref_count, enabled, version, deleted, created_at, updated_at
+		`SELECT id, name, label, type, category, properties, enabled, version, deleted, created_at, updated_at
 		 FROM fields WHERE id = ? AND deleted = 0`, id)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -65,7 +65,7 @@ func (s *FieldStore) GetByID(ctx context.Context, id int64) (*model.Field, error
 func (s *FieldStore) GetByName(ctx context.Context, name string) (*model.Field, error) {
 	var f model.Field
 	err := s.db.GetContext(ctx, &f,
-		`SELECT id, name, label, type, category, properties, ref_count, enabled, version, deleted, created_at, updated_at
+		`SELECT id, name, label, type, category, properties, enabled, version, deleted, created_at, updated_at
 		 FROM fields WHERE name = ? AND deleted = 0`, name)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -125,7 +125,7 @@ func (s *FieldStore) List(ctx context.Context, q *model.FieldListQuery) ([]model
 	// 分页查询
 	offset := (q.Page - 1) * q.PageSize
 	listSQL := fmt.Sprintf(
-		`SELECT id, name, label, type, category, ref_count, enabled, created_at
+		`SELECT id, name, label, type, category, enabled, created_at
 		 FROM fields WHERE %s ORDER BY id DESC LIMIT ? OFFSET ?`,
 		whereClause,
 	)
@@ -200,33 +200,13 @@ func (s *FieldStore) ToggleEnabled(ctx context.Context, id int64, enabled bool, 
 	return nil
 }
 
-// IncrRefCountTx 事务内 ref_count + 1（按 ID）
-func (s *FieldStore) IncrRefCountTx(ctx context.Context, tx *sqlx.Tx, id int64) error {
-	_, err := tx.ExecContext(ctx,
-		`UPDATE fields SET ref_count = ref_count + 1 WHERE id = ? AND deleted = 0`, id)
-	if err != nil {
-		return fmt.Errorf("incr ref count: %w", err)
-	}
-	return nil
-}
-
-// DecrRefCountTx 事务内 ref_count - 1（按 ID）
-func (s *FieldStore) DecrRefCountTx(ctx context.Context, tx *sqlx.Tx, id int64) error {
-	_, err := tx.ExecContext(ctx,
-		`UPDATE fields SET ref_count = ref_count - 1 WHERE id = ? AND deleted = 0 AND ref_count > 0`, id)
-	if err != nil {
-		return fmt.Errorf("decr ref count: %w", err)
-	}
-	return nil
-}
-
 // GetByIDs 批量查询字段（IN 查询，走主键）
 func (s *FieldStore) GetByIDs(ctx context.Context, ids []int64) ([]model.Field, error) {
 	if len(ids) == 0 {
 		return make([]model.Field, 0), nil
 	}
 	query, args, err := sqlx.In(
-		`SELECT id, name, label, type, category, properties, ref_count, enabled, version, deleted, created_at, updated_at
+		`SELECT id, name, label, type, category, properties, enabled, version, deleted, created_at, updated_at
 		 FROM fields WHERE id IN (?) AND deleted = 0`, ids)
 	if err != nil {
 		return nil, fmt.Errorf("build in query: %w", err)
@@ -240,17 +220,25 @@ func (s *FieldStore) GetByIDs(ctx context.Context, ids []int64) ([]model.Field, 
 	return fields, nil
 }
 
-// GetRefCountTx 事务内获取引用计数（FOR SHARE 防 TOCTOU）
-func (s *FieldStore) GetRefCountTx(ctx context.Context, tx *sqlx.Tx, id int64) (int, error) {
-	var count int
-	err := tx.GetContext(ctx, &count,
-		`SELECT ref_count FROM fields WHERE id = ? AND deleted = 0 FOR SHARE`, id)
-	if err == sql.ErrNoRows {
-		return 0, errcode.ErrNotFound
+// GetByNames 批量按 name 查询字段（IN 查询，走 uk_name）
+//
+// 用途：FSM BB Key 引用追踪——把条件树中的 BB Key name 解析为 field ID。
+func (s *FieldStore) GetByNames(ctx context.Context, names []string) ([]model.Field, error) {
+	if len(names) == 0 {
+		return make([]model.Field, 0), nil
 	}
+	query, args, err := sqlx.In(
+		`SELECT id, name, label, type, category, properties, enabled, version, deleted, created_at, updated_at
+		 FROM fields WHERE name IN (?) AND deleted = 0`, names)
 	if err != nil {
-		return 0, fmt.Errorf("get ref count tx: %w", err)
+		return nil, fmt.Errorf("build in query: %w", err)
 	}
-	return count, nil
+	query = s.db.Rebind(query)
+
+	fields := make([]model.Field, 0)
+	if err := s.db.SelectContext(ctx, &fields, query, args...); err != nil {
+		return nil, fmt.Errorf("get fields by names: %w", err)
+	}
+	return fields, nil
 }
 

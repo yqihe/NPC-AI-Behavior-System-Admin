@@ -143,7 +143,7 @@
 
 ---
 
-## T13: util 常量 + FieldStore.GetByNames (R17)
+## [x] T13: util 常量 + FieldStore.GetByNames (R17)
 
 **文件**：
 - `backend/internal/util/const.go`（新增 `RefTypeFsm`）
@@ -156,7 +156,7 @@
 
 ---
 
-## T14: FieldService.SyncFsmBBKeyRefs (R17, R18, R19)
+## [x] T14: FieldService.SyncFsmBBKeyRefs (R17, R18, R19)
 
 **文件**：
 - `backend/internal/service/field.go`
@@ -169,7 +169,7 @@
 
 ---
 
-## T15: FsmConfig store 新增 Tx 版方法 (R17, R18, R19)
+## [x] T15: FsmConfig store 新增 Tx 版方法 (R17, R18, R19)
 
 **文件**：
 - `backend/internal/store/mysql/fsm_config.go`

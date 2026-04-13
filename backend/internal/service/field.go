@@ -803,3 +803,75 @@ func (s *FieldService) syncFieldRefs(ctx context.Context, sourceFieldID int64, o
 	affected = append(affected, toRemove...)
 	return affected, nil
 }
+
+// ---- FSM BB Key 引用维护 ----
+
+// SyncFsmBBKeyRefs 同步 FSM 条件中 BB Key 对字段的引用关系（事务内）
+//
+// oldKeys/newKeys: 条件树中提取的 BB Key name 集合。
+// 内部解析 name→field ID，只追踪来自字段表的 Key（运行时 Key 跳过）。
+// 返回 affected field IDs（用于清缓存）。
+func (s *FieldService) SyncFsmBBKeyRefs(ctx context.Context, tx *sqlx.Tx, fsmID int64, oldKeys, newKeys map[string]bool) ([]int64, error) {
+	toAdd := make([]string, 0)
+	toRemove := make([]string, 0)
+	for k := range newKeys {
+		if !oldKeys[k] {
+			toAdd = append(toAdd, k)
+		}
+	}
+	for k := range oldKeys {
+		if !newKeys[k] {
+			toRemove = append(toRemove, k)
+		}
+	}
+
+	if len(toAdd) == 0 && len(toRemove) == 0 {
+		return nil, nil
+	}
+
+	// 批量查所有涉及的 name → field ID（合并查一次）
+	allNames := make([]string, 0, len(toAdd)+len(toRemove))
+	allNames = append(allNames, toAdd...)
+	allNames = append(allNames, toRemove...)
+	fields, err := s.fieldStore.GetByNames(ctx, allNames)
+	if err != nil {
+		return nil, fmt.Errorf("get fields by names: %w", err)
+	}
+	nameToID := make(map[string]int64, len(fields))
+	for _, f := range fields {
+		nameToID[f.Name] = f.ID
+	}
+
+	affected := make([]int64, 0)
+
+	for _, name := range toAdd {
+		fieldID, ok := nameToID[name]
+		if !ok {
+			continue // 运行时 Key，不来自字段表，跳过
+		}
+		if err := s.fieldRefStore.Add(ctx, tx, fieldID, util.RefTypeFsm, fsmID); err != nil {
+			return nil, fmt.Errorf("add fsm bb key ref %s: %w", name, err)
+		}
+		affected = append(affected, fieldID)
+	}
+
+	for _, name := range toRemove {
+		fieldID, ok := nameToID[name]
+		if !ok {
+			continue
+		}
+		if err := s.fieldRefStore.Remove(ctx, tx, fieldID, util.RefTypeFsm, fsmID); err != nil {
+			return nil, fmt.Errorf("remove fsm bb key ref %s: %w", name, err)
+		}
+		affected = append(affected, fieldID)
+	}
+
+	return affected, nil
+}
+
+// CleanFsmBBKeyRefs 清理 FSM 删除时的所有 BB Key 引用（事务内）
+//
+// 返回被引用的 field IDs（用于清缓存）。
+func (s *FieldService) CleanFsmBBKeyRefs(ctx context.Context, tx *sqlx.Tx, fsmID int64) ([]int64, error) {
+	return s.fieldRefStore.RemoveBySource(ctx, tx, util.RefTypeFsm, fsmID)
+}
