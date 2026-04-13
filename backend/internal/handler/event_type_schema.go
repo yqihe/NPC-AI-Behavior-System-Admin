@@ -15,18 +15,21 @@ import (
 
 // EventTypeSchemaHandler 扩展字段 Schema 管理 HTTP handler
 type EventTypeSchemaHandler struct {
-	schemaService *service.EventTypeSchemaService
-	etsCfg        *config.EventTypeSchemaConfig
+	schemaService    *service.EventTypeSchemaService
+	eventTypeService *service.EventTypeService
+	etsCfg           *config.EventTypeSchemaConfig
 }
 
 // NewEventTypeSchemaHandler 创建 EventTypeSchemaHandler
 func NewEventTypeSchemaHandler(
 	schemaService *service.EventTypeSchemaService,
+	eventTypeService *service.EventTypeService,
 	etsCfg *config.EventTypeSchemaConfig,
 ) *EventTypeSchemaHandler {
 	return &EventTypeSchemaHandler{
-		schemaService: schemaService,
-		etsCfg:        etsCfg,
+		schemaService:    schemaService,
+		eventTypeService: eventTypeService,
+		etsCfg:           etsCfg,
 	}
 }
 
@@ -87,6 +90,8 @@ func (h *EventTypeSchemaHandler) List(ctx context.Context, req *model.EventTypeS
 	if items == nil {
 		items = make([]model.EventTypeSchema, 0)
 	}
+	// 填充 has_refs
+	h.schemaService.FillHasRefs(ctx, items)
 	return &EventTypeSchemaListResponse{Items: items}, nil
 }
 
@@ -173,4 +178,36 @@ func (h *EventTypeSchemaHandler) ToggleEnabled(ctx context.Context, req *model.T
 		return nil, err
 	}
 	return &model.Empty{}, nil
+}
+
+// GetReferences 扩展字段引用详情
+//
+// 跨模块编排：SchemaService 返回 event_type IDs，handler 调 EventTypeService 补 display_name。
+func (h *EventTypeSchemaHandler) GetReferences(ctx context.Context, req *model.IDRequest) (*model.SchemaReferenceDetail, error) {
+	if req.ID <= 0 {
+		return nil, errcode.Newf(errcode.ErrBadRequest, "ID 必须 > 0")
+	}
+
+	slog.Debug("handler.event_type_schema.references", "id", req.ID)
+
+	detail, err := h.schemaService.GetReferences(ctx, req.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 跨模块补齐事件类型 display_name
+	if len(detail.EventTypes) > 0 {
+		for i := range detail.EventTypes {
+			et, err := h.eventTypeService.GetByID(ctx, detail.EventTypes[i].RefID)
+			if err != nil {
+				slog.Warn("handler.补事件类型label失败", "error", err, "id", detail.EventTypes[i].RefID)
+				continue
+			}
+			if et != nil {
+				detail.EventTypes[i].Label = et.DisplayName
+			}
+		}
+	}
+
+	return detail, nil
 }

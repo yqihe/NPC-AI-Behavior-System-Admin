@@ -57,7 +57,7 @@ func Setup(r *gin.Engine, h *setup.Handlers) {
 		eventTypes.POST("/toggle-enabled", handler.WrapCtx(h.EventType.ToggleEnabled))
 	}
 
-	// 扩展字段 Schema 管理（5 个接口）
+	// 扩展字段 Schema 管理（6 个接口）
 	eventTypeSchema := v1.Group("/event-type-schema")
 	{
 		eventTypeSchema.POST("/list", handler.WrapCtx(h.EventTypeSchema.List))
@@ -65,6 +65,7 @@ func Setup(r *gin.Engine, h *setup.Handlers) {
 		eventTypeSchema.POST("/update", handler.WrapCtx(h.EventTypeSchema.Update))
 		eventTypeSchema.POST("/delete", handler.WrapCtx(h.EventTypeSchema.Delete))
 		eventTypeSchema.POST("/toggle-enabled", handler.WrapCtx(h.EventTypeSchema.ToggleEnabled))
+		eventTypeSchema.POST("/references", handler.WrapCtx(h.EventTypeSchema.GetReferences))
 	}
 
 	// 状态机管理（7 个接口）

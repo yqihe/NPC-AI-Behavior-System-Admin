@@ -113,7 +113,7 @@
 
 ---
 
-## T11: EventTypeSchemaService 引用保护 (R11, R12, R13, R14, R15, R16)
+## [x] T11: EventTypeSchemaService 引用保护 (R11, R12, R13, R14, R15, R16)
 
 **文件**：
 - `backend/internal/service/event_type_schema.go`
@@ -130,7 +130,7 @@
 
 ---
 
-## T12: EventTypeSchema references handler + 路由 (R15)
+## [x] T12: EventTypeSchema references handler + 路由 (R15)
 
 **文件**：
 - `backend/internal/handler/event_type_schema.go`

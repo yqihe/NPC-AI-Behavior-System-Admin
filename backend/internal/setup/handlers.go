@@ -23,7 +23,7 @@ func NewHandlers(st *Stores, svc *Services, mc *MemCaches, cfg *config.Config) *
 		Dict:            handler.NewDictionaryHandler(mc.Dict),
 		Template:        handler.NewTemplateHandler(st.DB, svc.Template, svc.Field, &cfg.Validation),
 		EventType:       handler.NewEventTypeHandler(svc.EventType, svc.EventTypeSchema, &cfg.EventType),
-		EventTypeSchema: handler.NewEventTypeSchemaHandler(svc.EventTypeSchema, &cfg.EventTypeSchema),
+		EventTypeSchema: handler.NewEventTypeSchemaHandler(svc.EventTypeSchema, svc.EventType, &cfg.EventTypeSchema),
 		FsmConfig:       handler.NewFsmConfigHandler(svc.FsmConfig, &cfg.FsmConfig),
 		Export:          handler.NewExportHandler(svc.EventType, svc.FsmConfig),
 	}

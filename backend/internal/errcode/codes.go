@@ -79,6 +79,8 @@ const (
 	ErrExtSchemaConstraintsInvalid = 42025 // constraints 不自洽
 	ErrExtSchemaDefaultInvalid     = 42026 // default_value 不符合 constraints
 	ErrExtSchemaDeleteNotDisabled  = 42027 // 删除前必须先停用
+	ErrExtSchemaRefTighten         = 42028 // 被引用时约束收紧
+	ErrExtSchemaRefDelete          = 42029 // 被引用时无法删除
 	ErrExtSchemaVersionConflict    = 42030 // 版本冲突（乐观锁）
 	ErrExtSchemaEditNotDisabled    = 42031 // 编辑前必须先停用
 )
@@ -159,6 +161,8 @@ var messages = map[int]string{
 	ErrExtSchemaConstraintsInvalid: "约束配置不自洽",
 	ErrExtSchemaDefaultInvalid:     "默认值不符合约束",
 	ErrExtSchemaDeleteNotDisabled:  "请先停用该扩展字段再删除",
+	ErrExtSchemaRefTighten:         "该扩展字段已被事件类型引用，约束只能放宽不能收紧",
+	ErrExtSchemaRefDelete:          "该扩展字段正被事件类型引用，无法删除",
 	ErrExtSchemaVersionConflict:    "该扩展字段已被其他人修改，请刷新后重试",
 	ErrExtSchemaEditNotDisabled:    "请先停用该扩展字段再编辑",
 
