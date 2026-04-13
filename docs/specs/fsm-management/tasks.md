@@ -57,7 +57,7 @@
 
 ---
 
-## T5: Service 层 — 业务逻辑 + 条件树校验 (R1, R2, R8, R10, R11, R12, R13, R14, R15, R16, R25, R26)
+## T5: Service �� — 业务逻辑 + 条件树校验 (R1, R2, R8, R10, R11, R12, R13, R14, R15, R16, R25, R26) [x]
 
 **涉及文件**：
 - `backend/internal/service/fsm_config.go`（新增）
