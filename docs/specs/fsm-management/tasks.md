@@ -88,7 +88,7 @@
 
 ---
 
-## T7: 导出 API + 路由注册 + 装配 (R17, R18, R19)
+## T7: 导出 API + 路由注册 + 装配 (R17, R18, R19) [x]
 
 **涉及文件**：
 - `backend/internal/handler/export.go`（改动）

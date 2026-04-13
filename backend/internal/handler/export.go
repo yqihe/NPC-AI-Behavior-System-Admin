@@ -14,12 +14,14 @@ import (
 // 不走 WrapCtx（导出 API 格式与 CRUD 不同）。
 type ExportHandler struct {
 	eventTypeService *service.EventTypeService
+	fsmConfigService *service.FsmConfigService
 }
 
 // NewExportHandler 创建 ExportHandler
-func NewExportHandler(eventTypeService *service.EventTypeService) *ExportHandler {
+func NewExportHandler(eventTypeService *service.EventTypeService, fsmConfigService *service.FsmConfigService) *ExportHandler {
 	return &ExportHandler{
 		eventTypeService: eventTypeService,
+		fsmConfigService: fsmConfigService,
 	}
 }
 
@@ -38,6 +40,29 @@ func (h *ExportHandler) EventTypes(c *gin.Context) {
 	items, err := h.eventTypeService.ExportAll(c.Request.Context())
 	if err != nil {
 		slog.Error("handler.export.event_types.error", "error", err)
+		c.JSON(http.StatusInternalServerError, exportResponse{Items: make([]interface{}, 0)})
+		return
+	}
+
+	// 空数据返回 {"items": []}
+	if len(items) == 0 {
+		c.JSON(http.StatusOK, exportResponse{Items: make([]interface{}, 0)})
+		return
+	}
+
+	c.JSON(http.StatusOK, exportResponse{Items: items})
+}
+
+// FsmConfigs GET /api/configs/fsm_configs
+//
+// 返回所有已启用且未删除的状态机配置。
+// config 字段直接从 config_json 列原样展开，不经过 Go struct 中转。
+func (h *ExportHandler) FsmConfigs(c *gin.Context) {
+	slog.Debug("handler.export.fsm_configs")
+
+	items, err := h.fsmConfigService.ExportAll(c.Request.Context())
+	if err != nil {
+		slog.Error("handler.export.fsm_configs.error", "error", err)
 		c.JSON(http.StatusInternalServerError, exportResponse{Items: make([]interface{}, 0)})
 		return
 	}
