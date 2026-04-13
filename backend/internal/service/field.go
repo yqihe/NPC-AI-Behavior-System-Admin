@@ -205,6 +205,14 @@ func (s *FieldService) GetByID(ctx context.Context, id int64) (*model.Field, err
 	if field == nil {
 		return nil, errcode.Newf(errcode.ErrFieldNotFound, "字段 ID=%d 不存在", id)
 	}
+
+	// has_refs 不进缓存（引用关系随模板操作变化），每次实时查 field_refs
+	hasRefs, err := s.fieldRefStore.HasRefs(ctx, field.ID)
+	if err != nil {
+		slog.Warn("service.查询字段引用失败，降级为无引用", "error", err, "id", id)
+	}
+	field.HasRefs = hasRefs
+
 	return field, nil
 }
 
@@ -229,17 +237,24 @@ func (s *FieldService) Update(ctx context.Context, req *model.UpdateFieldRequest
 		return errcode.New(errcode.ErrFieldEditNotDisabled)
 	}
 
-	// 硬约束：被引用时禁止改 type
-	if old.Type != req.Type && old.RefCount > 0 {
-		return errcode.Newf(errcode.ErrFieldRefChangeType, "该字段已被 %d 个模板/字段引用，无法修改类型", old.RefCount)
+	// 查询是否有引用（用于类型变更禁止和约束收紧检查）
+	hasRefs, err := s.fieldRefStore.HasRefs(ctx, req.ID)
+	if err != nil {
+		slog.Error("service.查询字段引用失败", "error", err, "id", req.ID)
+		return fmt.Errorf("check field refs: %w", err)
 	}
 
-	// 硬约束：被引用时禁止收紧约束
-	if old.RefCount > 0 && old.Type == req.Type {
+	// 硬约束：被引用时禁止改 type
+	if old.Type != req.Type && hasRefs {
+		return errcode.New(errcode.ErrFieldRefChangeType)
+	}
+
+	// 硬约束：被引用时禁止收紧约束（只能放宽）
+	if hasRefs && old.Type == req.Type {
 		oldProps, _ := parseProperties(old.Properties)
 		newProps, _ := parseProperties(req.Properties)
 		if oldProps != nil && newProps != nil {
-			if err := checkConstraintTightened(old.Type, oldProps.Constraints, newProps.Constraints); err != nil {
+			if err := constraint.CheckConstraintTightened(old.Type, oldProps.Constraints, newProps.Constraints, errcode.ErrFieldRefTighten); err != nil {
 				return err
 			}
 		}
@@ -363,11 +378,6 @@ func (s *FieldService) Delete(ctx context.Context, id int64) (*model.DeleteResul
 		affectedIDs, err = s.fieldRefStore.RemoveBySource(ctx, tx, util.RefTypeField, id)
 		if err != nil {
 			return nil, fmt.Errorf("remove field refs: %w", err)
-		}
-		for _, affectedID := range affectedIDs {
-			if err := s.fieldStore.DecrRefCountTx(ctx, tx, affectedID); err != nil {
-				return nil, fmt.Errorf("decr ref_count %d: %w", affectedID, err)
-			}
 		}
 	}
 
@@ -533,9 +543,7 @@ func (s *FieldService) ValidateFieldsForTemplate(ctx context.Context, fieldIDs [
 // AttachToTemplateTx 把字段列表挂到模板上（事务内）
 //
 // 用途：模板创建 / 编辑模板新增字段时由 handler 调用。
-// 行为：
-//   - 对每个 fieldID 写 field_refs(field_id, 'template', templateID)
-//   - 对每个 fieldID 调 fieldStore.IncrRefCountTx
+// 行为：对每个 fieldID 写 field_refs(field_id, 'template', templateID)
 //
 // 返回：fieldIDs 副本，handler 在 commit 后用它清字段方 detail 缓存。
 func (s *FieldService) AttachToTemplateTx(ctx context.Context, tx *sqlx.Tx, templateID int64, fieldIDs []int64) ([]int64, error) {
@@ -546,9 +554,6 @@ func (s *FieldService) AttachToTemplateTx(ctx context.Context, tx *sqlx.Tx, temp
 		if err := s.fieldRefStore.Add(ctx, tx, fieldID, util.RefTypeTemplate, templateID); err != nil {
 			return nil, fmt.Errorf("add field ref %d → template %d: %w", fieldID, templateID, err)
 		}
-		if err := s.fieldStore.IncrRefCountTx(ctx, tx, fieldID); err != nil {
-			return nil, fmt.Errorf("incr field %d ref_count: %w", fieldID, err)
-		}
 	}
 	affected := make([]int64, len(fieldIDs))
 	copy(affected, fieldIDs)
@@ -558,9 +563,7 @@ func (s *FieldService) AttachToTemplateTx(ctx context.Context, tx *sqlx.Tx, temp
 // DetachFromTemplateTx 把字段列表从模板上卸下（事务内）
 //
 // 用途：模板删除 / 编辑模板移除字段时由 handler 调用。
-// 行为：
-//   - 对每个 fieldID 删 field_refs(field_id, 'template', templateID)
-//   - 对每个 fieldID 调 fieldStore.DecrRefCountTx
+// 行为：对每个 fieldID 删 field_refs(field_id, 'template', templateID)
 //
 // 返回：fieldIDs 副本，handler 在 commit 后用它清字段方 detail 缓存。
 func (s *FieldService) DetachFromTemplateTx(ctx context.Context, tx *sqlx.Tx, templateID int64, fieldIDs []int64) ([]int64, error) {
@@ -570,9 +573,6 @@ func (s *FieldService) DetachFromTemplateTx(ctx context.Context, tx *sqlx.Tx, te
 	for _, fieldID := range fieldIDs {
 		if err := s.fieldRefStore.Remove(ctx, tx, fieldID, util.RefTypeTemplate, templateID); err != nil {
 			return nil, fmt.Errorf("remove field ref %d → template %d: %w", fieldID, templateID, err)
-		}
-		if err := s.fieldStore.DecrRefCountTx(ctx, tx, fieldID); err != nil {
-			return nil, fmt.Errorf("decr field %d ref_count: %w", fieldID, err)
 		}
 	}
 	affected := make([]int64, len(fieldIDs))
@@ -622,7 +622,7 @@ func (s *FieldService) GetByIDsLite(ctx context.Context, fieldIDs []int64) ([]mo
 
 // InvalidateDetails 批量清字段详情缓存
 //
-// 用途：模板写操作 commit 后由 handler 调用，因为模板写会改字段的 ref_count。
+// 用途：模板写操作 commit 后由 handler 调用，保证字段引用关系变更后缓存一致。
 // 不返回 error：缓存清理失败仅 slog.Error，不阻塞业务。
 func (s *FieldService) InvalidateDetails(ctx context.Context, fieldIDs []int64) {
 	for _, fid := range fieldIDs {
@@ -630,7 +630,7 @@ func (s *FieldService) InvalidateDetails(ctx context.Context, fieldIDs []int64) 
 	}
 }
 
-// ---- 约束收紧检查 ----
+// ---- 内部辅助 ----
 
 func parseProperties(raw json.RawMessage) (*model.FieldProperties, error) {
 	if len(raw) == 0 {
@@ -641,106 +641,6 @@ func parseProperties(raw json.RawMessage) (*model.FieldProperties, error) {
 		return nil, fmt.Errorf("unmarshal properties: %w", err)
 	}
 	return &props, nil
-}
-
-func parseConstraintsMap(raw json.RawMessage) (map[string]json.RawMessage, error) {
-	return constraint.ParseConstraintsMap(raw)
-}
-
-func getFloat(raw json.RawMessage) (float64, bool) {
-	return constraint.GetFloat(raw)
-}
-
-func checkConstraintTightened(fieldType string, oldConstraints, newConstraints json.RawMessage) *errcode.Error {
-	oldMap, err := parseConstraintsMap(oldConstraints)
-	if err != nil {
-		return nil
-	}
-	newMap, err := parseConstraintsMap(newConstraints)
-	if err != nil {
-		return nil
-	}
-
-	switch fieldType {
-	case "integer", "float":
-		if oldMin, ok := getFloat(oldMap["min"]); ok {
-			if newMin, ok2 := getFloat(newMap["min"]); ok2 && newMin > oldMin {
-				return errcode.Newf(errcode.ErrFieldRefTighten, "最小值从 %v 收紧为 %v，请先移除引用", oldMin, newMin)
-			}
-		}
-		if oldMax, ok := getFloat(oldMap["max"]); ok {
-			if newMax, ok2 := getFloat(newMap["max"]); ok2 && newMax < oldMax {
-				return errcode.Newf(errcode.ErrFieldRefTighten, "最大值从 %v 收紧为 %v，请先移除引用", oldMax, newMax)
-			}
-		}
-		// float 专属：precision 只能变大，变小会截断已存数据
-		if fieldType == "float" {
-			if oldPrec, ok := getFloat(oldMap["precision"]); ok {
-				if newPrec, ok2 := getFloat(newMap["precision"]); ok2 && newPrec < oldPrec {
-					return errcode.Newf(errcode.ErrFieldRefTighten, "precision 从 %v 降低为 %v，请先移除引用", oldPrec, newPrec)
-				}
-			}
-		}
-
-	case "string":
-		if oldMinLen, ok := getFloat(oldMap["minLength"]); ok {
-			if newMinLen, ok2 := getFloat(newMap["minLength"]); ok2 && newMinLen > oldMinLen {
-				return errcode.Newf(errcode.ErrFieldRefTighten, "最小长度从 %v 收紧为 %v，请先移除引用", oldMinLen, newMinLen)
-			}
-		}
-		if oldMaxLen, ok := getFloat(oldMap["maxLength"]); ok {
-			if newMaxLen, ok2 := getFloat(newMap["maxLength"]); ok2 && newMaxLen < oldMaxLen {
-				return errcode.Newf(errcode.ErrFieldRefTighten, "最大长度从 %v 收紧为 %v，请先移除引用", oldMaxLen, newMaxLen)
-			}
-		}
-		// pattern 变化判定：
-		//   old=""   new=""    → 允许（未变）
-		//   old=""   new="^x$" → 拒绝（新增 pattern，旧数据可能不匹配）
-		//   old=P    new=P     → 允许（未变）
-		//   old=P    new=Q     → 拒绝（pattern 变化）
-		//   old=P    new=""    → 允许（移除 pattern = 放宽）
-		oldPat := getStringFromRaw(oldMap["pattern"])
-		newPat := getStringFromRaw(newMap["pattern"])
-		if newPat != "" && newPat != oldPat {
-			return errcode.Newf(errcode.ErrFieldRefTighten, "pattern 从 %q 变更为 %q，可能使已有数据失效，请先移除引用", oldPat, newPat)
-		}
-
-	case "select":
-		oldOptions := parseSelectOptions(oldMap["options"])
-		newOptions := parseSelectOptions(newMap["options"])
-		if len(oldOptions) > 0 {
-			newSet := make(map[string]bool, len(newOptions))
-			for _, o := range newOptions {
-				newSet[o] = true
-			}
-			for _, o := range oldOptions {
-				if !newSet[o] {
-					return errcode.Newf(errcode.ErrFieldRefTighten, "选项 '%s' 被删除，请先移除引用", o)
-				}
-			}
-		}
-		// minSelect 只能变小，maxSelect 只能变大
-		if oldMinSel, ok := getFloat(oldMap["minSelect"]); ok {
-			if newMinSel, ok2 := getFloat(newMap["minSelect"]); ok2 && newMinSel > oldMinSel {
-				return errcode.Newf(errcode.ErrFieldRefTighten, "minSelect 从 %v 收紧为 %v，请先移除引用", oldMinSel, newMinSel)
-			}
-		}
-		if oldMaxSel, ok := getFloat(oldMap["maxSelect"]); ok {
-			if newMaxSel, ok2 := getFloat(newMap["maxSelect"]); ok2 && newMaxSel < oldMaxSel {
-				return errcode.Newf(errcode.ErrFieldRefTighten, "maxSelect 从 %v 收紧为 %v，请先移除引用", oldMaxSel, newMaxSel)
-			}
-		}
-	}
-
-	return nil
-}
-
-func getStringFromRaw(raw json.RawMessage) string {
-	return constraint.GetString(raw)
-}
-
-func parseSelectOptions(raw json.RawMessage) []string {
-	return constraint.ParseSelectOptions(raw)
 }
 
 // ---- 循环引用检测 ----
@@ -848,7 +748,7 @@ func (s *FieldService) detectCyclicRef(ctx context.Context, currentID int64, ref
 // syncFieldRefs 同步 reference 字段的引用关系
 // sourceFieldID: 引用方字段 ID
 // oldRefIDs, newRefIDs: 旧/新被引用字段 ID 列表
-// 返回 ref_count 发生变化的字段 ID 列表（用于清缓存）
+// 返回引用关系发生变化的字段 ID 列表（用于清缓存）
 func (s *FieldService) syncFieldRefs(ctx context.Context, sourceFieldID int64, oldRefIDs, newRefIDs []int64) ([]int64, error) {
 	oldSet := make(map[int64]bool, len(oldRefIDs))
 	for _, r := range oldRefIDs {
@@ -886,17 +786,11 @@ func (s *FieldService) syncFieldRefs(ctx context.Context, sourceFieldID int64, o
 		if err := s.fieldRefStore.Add(ctx, tx, targetID, util.RefTypeField, sourceFieldID); err != nil {
 			return nil, fmt.Errorf("add field ref %d: %w", targetID, err)
 		}
-		if err := s.fieldStore.IncrRefCountTx(ctx, tx, targetID); err != nil {
-			return nil, fmt.Errorf("incr ref_count %d: %w", targetID, err)
-		}
 	}
 
 	for _, targetID := range toRemove {
 		if err := s.fieldRefStore.Remove(ctx, tx, targetID, util.RefTypeField, sourceFieldID); err != nil {
 			return nil, fmt.Errorf("remove field ref %d: %w", targetID, err)
-		}
-		if err := s.fieldStore.DecrRefCountTx(ctx, tx, targetID); err != nil {
-			return nil, fmt.Errorf("decr ref_count %d: %w", targetID, err)
 		}
 	}
 

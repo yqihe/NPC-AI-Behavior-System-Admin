@@ -18,6 +18,7 @@ type Stores struct {
 	Template        *storemysql.TemplateStore
 	EventType       *storemysql.EventTypeStore
 	EventTypeSchema *storemysql.EventTypeSchemaStore
+	SchemaRef       *storemysql.SchemaRefStore
 	FsmConfig       *storemysql.FsmConfigStore
 }
 
@@ -39,6 +40,7 @@ func NewStores(cfg *config.MySQLConfig) (*Stores, error) {
 		Template:        storemysql.NewTemplateStore(db),
 		EventType:       storemysql.NewEventTypeStore(db),
 		EventTypeSchema: storemysql.NewEventTypeSchemaStore(db),
+		SchemaRef:       storemysql.NewSchemaRefStore(db),
 		FsmConfig:       storemysql.NewFsmConfigStore(db),
 	}, nil
 }

@@ -19,7 +19,7 @@ func NewServices(st *Stores, rc *Caches, mc *MemCaches, cfg *config.Config) *Ser
 	return &Services{
 		Field:           service.NewFieldService(st.Field, st.FieldRef, rc.Field, mc.Dict, &cfg.Pagination),
 		Template:        service.NewTemplateService(st.Template, rc.Template, &cfg.Pagination),
-		EventType:       service.NewEventTypeService(st.EventType, rc.EventType, mc.EventTypeSchema, &cfg.Pagination, &cfg.EventType),
+		EventType:       service.NewEventTypeService(st.EventType, st.SchemaRef, rc.EventType, mc.EventTypeSchema, &cfg.Pagination, &cfg.EventType),
 		EventTypeSchema: service.NewEventTypeSchemaService(st.EventTypeSchema, mc.EventTypeSchema, &cfg.EventTypeSchema),
 		FsmConfig:       service.NewFsmConfigService(st.FsmConfig, rc.FsmConfig, &cfg.Pagination, &cfg.FsmConfig),
 	}

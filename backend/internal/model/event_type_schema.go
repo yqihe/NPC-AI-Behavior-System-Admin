@@ -23,6 +23,7 @@ type EventTypeSchema struct {
 	SortOrder    int             `json:"sort_order" db:"sort_order"`
 
 	Enabled   bool      `json:"enabled" db:"enabled"`
+	HasRefs   bool      `json:"has_refs" db:"-"` // 非 DB 列，service 层通过 schema_refs 填充
 	Version   int       `json:"version" db:"version"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
@@ -31,6 +32,7 @@ type EventTypeSchema struct {
 
 // EventTypeSchemaLite 精简版（给详情接口 extension_schema + 内存缓存）
 type EventTypeSchemaLite struct {
+	ID           int64           `json:"id" db:"id"`
 	FieldName    string          `json:"field_name" db:"field_name"`
 	FieldLabel   string          `json:"field_label" db:"field_label"`
 	FieldType    string          `json:"field_type" db:"field_type"`
@@ -73,4 +75,29 @@ type UpdateEventTypeSchemaRequest struct {
 	DefaultValue json.RawMessage `json:"default_value"`
 	SortOrder    int             `json:"sort_order"`
 	Version      int             `json:"version"`
+}
+
+// ──────────────────────────────────────────────
+// 引用关系
+// ──────────────────────────────────────────────
+
+// SchemaRef 扩展字段引用关系（schema_refs 表行）
+type SchemaRef struct {
+	SchemaID int64  `json:"schema_id" db:"schema_id"`
+	RefType  string `json:"ref_type" db:"ref_type"`
+	RefID    int64  `json:"ref_id" db:"ref_id"`
+}
+
+// SchemaReferenceItem 引用详情中的单条引用方
+type SchemaReferenceItem struct {
+	RefType string `json:"ref_type"` // "event_type"
+	RefID   int64  `json:"ref_id"`
+	Label   string `json:"label"` // 引用方中文名
+}
+
+// SchemaReferenceDetail 扩展字段引用详情
+type SchemaReferenceDetail struct {
+	SchemaID   int64                  `json:"schema_id"`
+	FieldLabel string                 `json:"field_label"`
+	EventTypes []SchemaReferenceItem  `json:"event_types"`
 }

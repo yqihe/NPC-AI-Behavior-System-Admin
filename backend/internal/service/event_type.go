@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/yqihe/npc-ai-admin/backend/internal/cache"
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
@@ -20,30 +21,33 @@ import (
 
 // EventTypeService 事件类型管理业务逻辑
 //
-// 只持有自身的 store/cache，不持有其他模块的 store/service。
 // EventTypeSchemaCache 是内存缓存，语义上是"基础设施"（类似 DictCache），允许直接调用。
+// SchemaRefStore 用于维护扩展字段引用关系（事件类型 CRUD 时写 schema_refs）。
 type EventTypeService struct {
-	store       *storemysql.EventTypeStore
-	cache       *storeredis.EventTypeCache
-	schemaCache *cache.EventTypeSchemaCache
-	pagCfg      *config.PaginationConfig
-	etCfg       *config.EventTypeConfig
+	store          *storemysql.EventTypeStore
+	schemaRefStore *storemysql.SchemaRefStore
+	cache          *storeredis.EventTypeCache
+	schemaCache    *cache.EventTypeSchemaCache
+	pagCfg         *config.PaginationConfig
+	etCfg          *config.EventTypeConfig
 }
 
 // NewEventTypeService 创建 EventTypeService
 func NewEventTypeService(
 	store *storemysql.EventTypeStore,
+	schemaRefStore *storemysql.SchemaRefStore,
 	cache *storeredis.EventTypeCache,
 	schemaCache *cache.EventTypeSchemaCache,
 	pagCfg *config.PaginationConfig,
 	etCfg *config.EventTypeConfig,
 ) *EventTypeService {
 	return &EventTypeService{
-		store:       store,
-		cache:       cache,
-		schemaCache: schemaCache,
-		pagCfg:      pagCfg,
-		etCfg:       etCfg,
+		store:          store,
+		schemaRefStore: schemaRefStore,
+		cache:          cache,
+		schemaCache:    schemaCache,
+		pagCfg:         pagCfg,
+		etCfg:          etCfg,
 	}
 }
 
@@ -169,6 +173,8 @@ func (s *EventTypeService) List(ctx context.Context, q *model.EventTypeListQuery
 }
 
 // Create 创建事件类型
+//
+// 事务内同时写 event_types + schema_refs。
 func (s *EventTypeService) Create(ctx context.Context, req *model.CreateEventTypeRequest) (int64, error) {
 	slog.Debug("service.创建事件类型", "name", req.Name)
 
@@ -199,11 +205,26 @@ func (s *EventTypeService) Create(ctx context.Context, req *model.CreateEventTyp
 		return 0, err
 	}
 
-	// 写 MySQL
-	id, err := s.store.Create(ctx, req, configJSON)
+	// 事务：写 event_types + schema_refs
+	tx, err := s.store.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	id, err := s.store.CreateTx(ctx, tx, req, configJSON)
 	if err != nil {
 		slog.Error("service.创建事件类型失败", "error", err, "name", req.Name)
 		return 0, fmt.Errorf("create event_type: %w", err)
+	}
+
+	// 写 schema_refs
+	if err := s.attachSchemaRefs(ctx, tx, id, req.Extensions); err != nil {
+		return 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit: %w", err)
 	}
 
 	// 清列表缓存
@@ -259,6 +280,8 @@ func (s *EventTypeService) GetByID(ctx context.Context, id int64) (*model.EventT
 }
 
 // Update 编辑事件类型
+//
+// 事务内同时更新 event_types + diff schema_refs。
 func (s *EventTypeService) Update(ctx context.Context, req *model.UpdateEventTypeRequest) error {
 	slog.Debug("service.编辑事件类型", "id", req.ID)
 
@@ -289,13 +312,35 @@ func (s *EventTypeService) Update(ctx context.Context, req *model.UpdateEventTyp
 		return err
 	}
 
-	// 乐观锁更新
-	if err := s.store.Update(ctx, req, configJSON); err != nil {
+	// 解析旧 extension keys
+	oldExtKeys := s.extractExtensionKeys(et.ConfigJSON)
+	newExtKeys := make(map[string]bool, len(req.Extensions))
+	for k := range req.Extensions {
+		newExtKeys[k] = true
+	}
+
+	// 事务：更新 event_types + diff schema_refs
+	tx, err := s.store.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	if err := s.store.UpdateTx(ctx, tx, req, configJSON); err != nil {
 		if errors.Is(err, errcode.ErrVersionConflict) {
 			return errcode.New(errcode.ErrEventTypeVersionConflict)
 		}
 		slog.Error("service.编辑事件类型失败", "error", err, "id", req.ID)
 		return fmt.Errorf("update event_type: %w", err)
+	}
+
+	// diff schema_refs
+	if err := s.syncSchemaRefs(ctx, tx, req.ID, oldExtKeys, newExtKeys); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
 	}
 
 	// 清缓存
@@ -307,6 +352,8 @@ func (s *EventTypeService) Update(ctx context.Context, req *model.UpdateEventTyp
 }
 
 // Delete 软删除事件类型
+//
+// 事务内同时软删 event_types + 清理 schema_refs。
 func (s *EventTypeService) Delete(ctx context.Context, id int64) (*model.DeleteResult, error) {
 	et, err := s.getOrNotFound(ctx, id)
 	if err != nil {
@@ -318,15 +365,30 @@ func (s *EventTypeService) Delete(ctx context.Context, id int64) (*model.DeleteR
 		return nil, errcode.New(errcode.ErrEventTypeDeleteNotDisabled)
 	}
 
-	// 本期 ref_count 不接入，直接删
-	// TODO: FSM/BT 上线后加 ref_count 检查 + FOR SHARE 防 TOCTOU
+	// TODO: FSM/BT 上线后加引用检查
 
-	if err := s.store.SoftDelete(ctx, id); err != nil {
+	// 事务：软删 event_types + 清理 schema_refs
+	tx, err := s.store.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	if err := s.store.SoftDeleteTx(ctx, tx, id); err != nil {
 		if errors.Is(err, errcode.ErrNotFound) {
 			return nil, errcode.New(errcode.ErrEventTypeNotFound)
 		}
 		slog.Error("service.删除事件类型失败", "error", err, "id", id)
 		return nil, fmt.Errorf("soft delete event_type: %w", err)
+	}
+
+	// 清理该事件类型的所有 schema_refs
+	if _, err := s.schemaRefStore.RemoveByRef(ctx, tx, util.RefTypeEventType, id); err != nil {
+		return nil, fmt.Errorf("remove schema refs: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
 	}
 
 	// 清缓存
@@ -375,4 +437,86 @@ func (s *EventTypeService) ToggleEnabled(ctx context.Context, req *model.ToggleE
 // ExportAll 导出所有已启用的事件类型
 func (s *EventTypeService) ExportAll(ctx context.Context) ([]model.EventTypeExportItem, error) {
 	return s.store.ExportAll(ctx)
+}
+
+// ---- schema_refs 维护辅助 ----
+
+// extractExtensionKeys 从 config_json 中提取扩展字段 key 集合
+//
+// 系统字段（display_name 等）排除，剩余 key 即扩展字段。
+func (s *EventTypeService) extractExtensionKeys(configJSON json.RawMessage) map[string]bool {
+	systemKeys := map[string]bool{
+		"display_name":     true,
+		"default_severity": true,
+		"default_ttl":      true,
+		"perception_mode":  true,
+		"range":            true,
+	}
+	var config map[string]interface{}
+	if err := json.Unmarshal(configJSON, &config); err != nil {
+		return make(map[string]bool)
+	}
+	keys := make(map[string]bool)
+	for k := range config {
+		if !systemKeys[k] {
+			keys[k] = true
+		}
+	}
+	return keys
+}
+
+// attachSchemaRefs 为事件类型的扩展字段写入 schema_refs（事务内）
+func (s *EventTypeService) attachSchemaRefs(ctx context.Context, tx *sqlx.Tx, eventTypeID int64, extensions map[string]interface{}) error {
+	for key := range extensions {
+		schema, ok := s.schemaCache.GetByFieldName(key)
+		if !ok {
+			continue // 校验阶段已确保存在，此处防御性跳过
+		}
+		if err := s.schemaRefStore.Add(ctx, tx, schema.ID, util.RefTypeEventType, eventTypeID); err != nil {
+			return fmt.Errorf("add schema ref %s → event_type %d: %w", key, eventTypeID, err)
+		}
+	}
+	return nil
+}
+
+// syncSchemaRefs diff 旧/新扩展字段 key，增删 schema_refs（事务内）
+func (s *EventTypeService) syncSchemaRefs(ctx context.Context, tx *sqlx.Tx, eventTypeID int64, oldKeys, newKeys map[string]bool) error {
+	// toAdd: newKeys 中有但 oldKeys 没有
+	for key := range newKeys {
+		if !oldKeys[key] {
+			schema, ok := s.schemaCache.GetByFieldName(key)
+			if !ok {
+				continue
+			}
+			if err := s.schemaRefStore.Add(ctx, tx, schema.ID, util.RefTypeEventType, eventTypeID); err != nil {
+				return fmt.Errorf("add schema ref %s: %w", key, err)
+			}
+		}
+	}
+	// toRemove: oldKeys 中有但 newKeys 没有
+	for key := range oldKeys {
+		if !newKeys[key] {
+			// 旧 key 对应的 schema 可能已禁用/删除，从 schemaCache 查不到
+			// 需要从 ListAllLite 查，但这里在事务内不方便。
+			// 更简单的方式：直接从 schema_refs 按 ref 删除再重建。
+			// 但按 schema_id 删需要知道 ID。走 ListAllLite 查一次。
+			allSchemas, err := s.store.DB().QueryContext(ctx,
+				`SELECT id FROM event_type_schema WHERE field_name = ? AND deleted = 0`, key)
+			if err != nil {
+				slog.Warn("service.查schema_id失败", "key", key, "error", err)
+				continue
+			}
+			var schemaID int64
+			if allSchemas.Next() {
+				allSchemas.Scan(&schemaID)
+			}
+			allSchemas.Close()
+			if schemaID > 0 {
+				if err := s.schemaRefStore.Remove(ctx, tx, schemaID, util.RefTypeEventType, eventTypeID); err != nil {
+					return fmt.Errorf("remove schema ref %s: %w", key, err)
+				}
+			}
+		}
+	}
+	return nil
 }
