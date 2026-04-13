@@ -102,7 +102,7 @@
 
 ---
 
-## T8: config.yaml 更新 + 迁移执行验证 (R20, R23)
+## T8: config.yaml 更新 + 迁移执行验证 (R20, R23) [x]
 
 **涉及文件**：
 - `backend/config.yaml`（改动）
