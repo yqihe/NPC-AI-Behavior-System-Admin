@@ -75,7 +75,7 @@
 
 ---
 
-## T6: Handler �� — 7 个 CRUD 接口 (R1, R2, R6, R25, R26)
+## T6: Handler 层 — 7 个 CRUD 接口 (R1, R2, R6, R25, R26) [x]
 
 **涉及文件**：
 - `backend/internal/handler/fsm_config.go`（新增）
