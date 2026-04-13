@@ -6,25 +6,18 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 )
 
 // EventTypeSchemaStore event_type_schema 表操作
 type EventTypeSchemaStore struct {
-	db interface {
-		GetContext(ctx context.Context, dest interface{}, query string, args ...interface{}) error
-		SelectContext(ctx context.Context, dest interface{}, query string, args ...interface{}) error
-		ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
-	}
+	db *sqlx.DB
 }
 
 // NewEventTypeSchemaStore 创建 EventTypeSchemaStore
-func NewEventTypeSchemaStore(db interface {
-	GetContext(ctx context.Context, dest interface{}, query string, args ...interface{}) error
-	SelectContext(ctx context.Context, dest interface{}, query string, args ...interface{}) error
-	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
-}) *EventTypeSchemaStore {
+func NewEventTypeSchemaStore(db *sqlx.DB) *EventTypeSchemaStore {
 	return &EventTypeSchemaStore{db: db}
 }
 
