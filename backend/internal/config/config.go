@@ -17,6 +17,7 @@ type Config struct {
 	Validation      ValidationConfig      `yaml:"validation"`
 	EventType       EventTypeConfig       `yaml:"event_type"`
 	EventTypeSchema EventTypeSchemaConfig `yaml:"event_type_schema"`
+	FsmConfig       FsmConfigConfig       `yaml:"fsm_config"`
 }
 
 // ServerConfig HTTP 服务配置
@@ -69,6 +70,18 @@ type EventTypeSchemaConfig struct {
 	FieldNameMaxLength  int `yaml:"field_name_max_length"`
 	FieldLabelMaxLength int `yaml:"field_label_max_length"`
 	MaxSchemas          int `yaml:"max_schemas"`
+}
+
+// FsmConfigConfig 状态机管理配置
+type FsmConfigConfig struct {
+	NameMaxLength        int           `yaml:"name_max_length"`
+	DisplayNameMaxLength int           `yaml:"display_name_max_length"`
+	MaxStates            int           `yaml:"max_states"`
+	MaxTransitions       int           `yaml:"max_transitions"`
+	ConditionMaxDepth    int           `yaml:"condition_max_depth"`
+	CacheDetailTTL       time.Duration `yaml:"cache_detail_ttl"`
+	CacheListTTL         time.Duration `yaml:"cache_list_ttl"`
+	CacheLockTTL         time.Duration `yaml:"cache_lock_ttl"`
 }
 
 // Load 从文件加载配置

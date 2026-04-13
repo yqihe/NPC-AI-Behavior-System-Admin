@@ -18,7 +18,7 @@
 
 ---
 
-## T2: 错误码 + 配置项 (R3, R8, R10)
+## T2: 错误码 + 配置项 (R3, R8, R10) [x]
 
 **��及文��**：
 - `backend/internal/errcode/codes.go`（改动）
