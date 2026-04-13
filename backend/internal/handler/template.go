@@ -11,6 +11,7 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	"github.com/yqihe/npc-ai-admin/backend/internal/service"
+	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // TemplateHandler 模板管理 HTTP handler
@@ -46,7 +47,7 @@ func (h *TemplateHandler) checkTemplateName(name string) *errcode.Error {
 	if name == "" {
 		return errcode.Newf(errcode.ErrTemplateNameInvalid, "模板标识不能为空")
 	}
-	if !identPattern.MatchString(name) {
+	if !util.IdentPattern.MatchString(name) {
 		return errcode.New(errcode.ErrTemplateNameInvalid)
 	}
 	if len(name) > h.valCfg.TemplateNameMaxLength {
@@ -119,22 +120,22 @@ func (h *TemplateHandler) CheckName(ctx context.Context, req *model.CheckNameReq
 
 // ToggleEnabled 切换启用/停用
 func (h *TemplateHandler) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) (*string, error) {
-	if err := checkID(req.ID); err != nil {
+	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
 	}
-	if err := checkVersion(req.Version); err != nil {
+	if err := util.CheckVersion(req.Version); err != nil {
 		return nil, err
 	}
 	slog.Debug("handler.切换模板启用", "id", req.ID, "enabled", req.Enabled)
 	if err := h.templateService.ToggleEnabled(ctx, req); err != nil {
 		return nil, err
 	}
-	return successMsg("操作成功"), nil
+	return util.SuccessMsg("操作成功"), nil
 }
 
 // GetReferences 引用详情（NPC 模块未上线前返回空数组占位）
 func (h *TemplateHandler) GetReferences(ctx context.Context, req *model.IDRequest) (*model.TemplateReferenceDetail, error) {
-	if err := checkID(req.ID); err != nil {
+	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
 	}
 	slog.Debug("handler.模板引用详情", "id", req.ID)
@@ -232,7 +233,7 @@ func (h *TemplateHandler) Create(ctx context.Context, req *model.CreateTemplateR
 //  3. fieldService.GetByIDsLite 跨模块拿字段精简列表（走字段方 cache）
 //  4. handler 拼装 TemplateDetail（按 entries 顺序对齐 + Required + Enabled）
 func (h *TemplateHandler) Get(ctx context.Context, req *model.IDRequest) (*model.TemplateDetail, error) {
-	if err := checkID(req.ID); err != nil {
+	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
 	}
 	slog.Debug("handler.模板详情", "id", req.ID)
@@ -304,7 +305,7 @@ func (h *TemplateHandler) Get(ctx context.Context, req *model.IDRequest) (*model
 //  5. Commit → 清两个模块缓存
 func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateRequest) (*string, error) {
 	// 1. 格式校验
-	if err := checkID(req.ID); err != nil {
+	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
 	}
 	if err := h.checkTemplateLabel(req.Label); err != nil {
@@ -316,7 +317,7 @@ func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateR
 	if err := checkTemplateFields(req.Fields); err != nil {
 		return nil, err
 	}
-	if err := checkVersion(req.Version); err != nil {
+	if err := util.CheckVersion(req.Version); err != nil {
 		return nil, err
 	}
 
@@ -388,7 +389,7 @@ func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateR
 	}
 
 	slog.Info("handler.编辑模板成功", "id", req.ID, "fields_changed", fieldsChanged)
-	return successMsg("保存成功"), nil
+	return util.SuccessMsg("保存成功"), nil
 }
 
 // Delete 删除模板
@@ -401,7 +402,7 @@ func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateR
 //  5. SoftDeleteTx + DetachFromTemplateTx → Commit
 //  6. 清两个模块缓存
 func (h *TemplateHandler) Delete(ctx context.Context, req *model.IDRequest) (*model.DeleteResult, error) {
-	if err := checkID(req.ID); err != nil {
+	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
 	}
 	slog.Debug("handler.删除模板", "id", req.ID)

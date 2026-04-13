@@ -67,7 +67,7 @@ func (s *EventTypeSchemaService) ListAllLite(ctx context.Context) ([]model.Event
 
 // Create 创建扩展字段定义
 func (s *EventTypeSchemaService) Create(ctx context.Context, req *model.CreateEventTypeSchemaRequest) (int64, error) {
-	slog.Debug("service.event_type_schema.create", "field_name", req.FieldName)
+	slog.Debug("service.创建扩展字段", "field_name", req.FieldName)
 
 	// field_name 唯一性（含软删除）
 	exists, err := s.store.ExistsByFieldName(ctx, req.FieldName)
@@ -112,16 +112,16 @@ func (s *EventTypeSchemaService) Create(ctx context.Context, req *model.CreateEv
 
 	// 重新加载内存缓存
 	if err := s.schemaCache.Reload(ctx); err != nil {
-		slog.Error("service.event_type_schema.reload_after_create", "error", err)
+		slog.Error("service.创建扩展字段-重载缓存失败", "error", err)
 	}
 
-	slog.Info("service.event_type_schema.created", "id", id, "field_name", req.FieldName)
+	slog.Info("service.创建扩展字段成功", "id", id, "field_name", req.FieldName)
 	return id, nil
 }
 
 // Update 编辑扩展字段定义
 func (s *EventTypeSchemaService) Update(ctx context.Context, req *model.UpdateEventTypeSchemaRequest) error {
-	slog.Debug("service.event_type_schema.update", "id", req.ID)
+	slog.Debug("service.编辑扩展字段", "id", req.ID)
 
 	ets, err := s.getOrNotFound(ctx, req.ID)
 	if err != nil {
@@ -139,7 +139,7 @@ func (s *EventTypeSchemaService) Update(ctx context.Context, req *model.UpdateEv
 
 	// 乐观锁更新
 	if err := s.store.Update(ctx, req); err != nil {
-		if errors.Is(err, storemysql.ErrVersionConflict) {
+		if errors.Is(err, errcode.ErrVersionConflict) {
 			return errcode.New(errcode.ErrExtSchemaVersionConflict)
 		}
 		return err
@@ -147,16 +147,16 @@ func (s *EventTypeSchemaService) Update(ctx context.Context, req *model.UpdateEv
 
 	// 重新加载内存缓存
 	if err := s.schemaCache.Reload(ctx); err != nil {
-		slog.Error("service.event_type_schema.reload_after_update", "error", err)
+		slog.Error("service.编辑扩展字段-重载缓存失败", "error", err)
 	}
 
-	slog.Info("service.event_type_schema.updated", "id", req.ID)
+	slog.Info("service.编辑扩展字段成功", "id", req.ID)
 	return nil
 }
 
 // Delete 软删除扩展字段定义
 func (s *EventTypeSchemaService) Delete(ctx context.Context, id int64) error {
-	slog.Debug("service.event_type_schema.delete", "id", id)
+	slog.Debug("service.删除扩展字段", "id", id)
 
 	ets, err := s.getOrNotFound(ctx, id)
 	if err != nil {
@@ -169,7 +169,7 @@ func (s *EventTypeSchemaService) Delete(ctx context.Context, id int64) error {
 	}
 
 	if err := s.store.SoftDelete(ctx, id); err != nil {
-		if errors.Is(err, storemysql.ErrNotFound) {
+		if errors.Is(err, errcode.ErrNotFound) {
 			return errcode.New(errcode.ErrExtSchemaNotFound)
 		}
 		return err
@@ -177,16 +177,16 @@ func (s *EventTypeSchemaService) Delete(ctx context.Context, id int64) error {
 
 	// 重新加载内存缓存
 	if err := s.schemaCache.Reload(ctx); err != nil {
-		slog.Error("service.event_type_schema.reload_after_delete", "error", err)
+		slog.Error("service.删除扩展字段-重载缓存失败", "error", err)
 	}
 
-	slog.Info("service.event_type_schema.deleted", "id", id)
+	slog.Info("service.删除扩展字段成功", "id", id)
 	return nil
 }
 
 // ToggleEnabled 切换启用/停用
 func (s *EventTypeSchemaService) ToggleEnabled(ctx context.Context, id int64, version int) error {
-	slog.Debug("service.event_type_schema.toggle_enabled", "id", id)
+	slog.Debug("service.切换扩展字段启用", "id", id)
 
 	ets, err := s.getOrNotFound(ctx, id)
 	if err != nil {
@@ -195,7 +195,7 @@ func (s *EventTypeSchemaService) ToggleEnabled(ctx context.Context, id int64, ve
 
 	newEnabled := !ets.Enabled
 	if err := s.store.ToggleEnabled(ctx, id, newEnabled, version); err != nil {
-		if errors.Is(err, storemysql.ErrVersionConflict) {
+		if errors.Is(err, errcode.ErrVersionConflict) {
 			return errcode.New(errcode.ErrExtSchemaVersionConflict)
 		}
 		return err
@@ -203,9 +203,9 @@ func (s *EventTypeSchemaService) ToggleEnabled(ctx context.Context, id int64, ve
 
 	// 重新加载内存缓存
 	if err := s.schemaCache.Reload(ctx); err != nil {
-		slog.Error("service.event_type_schema.reload_after_toggle", "error", err)
+		slog.Error("service.切换扩展字段启用-重载缓存失败", "error", err)
 	}
 
-	slog.Info("service.event_type_schema.toggled", "id", id, "enabled", newEnabled)
+	slog.Info("service.切换扩展字段启用成功", "id", id, "enabled", newEnabled)
 	return nil
 }

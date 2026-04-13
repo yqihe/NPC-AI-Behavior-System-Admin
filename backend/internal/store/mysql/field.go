@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
@@ -93,7 +94,7 @@ func (s *FieldStore) List(ctx context.Context, q *model.FieldListQuery) ([]model
 
 	if q.Label != "" {
 		where = append(where, "label LIKE ?")
-		args = append(args, "%"+escapeLike(q.Label)+"%")
+		args = append(args, "%"+util.EscapeLike(q.Label)+"%")
 	}
 	if q.Type != "" {
 		where = append(where, "type = ?")
@@ -155,7 +156,7 @@ func (s *FieldStore) Update(ctx context.Context, req *model.UpdateFieldRequest) 
 		return fmt.Errorf("rows affected: %w", err)
 	}
 	if rows == 0 {
-		return ErrVersionConflict
+		return errcode.ErrVersionConflict
 	}
 	return nil
 }
@@ -174,7 +175,7 @@ func (s *FieldStore) SoftDeleteTx(ctx context.Context, tx *sqlx.Tx, id int64) er
 		return fmt.Errorf("rows affected: %w", err)
 	}
 	if rows == 0 {
-		return ErrNotFound
+		return errcode.ErrNotFound
 	}
 	return nil
 }
@@ -194,7 +195,7 @@ func (s *FieldStore) ToggleEnabled(ctx context.Context, id int64, enabled bool, 
 		return fmt.Errorf("rows affected: %w", err)
 	}
 	if rows == 0 {
-		return ErrVersionConflict
+		return errcode.ErrVersionConflict
 	}
 	return nil
 }
@@ -245,7 +246,7 @@ func (s *FieldStore) GetRefCountTx(ctx context.Context, tx *sqlx.Tx, id int64) (
 	err := tx.GetContext(ctx, &count,
 		`SELECT ref_count FROM fields WHERE id = ? AND deleted = 0 FOR SHARE`, id)
 	if err == sql.ErrNoRows {
-		return 0, ErrNotFound
+		return 0, errcode.ErrNotFound
 	}
 	if err != nil {
 		return 0, fmt.Errorf("get ref count tx: %w", err)
@@ -253,7 +254,3 @@ func (s *FieldStore) GetRefCountTx(ctx context.Context, tx *sqlx.Tx, id int64) (
 	return count, nil
 }
 
-// escapeLike 转义 LIKE 通配符 — 权威定义在 util/strings.go
-func escapeLike(s string) string {
-	return util.EscapeLike(s)
-}

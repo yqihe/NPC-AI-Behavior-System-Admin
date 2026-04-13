@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
+	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // EventTypeStore event_types 表操作
@@ -86,7 +88,7 @@ func (s *EventTypeStore) List(ctx context.Context, q *model.EventTypeListQuery) 
 
 	if q.Label != "" {
 		where = append(where, "display_name LIKE ?")
-		args = append(args, "%"+escapeLike(q.Label)+"%")
+		args = append(args, "%"+util.EscapeLike(q.Label)+"%")
 	}
 	if q.PerceptionMode != "" {
 		where = append(where, "perception_mode = ?")
@@ -131,7 +133,7 @@ func (s *EventTypeStore) List(ctx context.Context, q *model.EventTypeListQuery) 
 
 // Update 编辑事件类型（乐观锁，按 ID）
 //
-// rows=0 → ErrVersionConflict（version 不匹配 或 记录已删除）。
+// rows=0 → errcode.ErrVersionConflict（version 不匹配 或 记录已删除）。
 func (s *EventTypeStore) Update(ctx context.Context, req *model.UpdateEventTypeRequest, configJSON json.RawMessage) error {
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE event_types SET display_name = ?, perception_mode = ?, config_json = ?, version = version + 1, updated_at = ?
@@ -146,7 +148,7 @@ func (s *EventTypeStore) Update(ctx context.Context, req *model.UpdateEventTypeR
 		return fmt.Errorf("rows affected: %w", err)
 	}
 	if rows == 0 {
-		return ErrVersionConflict
+		return errcode.ErrVersionConflict
 	}
 	return nil
 }
@@ -165,7 +167,7 @@ func (s *EventTypeStore) SoftDelete(ctx context.Context, id int64) error {
 		return fmt.Errorf("rows affected: %w", err)
 	}
 	if rows == 0 {
-		return ErrNotFound
+		return errcode.ErrNotFound
 	}
 	return nil
 }
@@ -185,7 +187,7 @@ func (s *EventTypeStore) ToggleEnabled(ctx context.Context, id int64, enabled bo
 		return fmt.Errorf("rows affected: %w", err)
 	}
 	if rows == 0 {
-		return ErrVersionConflict
+		return errcode.ErrVersionConflict
 	}
 	return nil
 }

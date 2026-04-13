@@ -9,6 +9,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
+	rcfg "github.com/yqihe/npc-ai-admin/backend/internal/store/redis/config"
 )
 
 // TemplateCache Redis 模板缓存
@@ -24,14 +25,11 @@ func NewTemplateCache(rdb *redis.Client) *TemplateCache {
 	return &TemplateCache{rdb: rdb}
 }
 
-// 沿用字段管理的 nullMarker / detailTTL* / listTTL* / lockExpire 常量。
-// 跨包视为同一缓存模式，TTL 数值不需要单独区分。
-
 // ---- 单条缓存 ----
 
 // GetDetail 查单条模板缓存（裸行）
 func (c *TemplateCache) GetDetail(ctx context.Context, id int64) (*model.Template, bool, error) {
-	key := TemplateDetailKey(id)
+	key := rcfg.TemplateDetailKey(id)
 	data, err := c.rdb.Get(ctx, key).Bytes()
 	if err == redis.Nil {
 		slog.Debug("cache.模板详情未命中", "id", id)
@@ -43,7 +41,7 @@ func (c *TemplateCache) GetDetail(ctx context.Context, id int64) (*model.Templat
 	}
 
 	// 空值标记
-	if string(data) == nullMarker {
+	if string(data) == rcfg.NullMarker {
 		slog.Debug("cache.模板详情命中空值", "id", id)
 		return nil, true, nil
 	}
@@ -62,10 +60,10 @@ func (c *TemplateCache) GetDetail(ctx context.Context, id int64) (*model.Templat
 //
 // tpl 为 nil 时写入空值标记防穿透。
 func (c *TemplateCache) SetDetail(ctx context.Context, id int64, tpl *model.Template) {
-	key := TemplateDetailKey(id)
+	key := rcfg.TemplateDetailKey(id)
 	var data []byte
 	if tpl == nil {
-		data = []byte(nullMarker)
+		data = []byte(rcfg.NullMarker)
 	} else {
 		var err error
 		data, err = json.Marshal(tpl)
@@ -75,14 +73,14 @@ func (c *TemplateCache) SetDetail(ctx context.Context, id int64, tpl *model.Temp
 		}
 	}
 
-	if err := c.rdb.Set(ctx, key, data, ttl(detailTTLBase, detailTTLJitter)).Err(); err != nil {
+	if err := c.rdb.Set(ctx, key, data, rcfg.TTL(rcfg.DetailTTLBase, rcfg.DetailTTLJitter)).Err(); err != nil {
 		slog.Error("cache.模板详情写入失败", "error", err, "id", id)
 	}
 }
 
 // DelDetail 删单条模板缓存
 func (c *TemplateCache) DelDetail(ctx context.Context, id int64) {
-	key := TemplateDetailKey(id)
+	key := rcfg.TemplateDetailKey(id)
 	if err := c.rdb.Del(ctx, key).Err(); err != nil {
 		slog.Error("cache.模板详情删除失败", "error", err, "id", id)
 	}
@@ -92,7 +90,7 @@ func (c *TemplateCache) DelDetail(ctx context.Context, id int64) {
 
 // getListVersion 获取当前模板列表缓存版本号
 func (c *TemplateCache) getListVersion(ctx context.Context) int64 {
-	v, err := c.rdb.Get(ctx, templateListVersionKey).Int64()
+	v, err := c.rdb.Get(ctx, rcfg.TemplateListVersionKey).Int64()
 	if err != nil {
 		return 0
 	}
@@ -102,7 +100,7 @@ func (c *TemplateCache) getListVersion(ctx context.Context) int64 {
 // GetList 查模板列表缓存（带版本号）
 func (c *TemplateCache) GetList(ctx context.Context, q *model.TemplateListQuery) (*model.TemplateListData, bool, error) {
 	version := c.getListVersion(ctx)
-	key := TemplateListKey(version, q.Label, q.Enabled, q.Page, q.PageSize)
+	key := rcfg.TemplateListKey(version, q.Label, q.Enabled, q.Page, q.PageSize)
 	data, err := c.rdb.Get(ctx, key).Bytes()
 	if err == redis.Nil {
 		slog.Debug("cache.模板列表未命中", "key", key)
@@ -126,14 +124,14 @@ func (c *TemplateCache) GetList(ctx context.Context, q *model.TemplateListQuery)
 // SetList 写模板列表缓存（带当前版本号）
 func (c *TemplateCache) SetList(ctx context.Context, q *model.TemplateListQuery, list *model.TemplateListData) {
 	version := c.getListVersion(ctx)
-	key := TemplateListKey(version, q.Label, q.Enabled, q.Page, q.PageSize)
+	key := rcfg.TemplateListKey(version, q.Label, q.Enabled, q.Page, q.PageSize)
 	data, err := json.Marshal(list)
 	if err != nil {
 		slog.Error("cache.模板列表序列化失败", "error", err)
 		return
 	}
 
-	if err := c.rdb.Set(ctx, key, data, ttl(listTTLBase, listTTLJitter)).Err(); err != nil {
+	if err := c.rdb.Set(ctx, key, data, rcfg.TTL(rcfg.ListTTLBase, rcfg.ListTTLJitter)).Err(); err != nil {
 		slog.Error("cache.模板列表写入失败", "error", err, "key", key)
 	}
 }
@@ -142,7 +140,7 @@ func (c *TemplateCache) SetList(ctx context.Context, q *model.TemplateListQuery,
 //
 // 只需 INCR 版本号，旧版本的 key 自然过期，无需 SCAN（redis-red-lines）。
 func (c *TemplateCache) InvalidateList(ctx context.Context) {
-	if err := c.rdb.Incr(ctx, templateListVersionKey).Err(); err != nil {
+	if err := c.rdb.Incr(ctx, rcfg.TemplateListVersionKey).Err(); err != nil {
 		slog.Error("cache.模板列表版本号递增失败", "error", err)
 	}
 }
@@ -151,7 +149,7 @@ func (c *TemplateCache) InvalidateList(ctx context.Context) {
 
 // TryLock 尝试获取分布式锁（防缓存击穿）
 func (c *TemplateCache) TryLock(ctx context.Context, id int64, expire time.Duration) (bool, error) {
-	key := TemplateLockKey(id)
+	key := rcfg.TemplateLockKey(id)
 	ok, err := c.rdb.SetNX(ctx, key, "1", expire).Result()
 	if err != nil {
 		return false, fmt.Errorf("template try lock: %w", err)
@@ -161,7 +159,7 @@ func (c *TemplateCache) TryLock(ctx context.Context, id int64, expire time.Durat
 
 // Unlock 释放分布式锁
 func (c *TemplateCache) Unlock(ctx context.Context, id int64) {
-	key := TemplateLockKey(id)
+	key := rcfg.TemplateLockKey(id)
 	if err := c.rdb.Del(ctx, key).Err(); err != nil {
 		slog.Error("cache.模板释放锁失败", "error", err, "key", key)
 	}

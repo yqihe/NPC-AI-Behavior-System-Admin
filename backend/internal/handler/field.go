@@ -15,9 +15,6 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
-// identPattern 通用标识符正则 — 权威定义在 util/strings.go
-var identPattern = util.IdentPattern
-
 // FieldHandler 字段管理业务处理
 type FieldHandler struct {
 	fieldService    *service.FieldService
@@ -44,7 +41,7 @@ func (h *FieldHandler) checkName(name string) *errcode.Error {
 	if name == "" {
 		return errcode.Newf(errcode.ErrFieldNameInvalid, "字段标识不能为空")
 	}
-	if !identPattern.MatchString(name) {
+	if !util.IdentPattern.MatchString(name) {
 		return errcode.New(errcode.ErrFieldNameInvalid)
 	}
 	if len(name) > h.valCfg.FieldNameMaxLength {
@@ -63,20 +60,6 @@ func (h *FieldHandler) checkLabel(label string) *errcode.Error {
 	return nil
 }
 
-func checkRequired(value, fieldName string) *errcode.Error {
-	if value == "" {
-		return errcode.Newf(errcode.ErrBadRequest, "%s 不能为空", fieldName)
-	}
-	return nil
-}
-
-func checkID(id int64) *errcode.Error {
-	if id <= 0 {
-		return errcode.Newf(errcode.ErrBadRequest, "ID 不合法")
-	}
-	return nil
-}
-
 // checkPropertiesShape 校验 properties 原始字节必须是 JSON 对象（首字符 '{'）。
 // 防御客户端传 null / [] / "foo" / 123 / true 这类非对象形状；
 // json.RawMessage 对 `null` 不会变 nil，是 []byte("null")，所以需要单独拦。
@@ -89,17 +72,6 @@ func checkPropertiesShape(raw json.RawMessage) *errcode.Error {
 		return errcode.Newf(errcode.ErrBadRequest, "properties 必须是 JSON 对象")
 	}
 	return nil
-}
-
-func checkVersion(version int) *errcode.Error {
-	if version <= 0 {
-		return errcode.Newf(errcode.ErrBadRequest, "版本号不合法")
-	}
-	return nil
-}
-
-func successMsg(msg string) *string {
-	return &msg
 }
 
 // ---- 业务处理 ----
@@ -119,10 +91,10 @@ func (h *FieldHandler) Create(ctx context.Context, req *model.CreateFieldRequest
 	if err := h.checkLabel(req.Label); err != nil {
 		return nil, err
 	}
-	if err := checkRequired(req.Type, "字段类型"); err != nil {
+	if err := util.CheckRequired(req.Type, "字段类型"); err != nil {
 		return nil, err
 	}
-	if err := checkRequired(req.Category, "标签分类"); err != nil {
+	if err := util.CheckRequired(req.Category, "标签分类"); err != nil {
 		return nil, err
 	}
 	if err := checkPropertiesShape(req.Properties); err != nil {
@@ -141,7 +113,7 @@ func (h *FieldHandler) Create(ctx context.Context, req *model.CreateFieldRequest
 
 // Get 字段详情（按 ID）
 func (h *FieldHandler) Get(ctx context.Context, req *model.IDRequest) (*model.Field, error) {
-	if err := checkID(req.ID); err != nil {
+	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
 	}
 
@@ -152,22 +124,22 @@ func (h *FieldHandler) Get(ctx context.Context, req *model.IDRequest) (*model.Fi
 
 // Update 编辑字段（按 ID）
 func (h *FieldHandler) Update(ctx context.Context, req *model.UpdateFieldRequest) (*string, error) {
-	if err := checkID(req.ID); err != nil {
+	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
 	}
 	if err := h.checkLabel(req.Label); err != nil {
 		return nil, err
 	}
-	if err := checkRequired(req.Type, "字段类型"); err != nil {
+	if err := util.CheckRequired(req.Type, "字段类型"); err != nil {
 		return nil, err
 	}
-	if err := checkRequired(req.Category, "标签分类"); err != nil {
+	if err := util.CheckRequired(req.Category, "标签分类"); err != nil {
 		return nil, err
 	}
 	if err := checkPropertiesShape(req.Properties); err != nil {
 		return nil, err
 	}
-	if err := checkVersion(req.Version); err != nil {
+	if err := util.CheckVersion(req.Version); err != nil {
 		return nil, err
 	}
 
@@ -178,12 +150,12 @@ func (h *FieldHandler) Update(ctx context.Context, req *model.UpdateFieldRequest
 		return nil, err
 	}
 
-	return successMsg("保存成功"), nil
+	return util.SuccessMsg("保存成功"), nil
 }
 
 // Delete 软删除字段（按 ID）
 func (h *FieldHandler) Delete(ctx context.Context, req *model.IDRequest) (*model.DeleteResult, error) {
-	if err := checkID(req.ID); err != nil {
+	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
 	}
 
@@ -194,7 +166,7 @@ func (h *FieldHandler) Delete(ctx context.Context, req *model.IDRequest) (*model
 
 // CheckName 字段标识唯一性校验
 func (h *FieldHandler) CheckName(ctx context.Context, req *model.CheckNameRequest) (*model.CheckNameResult, error) {
-	if err := checkRequired(req.Name, "字段标识"); err != nil {
+	if err := util.CheckRequired(req.Name, "字段标识"); err != nil {
 		return nil, err
 	}
 
@@ -208,7 +180,7 @@ func (h *FieldHandler) CheckName(ctx context.Context, req *model.CheckNameReques
 // 跨模块编排：FieldService 只返回字段模块内的数据（templates 数组只有 RefID 不带 Label），
 // handler 调 templateService.GetByIDsLite 跨模块补齐 template label。
 func (h *FieldHandler) GetReferences(ctx context.Context, req *model.IDRequest) (*model.ReferenceDetail, error) {
-	if err := checkID(req.ID); err != nil {
+	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
 	}
 
@@ -250,10 +222,10 @@ func (h *FieldHandler) GetReferences(ctx context.Context, req *model.IDRequest) 
 
 // ToggleEnabled 切换启用/停用（按 ID）
 func (h *FieldHandler) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) (*string, error) {
-	if err := checkID(req.ID); err != nil {
+	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
 	}
-	if err := checkVersion(req.Version); err != nil {
+	if err := util.CheckVersion(req.Version); err != nil {
 		return nil, err
 	}
 
@@ -264,5 +236,5 @@ func (h *FieldHandler) ToggleEnabled(ctx context.Context, req *model.ToggleEnabl
 		return nil, err
 	}
 
-	return successMsg("操作成功"), nil
+	return util.SuccessMsg("操作成功"), nil
 }

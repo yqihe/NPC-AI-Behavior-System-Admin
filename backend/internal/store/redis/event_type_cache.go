@@ -9,6 +9,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
+	rcfg "github.com/yqihe/npc-ai-admin/backend/internal/store/redis/config"
 )
 
 // EventTypeCache Redis 事件类型缓存
@@ -28,7 +29,7 @@ func NewEventTypeCache(rdb *redis.Client) *EventTypeCache {
 
 // GetDetail 查单条事件类型缓存
 func (c *EventTypeCache) GetDetail(ctx context.Context, id int64) (*model.EventType, bool, error) {
-	key := EventTypeDetailKey(id)
+	key := rcfg.EventTypeDetailKey(id)
 	data, err := c.rdb.Get(ctx, key).Bytes()
 	if err == redis.Nil {
 		slog.Debug("cache.事件类型详情未命中", "id", id)
@@ -40,7 +41,7 @@ func (c *EventTypeCache) GetDetail(ctx context.Context, id int64) (*model.EventT
 	}
 
 	// 空值标记
-	if string(data) == nullMarker {
+	if string(data) == rcfg.NullMarker {
 		slog.Debug("cache.事件类型详情命中空值", "id", id)
 		return nil, true, nil
 	}
@@ -59,10 +60,10 @@ func (c *EventTypeCache) GetDetail(ctx context.Context, id int64) (*model.EventT
 //
 // et 为 nil 时写入空值标记防穿透。
 func (c *EventTypeCache) SetDetail(ctx context.Context, id int64, et *model.EventType) {
-	key := EventTypeDetailKey(id)
+	key := rcfg.EventTypeDetailKey(id)
 	var data []byte
 	if et == nil {
-		data = []byte(nullMarker)
+		data = []byte(rcfg.NullMarker)
 	} else {
 		var err error
 		data, err = json.Marshal(et)
@@ -72,14 +73,14 @@ func (c *EventTypeCache) SetDetail(ctx context.Context, id int64, et *model.Even
 		}
 	}
 
-	if err := c.rdb.Set(ctx, key, data, ttl(detailTTLBase, detailTTLJitter)).Err(); err != nil {
+	if err := c.rdb.Set(ctx, key, data, rcfg.TTL(rcfg.DetailTTLBase, rcfg.DetailTTLJitter)).Err(); err != nil {
 		slog.Error("cache.事件类型详情写入失败", "error", err, "id", id)
 	}
 }
 
 // DelDetail 删单条事件类型缓存
 func (c *EventTypeCache) DelDetail(ctx context.Context, id int64) {
-	key := EventTypeDetailKey(id)
+	key := rcfg.EventTypeDetailKey(id)
 	if err := c.rdb.Del(ctx, key).Err(); err != nil {
 		slog.Error("cache.事件类型详情删除失败", "error", err, "id", id)
 	}
@@ -89,7 +90,7 @@ func (c *EventTypeCache) DelDetail(ctx context.Context, id int64) {
 
 // getListVersion 获取当前事件类型列表缓存版本号
 func (c *EventTypeCache) getListVersion(ctx context.Context) int64 {
-	v, err := c.rdb.Get(ctx, eventTypeListVersionKey).Int64()
+	v, err := c.rdb.Get(ctx, rcfg.EventTypeListVersionKey).Int64()
 	if err != nil {
 		return 0
 	}
@@ -99,7 +100,7 @@ func (c *EventTypeCache) getListVersion(ctx context.Context) int64 {
 // GetList 查事件类型列表缓存（带版本号，类型安全）
 func (c *EventTypeCache) GetList(ctx context.Context, q *model.EventTypeListQuery) (*model.EventTypeListData, bool, error) {
 	version := c.getListVersion(ctx)
-	key := EventTypeListKey(version, q.Label, q.PerceptionMode, q.Enabled, q.Page, q.PageSize)
+	key := rcfg.EventTypeListKey(version, q.Label, q.PerceptionMode, q.Enabled, q.Page, q.PageSize)
 	data, err := c.rdb.Get(ctx, key).Bytes()
 	if err == redis.Nil {
 		slog.Debug("cache.事件类型列表未命中", "key", key)
@@ -123,14 +124,14 @@ func (c *EventTypeCache) GetList(ctx context.Context, q *model.EventTypeListQuer
 // SetList 写事件类型列表缓存（带当前版本号）
 func (c *EventTypeCache) SetList(ctx context.Context, q *model.EventTypeListQuery, list *model.EventTypeListData) {
 	version := c.getListVersion(ctx)
-	key := EventTypeListKey(version, q.Label, q.PerceptionMode, q.Enabled, q.Page, q.PageSize)
+	key := rcfg.EventTypeListKey(version, q.Label, q.PerceptionMode, q.Enabled, q.Page, q.PageSize)
 	data, err := json.Marshal(list)
 	if err != nil {
 		slog.Error("cache.事件类型列表序列化失败", "error", err)
 		return
 	}
 
-	if err := c.rdb.Set(ctx, key, data, ttl(listTTLBase, listTTLJitter)).Err(); err != nil {
+	if err := c.rdb.Set(ctx, key, data, rcfg.TTL(rcfg.ListTTLBase, rcfg.ListTTLJitter)).Err(); err != nil {
 		slog.Error("cache.事件类型列表写入失败", "error", err, "key", key)
 	}
 }
@@ -139,7 +140,7 @@ func (c *EventTypeCache) SetList(ctx context.Context, q *model.EventTypeListQuer
 //
 // 只需 INCR 版本号，旧版本 key 自然过期（redis-red-lines: 禁止 SCAN+DEL）。
 func (c *EventTypeCache) InvalidateList(ctx context.Context) {
-	if err := c.rdb.Incr(ctx, eventTypeListVersionKey).Err(); err != nil {
+	if err := c.rdb.Incr(ctx, rcfg.EventTypeListVersionKey).Err(); err != nil {
 		slog.Error("cache.事件类型列表版本号递增失败", "error", err)
 	}
 }
@@ -148,7 +149,7 @@ func (c *EventTypeCache) InvalidateList(ctx context.Context) {
 
 // TryLock 尝试获取分布式锁（防缓存击穿）
 func (c *EventTypeCache) TryLock(ctx context.Context, id int64, expire time.Duration) (bool, error) {
-	key := EventTypeLockKey(id)
+	key := rcfg.EventTypeLockKey(id)
 	ok, err := c.rdb.SetNX(ctx, key, "1", expire).Result()
 	if err != nil {
 		return false, fmt.Errorf("event_type try lock: %w", err)
@@ -158,7 +159,7 @@ func (c *EventTypeCache) TryLock(ctx context.Context, id int64, expire time.Dura
 
 // Unlock 释放分布式锁
 func (c *EventTypeCache) Unlock(ctx context.Context, id int64) {
-	key := EventTypeLockKey(id)
+	key := rcfg.EventTypeLockKey(id)
 	if err := c.rdb.Del(ctx, key).Err(); err != nil {
 		slog.Error("cache.事件类型释放锁失败", "error", err, "key", key)
 	}

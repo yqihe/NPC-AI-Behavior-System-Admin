@@ -72,15 +72,7 @@ func (s *FieldService) getFieldOrNotFound(ctx context.Context, id int64) (*model
 
 // List 字段列表（Cache-Aside：Redis → MySQL → 写 Redis）
 func (s *FieldService) List(ctx context.Context, q *model.FieldListQuery) (*model.ListData, error) {
-	if q.Page <= 0 {
-		q.Page = s.pagCfg.DefaultPage
-	}
-	if q.PageSize <= 0 {
-		q.PageSize = s.pagCfg.DefaultPageSize
-	}
-	if q.PageSize > s.pagCfg.MaxPageSize {
-		q.PageSize = s.pagCfg.MaxPageSize
-	}
+	util.NormalizePagination(&q.Page, &q.PageSize, s.pagCfg.DefaultPage, s.pagCfg.DefaultPageSize, s.pagCfg.MaxPageSize)
 
 	// 1. 查 Redis 缓存（Redis 挂了跳过，降级直查 MySQL）
 	if cached, hit, err := s.fieldCache.GetList(ctx, q); err == nil && hit {
@@ -281,7 +273,7 @@ func (s *FieldService) Update(ctx context.Context, req *model.UpdateFieldRequest
 	// 乐观锁写入
 	err = s.fieldStore.Update(ctx, req)
 	if err != nil {
-		if errors.Is(err, storemysql.ErrVersionConflict) {
+		if errors.Is(err, errcode.ErrVersionConflict) {
 			return errcode.New(errcode.ErrFieldVersionConflict)
 		}
 		slog.Error("service.编辑字段失败", "error", err, "id", req.ID)
@@ -359,7 +351,7 @@ func (s *FieldService) Delete(ctx context.Context, id int64) (*model.DeleteResul
 	}
 
 	if err := s.fieldStore.SoftDeleteTx(ctx, tx, id); err != nil {
-		if errors.Is(err, storemysql.ErrNotFound) {
+		if errors.Is(err, errcode.ErrNotFound) {
 			return nil, errcode.Newf(errcode.ErrFieldNotFound, "字段 ID=%d 不存在", id)
 		}
 		return nil, fmt.Errorf("soft delete: %w", err)
@@ -480,7 +472,7 @@ func (s *FieldService) ToggleEnabled(ctx context.Context, req *model.ToggleEnabl
 
 	err := s.fieldStore.ToggleEnabled(ctx, req.ID, req.Enabled, req.Version)
 	if err != nil {
-		if errors.Is(err, storemysql.ErrVersionConflict) {
+		if errors.Is(err, errcode.ErrVersionConflict) {
 			return errcode.New(errcode.ErrFieldVersionConflict)
 		}
 		slog.Error("service.切换启用失败", "error", err, "id", req.ID)

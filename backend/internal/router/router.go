@@ -5,10 +5,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/yqihe/npc-ai-admin/backend/internal/handler"
+	"github.com/yqihe/npc-ai-admin/backend/internal/setup"
 )
 
 // Setup 注册所有路由
-func Setup(r *gin.Engine, h *handler.Handlers) {
+func Setup(r *gin.Engine, h *setup.Handlers) {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})

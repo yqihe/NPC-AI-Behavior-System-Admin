@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 )
 
@@ -132,7 +133,7 @@ func (s *EventTypeSchemaStore) Update(ctx context.Context, req *model.UpdateEven
 		return fmt.Errorf("rows affected: %w", err)
 	}
 	if rows == 0 {
-		return ErrVersionConflict
+		return errcode.ErrVersionConflict
 	}
 	return nil
 }
@@ -151,7 +152,7 @@ func (s *EventTypeSchemaStore) SoftDelete(ctx context.Context, id int64) error {
 		return fmt.Errorf("rows affected: %w", err)
 	}
 	if rows == 0 {
-		return ErrNotFound
+		return errcode.ErrNotFound
 	}
 	return nil
 }
@@ -171,7 +172,7 @@ func (s *EventTypeSchemaStore) ToggleEnabled(ctx context.Context, id int64, enab
 		return fmt.Errorf("rows affected: %w", err)
 	}
 	if rows == 0 {
-		return ErrVersionConflict
+		return errcode.ErrVersionConflict
 	}
 	return nil
 }

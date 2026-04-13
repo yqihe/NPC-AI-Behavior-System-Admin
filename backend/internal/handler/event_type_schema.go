@@ -36,7 +36,7 @@ func (h *EventTypeSchemaHandler) checkFieldName(name string) *errcode.Error {
 	if name == "" {
 		return errcode.Newf(errcode.ErrExtSchemaNameInvalid, "扩展字段标识不能为空")
 	}
-	if !identPattern.MatchString(name) {
+	if !util.IdentPattern.MatchString(name) {
 		return errcode.New(errcode.ErrExtSchemaNameInvalid)
 	}
 	if len(name) > h.etsCfg.FieldNameMaxLength {

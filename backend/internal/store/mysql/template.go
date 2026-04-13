@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
+	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // TemplateStore templates 表操作
@@ -88,7 +90,7 @@ func (s *TemplateStore) List(ctx context.Context, q *model.TemplateListQuery) ([
 
 	if q.Label != "" {
 		where = append(where, "label LIKE ?")
-		args = append(args, "%"+escapeLike(q.Label)+"%")
+		args = append(args, "%"+util.EscapeLike(q.Label)+"%")
 	}
 	if q.Enabled != nil {
 		where = append(where, "enabled = ?")
@@ -129,7 +131,7 @@ func (s *TemplateStore) List(ctx context.Context, q *model.TemplateListQuery) ([
 
 // UpdateTx 事务内编辑模板（乐观锁，按 ID）
 //
-// rows=0 → ErrVersionConflict（version 不匹配 或 记录已删除）。
+// rows=0 → errcode.ErrVersionConflict（version 不匹配 或 记录已删除）。
 // service 层先 GetByID 预检查，rows=0 即视为版本冲突。
 func (s *TemplateStore) UpdateTx(ctx context.Context, tx *sqlx.Tx, req *model.UpdateTemplateRequest, fieldsJSON []byte) error {
 	result, err := tx.ExecContext(ctx,
@@ -145,7 +147,7 @@ func (s *TemplateStore) UpdateTx(ctx context.Context, tx *sqlx.Tx, req *model.Up
 		return fmt.Errorf("rows affected: %w", err)
 	}
 	if rows == 0 {
-		return ErrVersionConflict
+		return errcode.ErrVersionConflict
 	}
 	return nil
 }
@@ -164,7 +166,7 @@ func (s *TemplateStore) SoftDeleteTx(ctx context.Context, tx *sqlx.Tx, id int64)
 		return fmt.Errorf("rows affected: %w", err)
 	}
 	if rows == 0 {
-		return ErrNotFound
+		return errcode.ErrNotFound
 	}
 	return nil
 }
@@ -186,7 +188,7 @@ func (s *TemplateStore) ToggleEnabled(ctx context.Context, id int64, enabled boo
 		return fmt.Errorf("rows affected: %w", err)
 	}
 	if rows == 0 {
-		return ErrVersionConflict
+		return errcode.ErrVersionConflict
 	}
 	return nil
 }
@@ -220,7 +222,7 @@ func (s *TemplateStore) GetRefCountTx(ctx context.Context, tx *sqlx.Tx, id int64
 	err := tx.GetContext(ctx, &count,
 		`SELECT ref_count FROM templates WHERE id = ? AND deleted = 0 FOR SHARE`, id)
 	if err == sql.ErrNoRows {
-		return 0, ErrNotFound
+		return 0, errcode.ErrNotFound
 	}
 	if err != nil {
 		return 0, fmt.Errorf("get template ref count tx: %w", err)

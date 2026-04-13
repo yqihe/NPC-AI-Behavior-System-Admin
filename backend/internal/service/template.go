@@ -14,6 +14,7 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
 	storeredis "github.com/yqihe/npc-ai-admin/backend/internal/store/redis"
+	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // TemplateService 模板管理业务逻辑
@@ -100,15 +101,7 @@ func (s *TemplateService) ParseFieldEntries(raw json.RawMessage) ([]model.Templa
 
 // List 模板列表（Cache-Aside：Redis → MySQL → 写 Redis）
 func (s *TemplateService) List(ctx context.Context, q *model.TemplateListQuery) (*model.ListData, error) {
-	if q.Page <= 0 {
-		q.Page = s.pagCfg.DefaultPage
-	}
-	if q.PageSize <= 0 {
-		q.PageSize = s.pagCfg.DefaultPageSize
-	}
-	if q.PageSize > s.pagCfg.MaxPageSize {
-		q.PageSize = s.pagCfg.MaxPageSize
-	}
+	util.NormalizePagination(&q.Page, &q.PageSize, s.pagCfg.DefaultPage, s.pagCfg.DefaultPageSize, s.pagCfg.MaxPageSize)
 
 	// 1. 查 Redis 缓存
 	if cached, hit, err := s.cache.GetList(ctx, q); err == nil && hit {
@@ -209,7 +202,7 @@ func (s *TemplateService) ToggleEnabled(ctx context.Context, req *model.ToggleEn
 
 	err := s.store.ToggleEnabled(ctx, req.ID, req.Enabled, req.Version)
 	if err != nil {
-		if errors.Is(err, storemysql.ErrVersionConflict) {
+		if errors.Is(err, errcode.ErrVersionConflict) {
 			return errcode.New(errcode.ErrTemplateVersionConflict)
 		}
 		slog.Error("service.切换模板启用失败", "error", err, "id", req.ID)
@@ -314,7 +307,7 @@ func (s *TemplateService) UpdateTx(
 	}
 
 	if err = s.store.UpdateTx(ctx, tx, req, fieldsJSON); err != nil {
-		if errors.Is(err, storemysql.ErrVersionConflict) {
+		if errors.Is(err, errcode.ErrVersionConflict) {
 			return false, nil, nil, errcode.New(errcode.ErrTemplateVersionConflict)
 		}
 		slog.Error("service.编辑模板失败", "error", err, "id", req.ID)
@@ -330,7 +323,7 @@ func (s *TemplateService) UpdateTx(
 // 调用方（handler）必须先调 GetByID 校验存在 + enabled=0 + GetRefCountForDeleteTx 校验 ref_count=0。
 func (s *TemplateService) SoftDeleteTx(ctx context.Context, tx *sqlx.Tx, id int64) error {
 	if err := s.store.SoftDeleteTx(ctx, tx, id); err != nil {
-		if errors.Is(err, storemysql.ErrNotFound) {
+		if errors.Is(err, errcode.ErrNotFound) {
 			return errcode.Newf(errcode.ErrTemplateNotFound, "模板 ID=%d 不存在", id)
 		}
 		slog.Error("service.软删除模板失败", "error", err, "id", id)
@@ -346,7 +339,7 @@ func (s *TemplateService) SoftDeleteTx(ctx context.Context, tx *sqlx.Tx, id int6
 func (s *TemplateService) GetRefCountForDeleteTx(ctx context.Context, tx *sqlx.Tx, id int64) (int, error) {
 	count, err := s.store.GetRefCountTx(ctx, tx, id)
 	if err != nil {
-		if errors.Is(err, storemysql.ErrNotFound) {
+		if errors.Is(err, errcode.ErrNotFound) {
 			return 0, errcode.Newf(errcode.ErrTemplateNotFound, "模板 ID=%d 不存在", id)
 		}
 		return 0, fmt.Errorf("get template ref_count tx: %w", err)

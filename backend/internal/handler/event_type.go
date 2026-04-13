@@ -39,7 +39,7 @@ func (h *EventTypeHandler) checkName(name string) *errcode.Error {
 	if name == "" {
 		return errcode.Newf(errcode.ErrEventTypeNameInvalid, "事件标识不能为空")
 	}
-	if !identPattern.MatchString(name) {
+	if !util.IdentPattern.MatchString(name) {
 		return errcode.New(errcode.ErrEventTypeNameInvalid)
 	}
 	if len(name) > h.etCfg.NameMaxLength {
@@ -146,7 +146,7 @@ func (h *EventTypeHandler) Create(ctx context.Context, req *model.CreateEventTyp
 
 // Get 事件类型详情（跨模块拼装：事件类型 + 扩展字段 schema）
 func (h *EventTypeHandler) Get(ctx context.Context, req *model.IDRequest) (*model.EventTypeDetail, error) {
-	if err := checkID(req.ID); err != nil {
+	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
 	}
 
@@ -225,10 +225,10 @@ func (h *EventTypeHandler) Get(ctx context.Context, req *model.IDRequest) (*mode
 
 // Update 编辑事件类型
 func (h *EventTypeHandler) Update(ctx context.Context, req *model.UpdateEventTypeRequest) (*string, error) {
-	if err := checkID(req.ID); err != nil {
+	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
 	}
-	if err := checkVersion(req.Version); err != nil {
+	if err := util.CheckVersion(req.Version); err != nil {
 		return nil, err
 	}
 	if e := h.checkDisplayName(req.DisplayName); e != nil {
@@ -258,12 +258,12 @@ func (h *EventTypeHandler) Update(ctx context.Context, req *model.UpdateEventTyp
 	if err := h.eventTypeService.Update(ctx, req); err != nil {
 		return nil, err
 	}
-	return successMsg("保存成功"), nil
+	return util.SuccessMsg("保存成功"), nil
 }
 
 // Delete 删除事件类型
 func (h *EventTypeHandler) Delete(ctx context.Context, req *model.IDRequest) (*model.DeleteResult, error) {
-	if err := checkID(req.ID); err != nil {
+	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
 	}
 
@@ -285,10 +285,10 @@ func (h *EventTypeHandler) CheckName(ctx context.Context, req *model.CheckNameRe
 
 // ToggleEnabled 启用/停用切换
 func (h *EventTypeHandler) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) (*string, error) {
-	if err := checkID(req.ID); err != nil {
+	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
 	}
-	if err := checkVersion(req.Version); err != nil {
+	if err := util.CheckVersion(req.Version); err != nil {
 		return nil, err
 	}
 
@@ -297,6 +297,6 @@ func (h *EventTypeHandler) ToggleEnabled(ctx context.Context, req *model.ToggleE
 	if err := h.eventTypeService.ToggleEnabled(ctx, req); err != nil {
 		return nil, err
 	}
-	return successMsg("操作成功"), nil
+	return util.SuccessMsg("操作成功"), nil
 }
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
+	rcfg "github.com/yqihe/npc-ai-admin/backend/internal/store/redis/config"
 )
 
 // FsmConfigCache Redis 状态机配置缓存
@@ -28,7 +29,7 @@ func NewFsmConfigCache(rdb *redis.Client) *FsmConfigCache {
 
 // GetDetail 查单条状态机配置缓存
 func (c *FsmConfigCache) GetDetail(ctx context.Context, id int64) (*model.FsmConfig, bool, error) {
-	key := FsmConfigDetailKey(id)
+	key := rcfg.FsmConfigDetailKey(id)
 	data, err := c.rdb.Get(ctx, key).Bytes()
 	if err == redis.Nil {
 		slog.Debug("cache.状态机详情未命中", "id", id)
@@ -40,7 +41,7 @@ func (c *FsmConfigCache) GetDetail(ctx context.Context, id int64) (*model.FsmCon
 	}
 
 	// 空值标记
-	if string(data) == nullMarker {
+	if string(data) == rcfg.NullMarker {
 		slog.Debug("cache.状态机详情命中空值", "id", id)
 		return nil, true, nil
 	}
@@ -59,10 +60,10 @@ func (c *FsmConfigCache) GetDetail(ctx context.Context, id int64) (*model.FsmCon
 //
 // fc 为 nil 时写入空值标记防穿透。
 func (c *FsmConfigCache) SetDetail(ctx context.Context, id int64, fc *model.FsmConfig) {
-	key := FsmConfigDetailKey(id)
+	key := rcfg.FsmConfigDetailKey(id)
 	var data []byte
 	if fc == nil {
-		data = []byte(nullMarker)
+		data = []byte(rcfg.NullMarker)
 	} else {
 		var err error
 		data, err = json.Marshal(fc)
@@ -72,14 +73,14 @@ func (c *FsmConfigCache) SetDetail(ctx context.Context, id int64, fc *model.FsmC
 		}
 	}
 
-	if err := c.rdb.Set(ctx, key, data, ttl(detailTTLBase, detailTTLJitter)).Err(); err != nil {
+	if err := c.rdb.Set(ctx, key, data, rcfg.TTL(rcfg.DetailTTLBase, rcfg.DetailTTLJitter)).Err(); err != nil {
 		slog.Error("cache.状态机详情写入失败", "error", err, "id", id)
 	}
 }
 
 // DelDetail 删单条状态机配置缓存
 func (c *FsmConfigCache) DelDetail(ctx context.Context, id int64) {
-	key := FsmConfigDetailKey(id)
+	key := rcfg.FsmConfigDetailKey(id)
 	if err := c.rdb.Del(ctx, key).Err(); err != nil {
 		slog.Error("cache.状态机详情删除失败", "error", err, "id", id)
 	}
@@ -89,7 +90,7 @@ func (c *FsmConfigCache) DelDetail(ctx context.Context, id int64) {
 
 // getListVersion 获取当前状态机列表缓存版本号
 func (c *FsmConfigCache) getListVersion(ctx context.Context) int64 {
-	v, err := c.rdb.Get(ctx, fsmConfigListVersionKey).Int64()
+	v, err := c.rdb.Get(ctx, rcfg.FsmConfigListVersionKey).Int64()
 	if err != nil {
 		return 0
 	}
@@ -99,7 +100,7 @@ func (c *FsmConfigCache) getListVersion(ctx context.Context) int64 {
 // GetList 查状态机列表缓存（带版本号，类型安全）
 func (c *FsmConfigCache) GetList(ctx context.Context, q *model.FsmConfigListQuery) (*model.FsmConfigListData, bool, error) {
 	version := c.getListVersion(ctx)
-	key := FsmConfigListKey(version, q.Label, q.Enabled, q.Page, q.PageSize)
+	key := rcfg.FsmConfigListKey(version, q.Label, q.Enabled, q.Page, q.PageSize)
 	data, err := c.rdb.Get(ctx, key).Bytes()
 	if err == redis.Nil {
 		slog.Debug("cache.状态机列表未命中", "key", key)
@@ -123,14 +124,14 @@ func (c *FsmConfigCache) GetList(ctx context.Context, q *model.FsmConfigListQuer
 // SetList 写状态机列表缓存（带当前版本号）
 func (c *FsmConfigCache) SetList(ctx context.Context, q *model.FsmConfigListQuery, list *model.FsmConfigListData) {
 	version := c.getListVersion(ctx)
-	key := FsmConfigListKey(version, q.Label, q.Enabled, q.Page, q.PageSize)
+	key := rcfg.FsmConfigListKey(version, q.Label, q.Enabled, q.Page, q.PageSize)
 	data, err := json.Marshal(list)
 	if err != nil {
 		slog.Error("cache.状态机列表序列化失败", "error", err)
 		return
 	}
 
-	if err := c.rdb.Set(ctx, key, data, ttl(listTTLBase, listTTLJitter)).Err(); err != nil {
+	if err := c.rdb.Set(ctx, key, data, rcfg.TTL(rcfg.ListTTLBase, rcfg.ListTTLJitter)).Err(); err != nil {
 		slog.Error("cache.状态机列表写入失败", "error", err, "key", key)
 	}
 }
@@ -139,7 +140,7 @@ func (c *FsmConfigCache) SetList(ctx context.Context, q *model.FsmConfigListQuer
 //
 // 只需 INCR 版本号，旧版本 key 自然过期（redis-red-lines: 禁止 SCAN+DEL）。
 func (c *FsmConfigCache) InvalidateList(ctx context.Context) {
-	if err := c.rdb.Incr(ctx, fsmConfigListVersionKey).Err(); err != nil {
+	if err := c.rdb.Incr(ctx, rcfg.FsmConfigListVersionKey).Err(); err != nil {
 		slog.Error("cache.状态机列表版本号递增失败", "error", err)
 	}
 }
@@ -148,7 +149,7 @@ func (c *FsmConfigCache) InvalidateList(ctx context.Context) {
 
 // TryLock 尝试获取分布式锁（防缓存击穿）
 func (c *FsmConfigCache) TryLock(ctx context.Context, id int64, expire time.Duration) (bool, error) {
-	key := FsmConfigLockKey(id)
+	key := rcfg.FsmConfigLockKey(id)
 	ok, err := c.rdb.SetNX(ctx, key, "1", expire).Result()
 	if err != nil {
 		return false, fmt.Errorf("fsm_config try lock: %w", err)
@@ -158,7 +159,7 @@ func (c *FsmConfigCache) TryLock(ctx context.Context, id int64, expire time.Dura
 
 // Unlock 释放分布式锁
 func (c *FsmConfigCache) Unlock(ctx context.Context, id int64) {
-	key := FsmConfigLockKey(id)
+	key := rcfg.FsmConfigLockKey(id)
 	if err := c.rdb.Del(ctx, key).Err(); err != nil {
 		slog.Error("cache.状态机释放锁失败", "error", err, "key", key)
 	}

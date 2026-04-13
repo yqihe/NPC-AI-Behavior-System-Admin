@@ -10,6 +10,7 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	"github.com/yqihe/npc-ai-admin/backend/internal/service"
+	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // FsmConfigHandler 状态机管理 HTTP handler
@@ -35,7 +36,7 @@ func (h *FsmConfigHandler) checkName(name string) *errcode.Error {
 	if name == "" {
 		return errcode.Newf(errcode.ErrFsmConfigNameInvalid, "状态机标识不能为空")
 	}
-	if !identPattern.MatchString(name) {
+	if !util.IdentPattern.MatchString(name) {
 		return errcode.New(errcode.ErrFsmConfigNameInvalid)
 	}
 	if len(name) > h.fsmCfg.NameMaxLength {
@@ -84,7 +85,7 @@ func (h *FsmConfigHandler) Create(ctx context.Context, req *model.CreateFsmConfi
 
 // Get 状态机详情
 func (h *FsmConfigHandler) Get(ctx context.Context, req *model.IDRequest) (*model.FsmConfigDetail, error) {
-	if err := checkID(req.ID); err != nil {
+	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
 	}
 
@@ -123,10 +124,10 @@ func (h *FsmConfigHandler) Get(ctx context.Context, req *model.IDRequest) (*mode
 
 // Update 编辑状态机
 func (h *FsmConfigHandler) Update(ctx context.Context, req *model.UpdateFsmConfigRequest) (*string, error) {
-	if err := checkID(req.ID); err != nil {
+	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
 	}
-	if err := checkVersion(req.Version); err != nil {
+	if err := util.CheckVersion(req.Version); err != nil {
 		return nil, err
 	}
 	if e := h.checkDisplayName(req.DisplayName); e != nil {
@@ -138,12 +139,12 @@ func (h *FsmConfigHandler) Update(ctx context.Context, req *model.UpdateFsmConfi
 	if err := h.fsmConfigService.Update(ctx, req); err != nil {
 		return nil, err
 	}
-	return successMsg("保存成功"), nil
+	return util.SuccessMsg("保存成功"), nil
 }
 
 // Delete 删除状态机
 func (h *FsmConfigHandler) Delete(ctx context.Context, req *model.IDRequest) (*model.DeleteResult, error) {
-	if err := checkID(req.ID); err != nil {
+	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
 	}
 
@@ -165,10 +166,10 @@ func (h *FsmConfigHandler) CheckName(ctx context.Context, req *model.CheckNameRe
 
 // ToggleEnabled 启用/停用切换
 func (h *FsmConfigHandler) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) (*string, error) {
-	if err := checkID(req.ID); err != nil {
+	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
 	}
-	if err := checkVersion(req.Version); err != nil {
+	if err := util.CheckVersion(req.Version); err != nil {
 		return nil, err
 	}
 
@@ -177,5 +178,5 @@ func (h *FsmConfigHandler) ToggleEnabled(ctx context.Context, req *model.ToggleE
 	if err := h.fsmConfigService.ToggleEnabled(ctx, req); err != nil {
 		return nil, err
 	}
-	return successMsg("操作成功"), nil
+	return util.SuccessMsg("操作成功"), nil
 }
