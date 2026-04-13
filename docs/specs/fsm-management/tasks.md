@@ -43,7 +43,7 @@
 
 ---
 
-## T4: Cache 层 — Redis 缓存 (R20, R21, R22, R23, R24)
+## T4: Cache 层 — Redis 缓存 (R20, R21, R22, R23, R24) [x]
 
 **涉及文件**：
 - `backend/internal/store/redis/fsm_config_cache.go`（新增）
