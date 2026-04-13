@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
@@ -406,6 +407,146 @@ func (s *FsmConfigService) Delete(ctx context.Context, id int64) (*model.DeleteR
 
 	slog.Info("service.删除状态机成功", "id", id, "name", fc.Name)
 	return &model.DeleteResult{ID: id, Name: fc.Name, Label: fc.DisplayName}, nil
+}
+
+// ---- 事务版方法（handler 跨模块编排用）----
+
+// CreateInTx 事务内创建状态机（校验 + store 写入，不清缓存）
+func (s *FsmConfigService) CreateInTx(ctx context.Context, tx *sqlx.Tx, req *model.CreateFsmConfigRequest) (int64, json.RawMessage, error) {
+	// name 唯一性
+	exists, err := s.store.ExistsByName(ctx, req.Name)
+	if err != nil {
+		return 0, nil, fmt.Errorf("check name exists: %w", err)
+	}
+	if exists {
+		return 0, nil, errcode.Newf(errcode.ErrFsmConfigNameExists, "状态机标识 '%s' 已存在", req.Name)
+	}
+
+	// 配置完整性校验
+	if e := s.validateConfig(req.InitialState, req.States, req.Transitions); e != nil {
+		return 0, nil, e
+	}
+
+	configJSON, err := s.buildConfigJSON(req.InitialState, req.States, req.Transitions)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	id, err := s.store.CreateTx(ctx, tx, req, configJSON)
+	if err != nil {
+		slog.Error("service.创建状态机失败", "error", err, "name", req.Name)
+		return 0, nil, fmt.Errorf("create fsm_config: %w", err)
+	}
+
+	slog.Info("service.创建状态机成功(tx)", "id", id, "name", req.Name)
+	return id, configJSON, nil
+}
+
+// UpdateInTx 事务内编辑状态机（校验 + store 写入，不清缓存）
+//
+// 返回旧 config_json（handler 用于提取旧 BB Keys diff）。
+func (s *FsmConfigService) UpdateInTx(ctx context.Context, tx *sqlx.Tx, req *model.UpdateFsmConfigRequest) (*model.FsmConfig, error) {
+	fc, err := s.getOrNotFound(ctx, req.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	if fc.Enabled {
+		return nil, errcode.New(errcode.ErrFsmConfigEditNotDisabled)
+	}
+
+	if e := s.validateConfig(req.InitialState, req.States, req.Transitions); e != nil {
+		return nil, e
+	}
+
+	configJSON, err := s.buildConfigJSON(req.InitialState, req.States, req.Transitions)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.store.UpdateTx(ctx, tx, req, configJSON); err != nil {
+		if errors.Is(err, errcode.ErrVersionConflict) {
+			return nil, errcode.New(errcode.ErrFsmConfigVersionConflict)
+		}
+		slog.Error("service.编辑状态机失败", "error", err, "id", req.ID)
+		return nil, fmt.Errorf("update fsm_config: %w", err)
+	}
+
+	slog.Info("service.编辑状态机成功(tx)", "id", req.ID)
+	return fc, nil // 返回旧数据，handler 用于 BB Key diff
+}
+
+// SoftDeleteInTx 事务内软删除状态机（前置校验 + store 写入，不清缓存）
+func (s *FsmConfigService) SoftDeleteInTx(ctx context.Context, tx *sqlx.Tx, id int64) (*model.FsmConfig, error) {
+	fc, err := s.getOrNotFound(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if fc.Enabled {
+		return nil, errcode.New(errcode.ErrFsmConfigDeleteNotDisabled)
+	}
+
+	// TODO: NPC 管理上线后加引用检查
+
+	if err := s.store.SoftDeleteTx(ctx, tx, id); err != nil {
+		if errors.Is(err, errcode.ErrNotFound) {
+			return nil, errcode.New(errcode.ErrFsmConfigNotFound)
+		}
+		slog.Error("service.删除状态机失败", "error", err, "id", id)
+		return nil, fmt.Errorf("soft delete fsm_config: %w", err)
+	}
+
+	slog.Info("service.删除状态机成功(tx)", "id", id)
+	return fc, nil
+}
+
+// InvalidateDetail 清单条缓存（handler commit 后调用）
+func (s *FsmConfigService) InvalidateDetail(ctx context.Context, id int64) {
+	s.cache.DelDetail(ctx, id)
+}
+
+// InvalidateList 清列表缓存（handler commit 后调用）
+func (s *FsmConfigService) InvalidateList(ctx context.Context) {
+	s.cache.InvalidateList(ctx)
+}
+
+// ExtractBBKeys 从 transitions 中提取 BB Key name 集合
+func ExtractBBKeys(transitions []model.FsmTransition) map[string]bool {
+	keys := make(map[string]bool)
+	for _, tr := range transitions {
+		collectConditionKeys(&tr.Condition, keys)
+	}
+	return keys
+}
+
+// ExtractBBKeysFromConfigJSON 从 config_json 中提取 BB Key name 集合
+func ExtractBBKeysFromConfigJSON(configJSON json.RawMessage) map[string]bool {
+	var cfg struct {
+		Transitions []model.FsmTransition `json:"transitions"`
+	}
+	if err := json.Unmarshal(configJSON, &cfg); err != nil {
+		return make(map[string]bool)
+	}
+	return ExtractBBKeys(cfg.Transitions)
+}
+
+func collectConditionKeys(cond *model.FsmCondition, keys map[string]bool) {
+	if cond.IsEmpty() {
+		return
+	}
+	if cond.Key != "" {
+		keys[cond.Key] = true
+	}
+	if cond.RefKey != "" {
+		keys[cond.RefKey] = true
+	}
+	for i := range cond.And {
+		collectConditionKeys(&cond.And[i], keys)
+	}
+	for i := range cond.Or {
+		collectConditionKeys(&cond.Or[i], keys)
+	}
 }
 
 // CheckName 唯一性校验

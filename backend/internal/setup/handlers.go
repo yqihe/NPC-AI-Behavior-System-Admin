@@ -19,12 +19,12 @@ type Handlers struct {
 // NewHandlers 一次性初始化所有 handler
 func NewHandlers(st *Stores, svc *Services, mc *MemCaches, cfg *config.Config) *Handlers {
 	return &Handlers{
-		Field:           handler.NewFieldHandler(svc.Field, svc.Template, &cfg.Validation),
+		Field:           handler.NewFieldHandler(svc.Field, svc.Template, svc.FsmConfig, &cfg.Validation),
 		Dict:            handler.NewDictionaryHandler(mc.Dict),
 		Template:        handler.NewTemplateHandler(st.DB, svc.Template, svc.Field, &cfg.Validation),
 		EventType:       handler.NewEventTypeHandler(svc.EventType, svc.EventTypeSchema, &cfg.EventType),
 		EventTypeSchema: handler.NewEventTypeSchemaHandler(svc.EventTypeSchema, svc.EventType, &cfg.EventTypeSchema),
-		FsmConfig:       handler.NewFsmConfigHandler(svc.FsmConfig, &cfg.FsmConfig),
+		FsmConfig:       handler.NewFsmConfigHandler(st.DB, svc.FsmConfig, svc.Field, &cfg.FsmConfig),
 		Export:          handler.NewExportHandler(svc.EventType, svc.FsmConfig),
 	}
 }

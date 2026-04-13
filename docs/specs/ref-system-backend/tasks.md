@@ -180,7 +180,7 @@
 
 ---
 
-## T16: FsmConfig handler 改为事务编排 + BB Key 追踪 (R17, R18, R19)
+## [x] T16: FsmConfig handler 改为事务编排 + BB Key 追踪 (R17, R18, R19)
 
 **文件**：
 - `backend/internal/handler/fsm_config.go`
@@ -196,7 +196,7 @@
 
 ---
 
-## T17: 字段 references API 扩展 + expose_bb 保护 (R5, R20, R21, R22)
+## [x] T17: 字段 references API 扩展 + expose_bb 保护 (R5, R20, R21, R22)
 
 **文件**：
 - `backend/internal/service/field.go`（GetReferences 扩展 + Update expose_bb 检查）
@@ -212,7 +212,7 @@
 
 ---
 
-## T18: 编译验证 + 数据库重建 (R6, R24)
+## [x] T18: 编译验证 + 数据库重建 (R6, R24)
 
 **文件**：无新文件
 

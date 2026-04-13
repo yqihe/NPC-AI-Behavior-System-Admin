@@ -285,6 +285,22 @@ func (s *FieldService) Update(ctx context.Context, req *model.UpdateFieldRequest
 		}
 	}
 
+	// 硬约束：取消 expose_bb 时，检查是否有 FSM 引用该 BB Key
+	oldProps, _ := parseProperties(old.Properties)
+	newProps, _ := parseProperties(req.Properties)
+	if oldProps != nil && newProps != nil && oldProps.ExposeBB && !newProps.ExposeBB {
+		refs, err := s.fieldRefStore.GetByFieldID(ctx, req.ID)
+		if err != nil {
+			slog.Error("service.查字段引用失败", "error", err, "id", req.ID)
+			return fmt.Errorf("get field refs: %w", err)
+		}
+		for _, r := range refs {
+			if r.RefType == util.RefTypeFsm {
+				return errcode.New(errcode.ErrFieldBBKeyInUse)
+			}
+		}
+	}
+
 	// 乐观锁写入
 	err = s.fieldStore.Update(ctx, req)
 	if err != nil {
@@ -428,12 +444,15 @@ func (s *FieldService) GetReferences(ctx context.Context, id int64) (*model.Refe
 
 	templateIDs := make([]int64, 0)
 	fieldIDs := make([]int64, 0)
+	fsmIDs := make([]int64, 0)
 	for _, r := range refs {
 		switch r.RefType {
 		case util.RefTypeTemplate:
 			templateIDs = append(templateIDs, r.RefID)
 		case util.RefTypeField:
 			fieldIDs = append(fieldIDs, r.RefID)
+		case util.RefTypeFsm:
+			fsmIDs = append(fsmIDs, r.RefID)
 		}
 	}
 
@@ -442,6 +461,7 @@ func (s *FieldService) GetReferences(ctx context.Context, id int64) (*model.Refe
 		FieldLabel: field.Label,
 		Templates:  make([]model.ReferenceItem, 0, len(templateIDs)),
 		Fields:     make([]model.ReferenceItem, 0, len(fieldIDs)),
+		Fsms:       make([]model.ReferenceItem, 0, len(fsmIDs)),
 	}
 
 	if len(fieldIDs) > 0 {
@@ -468,6 +488,14 @@ func (s *FieldService) GetReferences(ctx context.Context, id int64) (*model.Refe
 		result.Templates = append(result.Templates, model.ReferenceItem{
 			RefType: util.RefTypeTemplate,
 			RefID:   tid,
+		})
+	}
+
+	// FSM 引用：只填 ID，Label 留空由 handler 跨模块补齐
+	for _, fid := range fsmIDs {
+		result.Fsms = append(result.Fsms, model.ReferenceItem{
+			RefType: util.RefTypeFsm,
+			RefID:   fid,
 		})
 	}
 
