@@ -18,7 +18,6 @@ export interface FieldListItem {
   label: string
   type: string
   category: string
-  ref_count: number
   enabled: boolean
   created_at: string
   type_label: string
@@ -42,8 +41,8 @@ export interface FieldDetail {
   type: string
   category: string
   properties: FieldProperties
-  ref_count: number
   enabled: boolean
+  has_refs: boolean
   version: number
   created_at: string
   updated_at: string

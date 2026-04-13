@@ -33,13 +33,13 @@ func (s *TemplateStore) DB() *sqlx.DB {
 
 // CreateTx 事务内创建模板
 //
-// 模板创建永远是跨模块事务的一部分（同时要写 field_refs + bump fields.ref_count），
+// 模板创建永远是跨模块事务的一部分（同时要写 field_refs），
 // 所以只提供 Tx 版本，由 handler 层开启事务。
 func (s *TemplateStore) CreateTx(ctx context.Context, tx *sqlx.Tx, req *model.CreateTemplateRequest, fieldsJSON []byte) (int64, error) {
 	now := time.Now()
 	result, err := tx.ExecContext(ctx,
-		`INSERT INTO templates (name, label, description, fields, ref_count, enabled, version, deleted, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, 0, 0, 1, 0, ?, ?)`,
+		`INSERT INTO templates (name, label, description, fields, enabled, version, deleted, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, 0, 1, 0, ?, ?)`,
 		req.Name, req.Label, req.Description, fieldsJSON, now, now,
 	)
 	if err != nil {
@@ -56,7 +56,7 @@ func (s *TemplateStore) CreateTx(ctx context.Context, tx *sqlx.Tx, req *model.Cr
 func (s *TemplateStore) GetByID(ctx context.Context, id int64) (*model.Template, error) {
 	var t model.Template
 	err := s.db.GetContext(ctx, &t,
-		`SELECT id, name, label, description, fields, ref_count, enabled, version, deleted, created_at, updated_at
+		`SELECT id, name, label, description, fields, enabled, version, deleted, created_at, updated_at
 		 FROM templates WHERE id = ? AND deleted = 0`, id)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -82,7 +82,7 @@ func (s *TemplateStore) ExistsByName(ctx context.Context, name string) (bool, er
 
 // List 分页列表查询
 //
-// 走覆盖索引 idx_list (deleted, id, name, label, ref_count, enabled, created_at)，
+// 走覆盖索引 idx_list (deleted, id, name, label, enabled, created_at)，
 // 返回 TemplateListItem（不含 fields/description，减小网络传输）。
 func (s *TemplateStore) List(ctx context.Context, q *model.TemplateListQuery) ([]model.TemplateListItem, int64, error) {
 	where := []string{"deleted = 0"}
@@ -113,7 +113,7 @@ func (s *TemplateStore) List(ctx context.Context, q *model.TemplateListQuery) ([
 	// 分页查询（覆盖索引，按 id DESC）
 	offset := (q.Page - 1) * q.PageSize
 	listSQL := fmt.Sprintf(
-		`SELECT id, name, label, ref_count, enabled, created_at
+		`SELECT id, name, label, enabled, created_at
 		 FROM templates WHERE %s ORDER BY id DESC LIMIT ? OFFSET ?`,
 		whereClause,
 	)
@@ -191,43 +191,6 @@ func (s *TemplateStore) ToggleEnabled(ctx context.Context, id int64, enabled boo
 		return errcode.ErrVersionConflict
 	}
 	return nil
-}
-
-// IncrRefCountTx 事务内 ref_count + 1（NPC 模块创建时调用）
-func (s *TemplateStore) IncrRefCountTx(ctx context.Context, tx *sqlx.Tx, id int64) error {
-	_, err := tx.ExecContext(ctx,
-		`UPDATE templates SET ref_count = ref_count + 1 WHERE id = ? AND deleted = 0`, id)
-	if err != nil {
-		return fmt.Errorf("incr template ref count: %w", err)
-	}
-	return nil
-}
-
-// DecrRefCountTx 事务内 ref_count - 1（NPC 模块删除时调用）
-func (s *TemplateStore) DecrRefCountTx(ctx context.Context, tx *sqlx.Tx, id int64) error {
-	_, err := tx.ExecContext(ctx,
-		`UPDATE templates SET ref_count = ref_count - 1 WHERE id = ? AND deleted = 0 AND ref_count > 0`, id)
-	if err != nil {
-		return fmt.Errorf("decr template ref count: %w", err)
-	}
-	return nil
-}
-
-// GetRefCountTx 事务内获取引用计数（FOR SHARE 防 TOCTOU）
-//
-// 删除前必须用此方法在事务内重新读取 ref_count，
-// 防止"读时无引用 → NPC 模块刚好新建引用 → 仍然删除"的竞态。
-func (s *TemplateStore) GetRefCountTx(ctx context.Context, tx *sqlx.Tx, id int64) (int, error) {
-	var count int
-	err := tx.GetContext(ctx, &count,
-		`SELECT ref_count FROM templates WHERE id = ? AND deleted = 0 FOR SHARE`, id)
-	if err == sql.ErrNoRows {
-		return 0, errcode.ErrNotFound
-	}
-	if err != nil {
-		return 0, fmt.Errorf("get template ref count tx: %w", err)
-	}
-	return count, nil
 }
 
 // GetByIDs 批量查询模板精简信息（IN 查询，走主键）

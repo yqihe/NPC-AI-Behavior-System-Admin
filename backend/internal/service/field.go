@@ -13,7 +13,6 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
-	"github.com/yqihe/npc-ai-admin/backend/internal/service/constraint"
 	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
 	storeredis "github.com/yqihe/npc-ai-admin/backend/internal/store/redis"
 	"github.com/yqihe/npc-ai-admin/backend/internal/util"
@@ -254,7 +253,7 @@ func (s *FieldService) Update(ctx context.Context, req *model.UpdateFieldRequest
 		oldProps, _ := parseProperties(old.Properties)
 		newProps, _ := parseProperties(req.Properties)
 		if oldProps != nil && newProps != nil {
-			if err := constraint.CheckConstraintTightened(old.Type, oldProps.Constraints, newProps.Constraints, errcode.ErrFieldRefTighten); err != nil {
+			if err := util.CheckConstraintTightened(old.Type, oldProps.Constraints, newProps.Constraints, errcode.ErrFieldRefTighten); err != nil {
 				return err
 			}
 		}

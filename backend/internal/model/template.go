@@ -14,10 +14,9 @@ type Template struct {
 	Name        string          `json:"name" db:"name"`
 	Label       string          `json:"label" db:"label"`
 	Description string          `json:"description" db:"description"`
-	Fields      json.RawMessage `json:"fields" db:"fields"` // [{field_id, required}, ...]
+	Fields json.RawMessage `json:"fields" db:"fields"` // [{field_id, required}, ...]
 
-	RefCount  int       `json:"ref_count" db:"ref_count"`
-	Enabled   bool      `json:"enabled" db:"enabled"`
+	Enabled bool `json:"enabled" db:"enabled"`
 	Version   int       `json:"version" db:"version"`
 	Deleted   bool      `json:"-" db:"deleted"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
@@ -36,9 +35,8 @@ type TemplateFieldEntry struct {
 type TemplateListItem struct {
 	ID        int64     `json:"id" db:"id"`
 	Name      string    `json:"name" db:"name"`
-	Label     string    `json:"label" db:"label"`
-	RefCount  int       `json:"ref_count" db:"ref_count"`
-	Enabled   bool      `json:"enabled" db:"enabled"`
+	Label   string `json:"label" db:"label"`
+	Enabled bool   `json:"enabled" db:"enabled"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
 
@@ -80,10 +78,9 @@ type TemplateDetail struct {
 	Name        string              `json:"name"`
 	Label       string              `json:"label"`
 	Description string              `json:"description"`
-	Enabled     bool                `json:"enabled"`
-	Version     int                 `json:"version"`
-	RefCount    int                 `json:"ref_count"`
-	CreatedAt   time.Time           `json:"created_at"`
+	Enabled   bool      `json:"enabled"`
+	Version   int       `json:"version"`
+	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt   time.Time           `json:"updated_at"`
 	Fields      []TemplateFieldItem `json:"fields"` // 顺序与 templates.fields JSON 数组一致
 }

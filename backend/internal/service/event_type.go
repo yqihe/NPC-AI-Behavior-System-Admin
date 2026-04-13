@@ -13,7 +13,6 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
-	"github.com/yqihe/npc-ai-admin/backend/internal/service/constraint"
 	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
 	storeredis "github.com/yqihe/npc-ai-admin/backend/internal/store/redis"
 	"github.com/yqihe/npc-ai-admin/backend/internal/util"
@@ -107,7 +106,7 @@ func (s *EventTypeService) validateExtensions(extensions map[string]interface{})
 		if err != nil {
 			return errcode.Newf(errcode.ErrEventTypeExtValueInvalid, "扩展字段 '%s' 值序列化失败", key)
 		}
-		if e := constraint.ValidateValue(schema.FieldType, schema.Constraints, valJSON); e != nil {
+		if e := util.ValidateValue(schema.FieldType, schema.Constraints, valJSON); e != nil {
 			return errcode.Newf(errcode.ErrEventTypeExtValueInvalid, "扩展字段 '%s': %s", key, e.Error())
 		}
 	}

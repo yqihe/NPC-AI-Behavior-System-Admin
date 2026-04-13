@@ -89,19 +89,6 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="被引用数" width="80" align="center">
-          <template #default="{ row }">
-            <el-link
-              v-if="row.ref_count > 0"
-              type="primary"
-              :underline="false"
-              @click="handleShowRefs(row)"
-            >
-              {{ row.ref_count }}
-            </el-link>
-            <span v-else class="ref-zero">0</span>
-          </template>
-        </el-table-column>
         <el-table-column label="启用" width="80" align="center">
           <template #default="{ row }">
             <el-switch

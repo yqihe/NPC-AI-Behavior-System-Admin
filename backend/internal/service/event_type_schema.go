@@ -10,7 +10,6 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
-	"github.com/yqihe/npc-ai-admin/backend/internal/service/constraint"
 	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
 	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
@@ -87,12 +86,12 @@ func (s *EventTypeSchemaService) Create(ctx context.Context, req *model.CreateEv
 	}
 
 	// constraints 自洽校验
-	if e := constraint.ValidateConstraintsSelf(req.FieldType, req.Constraints); e != nil {
+	if e := util.ValidateConstraintsSelf(req.FieldType, req.Constraints); e != nil {
 		return 0, e
 	}
 
 	// default_value 必须符合 constraints
-	if e := constraint.ValidateValue(req.FieldType, req.Constraints, req.DefaultValue); e != nil {
+	if e := util.ValidateValue(req.FieldType, req.Constraints, req.DefaultValue); e != nil {
 		return 0, errcode.Newf(errcode.ErrExtSchemaDefaultInvalid, "默认值不符合约束: %s", e.Error())
 	}
 
@@ -138,17 +137,17 @@ func (s *EventTypeSchemaService) Update(ctx context.Context, req *model.UpdateEv
 		return fmt.Errorf("check schema refs: %w", err)
 	}
 	if hasRefs {
-		if e := constraint.CheckConstraintTightened(ets.FieldType, ets.Constraints, req.Constraints, errcode.ErrExtSchemaRefTighten); e != nil {
+		if e := util.CheckConstraintTightened(ets.FieldType, ets.Constraints, req.Constraints, errcode.ErrExtSchemaRefTighten); e != nil {
 			return e
 		}
 	}
 
-	if e := constraint.ValidateConstraintsSelf(ets.FieldType, req.Constraints); e != nil {
+	if e := util.ValidateConstraintsSelf(ets.FieldType, req.Constraints); e != nil {
 		return e
 	}
 
 	// default_value 符合新 constraints
-	if e := constraint.ValidateValue(ets.FieldType, req.Constraints, req.DefaultValue); e != nil {
+	if e := util.ValidateValue(ets.FieldType, req.Constraints, req.DefaultValue); e != nil {
 		return errcode.Newf(errcode.ErrExtSchemaDefaultInvalid, "默认值不符合约束: %s", e.Error())
 	}
 

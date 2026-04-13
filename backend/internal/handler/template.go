@@ -286,10 +286,9 @@ func (h *TemplateHandler) Get(ctx context.Context, req *model.IDRequest) (*model
 		Name:        tpl.Name,
 		Label:       tpl.Label,
 		Description: tpl.Description,
-		Enabled:     tpl.Enabled,
-		Version:     tpl.Version,
-		RefCount:    tpl.RefCount,
-		CreatedAt:   tpl.CreatedAt,
+		Enabled:   tpl.Enabled,
+		Version:   tpl.Version,
+		CreatedAt: tpl.CreatedAt,
 		UpdatedAt:   tpl.UpdatedAt,
 		Fields:      items,
 	}, nil
@@ -300,8 +299,8 @@ func (h *TemplateHandler) Get(ctx context.Context, req *model.IDRequest) (*model
 // 跨模块事务流程：
 //  1. 格式校验
 //  2. service.GetByID 拿旧 tpl + ParseFieldEntries 拿 oldEntries
-//  3. service.UpdateTx 在 tx 内做 enabled/ref_count/diff/写 templates
-//  4. ref_count==0 且 fields 集合变了 → 跨模块 Detach + Attach
+//  3. service.UpdateTx 在 tx 内做 enabled/diff/写 templates
+//  4. fields 集合变了 → 跨模块 Detach + Attach
 //  5. Commit → 清两个模块缓存
 func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateRequest) (*string, error) {
 	// 1. 格式校验
@@ -335,8 +334,7 @@ func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateR
 	}
 
 	// 3. 跨模块校验（仅校验新增字段）
-	//    在事务外预校验：模板 ref_count==0 时计算 toAdd 后才能校验，
-	//    所以先计算 toAdd（service 同样会算一次，但耗时极小）
+	//    在事务外预校验：先计算 toAdd（service 同样会算一次，但耗时极小）
 	toAddPre, _ := diffNewFieldIDs(oldEntries, req.Fields)
 	if len(toAddPre) > 0 {
 		if err := h.fieldService.ValidateFieldsForTemplate(ctx, toAddPre); err != nil {
@@ -398,9 +396,8 @@ func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateR
 //  1. 格式校验
 //  2. service.GetByID + enabled 校验 (41009)
 //  3. ParseFieldEntries 拿要解除引用的 fieldIDs
-//  4. tx → GetRefCountForDeleteTx (FOR SHARE) → 41007 拒绝
-//  5. SoftDeleteTx + DetachFromTemplateTx → Commit
-//  6. 清两个模块缓存
+//  4. tx → SoftDeleteTx + DetachFromTemplateTx → Commit
+//  5. 清两个模块缓存
 func (h *TemplateHandler) Delete(ctx context.Context, req *model.IDRequest) (*model.DeleteResult, error) {
 	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
@@ -434,15 +431,6 @@ func (h *TemplateHandler) Delete(ctx context.Context, req *model.IDRequest) (*mo
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
-
-	// FOR SHARE 防 TOCTOU
-	refCount, err := h.templateService.GetRefCountForDeleteTx(ctx, tx, req.ID)
-	if err != nil {
-		return nil, err
-	}
-	if refCount > 0 {
-		return nil, errcode.Newf(errcode.ErrTemplateRefDelete, "该模板正被 %d 个 NPC 引用，无法删除", refCount)
-	}
 
 	if err := h.templateService.SoftDeleteTx(ctx, tx, req.ID); err != nil {
 		return nil, err
