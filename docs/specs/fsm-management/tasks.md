@@ -31,7 +31,7 @@
 
 ---
 
-## T3: Store 层 — MySQL CRUD (R1, R4, R5, R6, R7, R9, R10, R17, R18, R19)
+## T3: Store 层 — MySQL CRUD (R1, R4, R5, R6, R7, R9, R10, R17, R18, R19) [x]
 
 **涉及文件**：
 - `backend/internal/store/mysql/fsm_config.go`（新增）
