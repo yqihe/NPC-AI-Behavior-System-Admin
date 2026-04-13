@@ -60,58 +60,25 @@ func main() {
 	}
 	cancel()
 
-	// Store
-	fieldStore := storemysql.NewFieldStore(db)
-	fieldRefStore := storemysql.NewFieldRefStore(db)
-	dictStore := storemysql.NewDictionaryStore(db)
-	templateStore := storemysql.NewTemplateStore(db)
-	eventTypeStore := storemysql.NewEventTypeStore(db)
-	eventTypeSchemaStore := storemysql.NewEventTypeSchemaStore(db)
-	fieldCache := storeredis.NewFieldCache(rdb)
-	templateCache := storeredis.NewTemplateCache(rdb)
-	eventTypeCache := storeredis.NewEventTypeCache(rdb)
-	fsmConfigStore := storemysql.NewFsmConfigStore(db)
-	fsmConfigCache := storeredis.NewFsmConfigCache(rdb)
+	// 分层初始化
+	st := storemysql.NewStores(db)
+	rc := storeredis.NewCaches(rdb)
 
-	// DictCache（内存缓存，启动时从 MySQL 加载）
-	dictCache := cache.NewDictCache(dictStore)
-	ctx2, cancel2 := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
-	if err := dictCache.Load(ctx2); err != nil {
-		slog.Error("启动.加载字典缓存失败", "error", err)
+	mcCtx, mcCancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
+	mc, err := cache.NewMemCaches(mcCtx, st)
+	mcCancel()
+	if err != nil {
+		slog.Error("启动.加载内存缓存失败", "error", err)
 		os.Exit(1)
 	}
-	cancel2()
 
-	// EventTypeSchemaCache（内存缓存，启动时从 MySQL 加载）
-	eventTypeSchemaCache := cache.NewEventTypeSchemaCache(eventTypeSchemaStore)
-	ctx3, cancel3 := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
-	if err := eventTypeSchemaCache.Load(ctx3); err != nil {
-		slog.Error("启动.加载事件类型Schema缓存失败", "error", err)
-		os.Exit(1)
-	}
-	cancel3()
+	svc := service.NewServices(st, rc, mc, cfg)
+	h := handler.NewHandlers(db, svc, mc, cfg)
 
-	// Service（按"分层职责"硬规则：service 间无横向依赖）
-	fieldService := service.NewFieldService(fieldStore, fieldRefStore, fieldCache, dictCache, &cfg.Pagination)
-	templateService := service.NewTemplateService(templateStore, templateCache, &cfg.Pagination)
-	eventTypeService := service.NewEventTypeService(eventTypeStore, eventTypeCache, eventTypeSchemaCache, &cfg.Pagination, &cfg.EventType)
-	eventTypeSchemaService := service.NewEventTypeSchemaService(eventTypeSchemaStore, eventTypeSchemaCache, &cfg.EventTypeSchema)
-	fsmConfigService := service.NewFsmConfigService(fsmConfigStore, fsmConfigCache, &cfg.Pagination, &cfg.FsmConfig)
-
-	// Handler（跨模块编排在 handler 层）
-	fieldHandler := handler.NewFieldHandler(fieldService, templateService, &cfg.Validation)
-	templateHandler := handler.NewTemplateHandler(db, templateService, fieldService, &cfg.Validation)
-	dictHandler := handler.NewDictionaryHandler(dictCache)
-	eventTypeHandler := handler.NewEventTypeHandler(eventTypeService, eventTypeSchemaService, &cfg.EventType)
-	eventTypeSchemaHandler := handler.NewEventTypeSchemaHandler(eventTypeSchemaService, &cfg.EventTypeSchema)
-	fsmConfigHandler := handler.NewFsmConfigHandler(fsmConfigService, &cfg.FsmConfig)
-	exportHandler := handler.NewExportHandler(eventTypeService, fsmConfigService)
-
-	// Router
+	// Router + Server
 	r := gin.Default()
-	router.Setup(r, fieldHandler, dictHandler, templateHandler, eventTypeHandler, eventTypeSchemaHandler, fsmConfigHandler, exportHandler)
+	router.Setup(r, h)
 
-	// Server
 	srv := &http.Server{
 		Addr:    ":" + cfg.Server.Port,
 		Handler: r,
