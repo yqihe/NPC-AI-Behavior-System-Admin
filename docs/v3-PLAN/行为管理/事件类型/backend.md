@@ -24,7 +24,9 @@ backend/
         event_type_schema.go          # event_type_schema 表 CRUD
       redis/
         event_type_cache.go           # 事件类型 Redis 缓存（detail + list + 分布式锁）
-        keys.go                       # key 前缀 & 构造函数（event_types:detail/list/lock）
+        config/                       # Redis 缓存共享配置子包（TTL/NullMarker/Ping/Available + 各模块 key 生成器）
+          common.go                   # 共享常量（DetailTTLBase/ListTTLBase/LockExpire/NullMarker）+ TTL() / Available()
+          keys.go                     # 所有模块的 key 构造函数（EventTypeDetailKey / EventTypeListKey / EventTypeLockKey + EventTypeListVersionKey）
     cache/
       event_type_schema_cache.go      # 扩展字段 Schema 内存缓存（启动 Load + 写后 Reload）
     model/
@@ -32,6 +34,7 @@ backend/
       event_type_schema.go            # EventTypeSchema / EventTypeSchemaLite / 请求体
     errcode/
       codes.go                        # 42001-42031 错误码
+      store_errors.go                 # Store 层哨兵错误（ErrNotFound / ErrVersionConflict / ErrDuplicate）
     router/
       router.go                       # /api/v1/event-types/* + /api/v1/event-type-schema/* + /api/configs/event_types
   migrations/
@@ -125,7 +128,7 @@ CREATE TABLE IF NOT EXISTS event_type_schema (
 - `range`：>= 0；`global` 模式后端强制置 0
 
 **Handler 层校验（与 Field/Template 一致模式）：**
-- 统一使用共享 `checkID()` / `checkVersion()`（定义在 field.go，错误消息中文：`"ID 不合法"` / `"版本号不合法"`）
+- 统一使用共享 `util.CheckID()` / `util.CheckVersion()`（定义在 `internal/util/validation.go`，错误消息中文：`"ID 不合法"` / `"版本号不合法"`）
 - slog Debug 日志在校验**之后**打印，格式为中文点分（如 `"handler.创建事件类型"`），与 Field/Template 一致
 - CheckName 调用完整 `h.checkName()` 做正则 + 长度校验，不仅是空值检查
 

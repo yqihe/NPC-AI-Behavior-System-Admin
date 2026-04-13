@@ -17,11 +17,15 @@ backend/internal/
 │   ├── field.go                  fields 表 CRUD + 覆盖索引 List + 乐观锁 Update + 事务内 IncrRefCountTx / DecrRefCountTx
 │   └── field_ref.go              field_refs 关联表 Add / Remove / RemoveBySource / HasRefsTx(FOR SHARE) / GetByFieldID
 ├── store/redis/
-│   ├── field.go                  FieldCache — Detail(Get/Set/Del) + List(Get/Set/InvalidateList) + TryLock/Unlock + Ping/Available
-│   └── keys.go                   Redis key 生成器（FieldDetailKey / FieldListKey / FieldLockKey + fieldListVersionKey）
+│   ├── field.go                  FieldCache — Detail(Get/Set/Del) + List(Get/Set/InvalidateList) + TryLock/Unlock
+│   └── config/                   Redis 缓存共享配置子包
+│       ├── common.go             TTL / Ping / Available / NullMarker 等共享常量与工具函数
+│       └── keys.go               Redis key 生成器（FieldDetailKey / FieldListKey / FieldLockKey + FieldListVersionKey）
 ├── cache/dictionary.go           进程内 DictCache（启动一次性加载 field_type / field_category 字典，运行时只读）
 ├── model/field.go                Field / FieldLite / FieldListItem / FieldProperties / FieldRef / DTO（请求/响应/查询）
-├── errcode/codes.go              字段错误码 40001-40017
+├── errcode/
+│   ├── codes.go                  字段错误码 40001-40017
+│   └── store_errors.go           Store 层哨兵错误（ErrNotFound / ErrVersionConflict / ErrDuplicate）
 └── router/router.go              POST /api/v1/fields/* 路由注册
 ```
 
@@ -63,7 +67,7 @@ CREATE TABLE IF NOT EXISTS fields (
 
 - `name` 含软删除记录不复用：`ExistsByName` 不过滤 `deleted` 列，保证历史快照中的 name 不会对应一个语义不同的新字段
 - `ref_count` 冗余计数：事务内通过 `IncrRefCountTx` / `DecrRefCountTx` 原子维护，与 `field_refs` 行数保持一致
-- `version` 乐观锁：`UPDATE ... WHERE id=? AND version=?` rows=0 时 store 返回 `ErrVersionConflict`，service 转为 `40010`
+- `version` 乐观锁：`UPDATE ... WHERE id=? AND version=?` rows=0 时 store 返回 `errcode.ErrVersionConflict`（哨兵错误定义在 `errcode/store_errors.go`），service 转为 `40010`
 - `enabled` 启用闸门：启用中禁止编辑（40015）和删除（40012），防止引用方看到不稳定配置
 
 ### 2.2 field_refs
@@ -219,7 +223,7 @@ CREATE TABLE IF NOT EXISTS field_refs (
 | 40007 | `ErrFieldRefTighten` | Update 时 `ref_count > 0 && type 未变`，且 `checkConstraintTightened` 检测到约束收紧（integer/float: min 增大/max 减小/precision 减小；string: minLength 增大/maxLength 减小/pattern 新增或变更；select: options 删除/minSelect 增大/maxSelect 减小） |
 | 40008 | `ErrFieldBBKeyInUse` | BB Key 被行为树引用（预留，本期未接入） |
 | 40009 | `ErrFieldCyclicRef` | Create/Update reference 字段时 `detectCyclicRef` DFS 检测到循环 |
-| 40010 | `ErrFieldVersionConflict` | Update / ToggleEnabled 时 `UPDATE ... WHERE version=?` rows=0，store 返回 `ErrVersionConflict` |
+| 40010 | `ErrFieldVersionConflict` | Update / ToggleEnabled 时 `UPDATE ... WHERE version=?` rows=0，store 返回 `errcode.ErrVersionConflict` |
 | 40011 | `ErrFieldNotFound` | Detail / Update / Delete / References / ToggleEnabled 时 `GetByID` 返回 nil |
 | 40012 | `ErrFieldDeleteNotDisabled` | Delete 时 `field.Enabled == true` |
 | 40013 | `ErrFieldRefDisabled` | Create/Update reference 字段时新增的 ref 目标 `Enabled == false` |

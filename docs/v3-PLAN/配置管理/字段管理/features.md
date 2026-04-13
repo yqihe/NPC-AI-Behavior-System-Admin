@@ -180,7 +180,7 @@ Service 层使用 Cache-Aside + 分布式锁 + 空标记三件套：
 
 如果类型**从 reference 改成其他类型**，Service 会在写入后主动把它对其他字段的旧引用关系整体清掉（调 `syncFieldRefs(id, oldRefIDs, nil)`）。
 
-写入使用乐观锁 `UPDATE ... WHERE id=? AND version=?`，rows=0 返回 `storemysql.ErrVersionConflict`，Service 层转 `40010 ErrFieldVersionConflict`。
+写入使用乐观锁 `UPDATE ... WHERE id=? AND version=?`，rows=0 返回 `errcode.ErrVersionConflict`（哨兵错误定义在 `errcode/store_errors.go`），Service 层转 `40010 ErrFieldVersionConflict`。
 
 ### 校验规则
 
@@ -193,7 +193,7 @@ Service 层使用 Cache-Aside + 分布式锁 + 空标记三件套：
 |---|---|
 | Router | `POST /api/v1/fields/update` |
 | Handler | `FieldHandler.Update` — 校验 `id > 0` / `label` / `type` / `category` / `properties` 形状 / `version > 0` |
-| Service | `FieldService.Update` — 字典校验 → `getFieldOrNotFound` → **enabled 必须为 false（41015）** → type 变更拦截（40006）→ `checkConstraintTightened`（40007）→ reference 校验（40013/40014/40016/40009）→ 乐观锁写入 → `syncFieldRefs` 同步引用关系（含 reference→非 reference 时的清空）→ 清自身/受影响方/列表缓存 |
+| Service | `FieldService.Update` — 字典校验 → `getFieldOrNotFound` → **enabled 必须为 false（40015）** → type 变更拦截（40006）→ `checkConstraintTightened`（40007）→ reference 校验（40013/40014/40016/40009）→ 乐观锁写入 → `syncFieldRefs` 同步引用关系（含 reference→非 reference 时的清空）→ 清自身/受影响方/列表缓存 |
 | Store | `FieldStore.GetByID` → `FieldStore.Update`（WHERE id=? AND version=?）|
 
 ### 错误码
