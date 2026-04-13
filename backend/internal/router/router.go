@@ -8,7 +8,7 @@ import (
 )
 
 // Setup 注册所有路由
-func Setup(r *gin.Engine, fh *handler.FieldHandler, dh *handler.DictionaryHandler, th *handler.TemplateHandler, eth *handler.EventTypeHandler, etsh *handler.EventTypeSchemaHandler, exh *handler.ExportHandler) {
+func Setup(r *gin.Engine, fh *handler.FieldHandler, dh *handler.DictionaryHandler, th *handler.TemplateHandler, eth *handler.EventTypeHandler, etsh *handler.EventTypeSchemaHandler, fch *handler.FsmConfigHandler, exh *handler.ExportHandler) {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -66,9 +66,22 @@ func Setup(r *gin.Engine, fh *handler.FieldHandler, dh *handler.DictionaryHandle
 		eventTypeSchema.POST("/toggle-enabled", handler.WrapCtx(etsh.ToggleEnabled))
 	}
 
+	// 状态机管理（7 个接口）
+	fsmConfigs := v1.Group("/fsm-configs")
+	{
+		fsmConfigs.POST("/list", handler.WrapCtx(fch.List))
+		fsmConfigs.POST("/create", handler.WrapCtx(fch.Create))
+		fsmConfigs.POST("/detail", handler.WrapCtx(fch.Get))
+		fsmConfigs.POST("/update", handler.WrapCtx(fch.Update))
+		fsmConfigs.POST("/delete", handler.WrapCtx(fch.Delete))
+		fsmConfigs.POST("/check-name", handler.WrapCtx(fch.CheckName))
+		fsmConfigs.POST("/toggle-enabled", handler.WrapCtx(fch.ToggleEnabled))
+	}
+
 	// 配置导出 API
 	configs := r.Group("/api/configs")
 	{
 		configs.GET("/event_types", exh.EventTypes)
+		configs.GET("/fsm_configs", exh.FsmConfigs)
 	}
 }

@@ -28,6 +28,13 @@ const (
 
 	// eventTypeListVersionKey 事件类型列表缓存版本号
 	eventTypeListVersionKey = "event_types:list:version"
+
+	prefixFsmConfigList   = "fsm_configs:list:"   // 状态机列表分页缓存
+	prefixFsmConfigDetail = "fsm_configs:detail:" // 状态机单条缓存
+	prefixFsmConfigLock   = "fsm_configs:lock:"   // 状态机分布式锁
+
+	// fsmConfigListVersionKey 状态机列表缓存版本号
+	fsmConfigListVersionKey = "fsm_configs:list:version"
 )
 
 // DictKey 字典缓存 key: dict:{group}
@@ -109,4 +116,27 @@ func EventTypeDetailKey(id int64) string {
 // EventTypeLockKey 事件类型分布式锁 key: event_types:lock:{id}
 func EventTypeLockKey(id int64) string {
 	return fmt.Sprintf("%s%d", prefixEventTypeLock, id)
+}
+
+// FsmConfigListKey 状态机列表缓存 key（带版本号）
+func FsmConfigListKey(version int64, label string, enabled *bool, page, pageSize int) string {
+	e := "*"
+	if enabled != nil {
+		if *enabled {
+			e = "1"
+		} else {
+			e = "0"
+		}
+	}
+	return fmt.Sprintf("%sv%d:%s:%s:%d:%d", prefixFsmConfigList, version, label, e, page, pageSize)
+}
+
+// FsmConfigDetailKey 状态机详情缓存 key: fsm_configs:detail:{id}
+func FsmConfigDetailKey(id int64) string {
+	return fmt.Sprintf("%s%d", prefixFsmConfigDetail, id)
+}
+
+// FsmConfigLockKey 状态机分布式锁 key: fsm_configs:lock:{id}
+func FsmConfigLockKey(id int64) string {
+	return fmt.Sprintf("%s%d", prefixFsmConfigLock, id)
 }

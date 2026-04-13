@@ -35,3 +35,13 @@ event_type_schema:
   field_name_max_length: 64
   field_label_max_length: 128
   max_schemas: 100
+
+fsm_config:
+  name_max_length: 64
+  display_name_max_length: 128
+  max_states: 50
+  max_transitions: 200
+  condition_max_depth: 10
+  cache_detail_ttl: 10m
+  cache_list_ttl: 5m
+  cache_lock_ttl: 3s

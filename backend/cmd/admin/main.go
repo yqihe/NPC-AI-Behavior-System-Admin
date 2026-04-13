@@ -70,6 +70,8 @@ func main() {
 	fieldCache := storeredis.NewFieldCache(rdb)
 	templateCache := storeredis.NewTemplateCache(rdb)
 	eventTypeCache := storeredis.NewEventTypeCache(rdb)
+	fsmConfigStore := storemysql.NewFsmConfigStore(db)
+	fsmConfigCache := storeredis.NewFsmConfigCache(rdb)
 
 	// DictCache（内存缓存，启动时从 MySQL 加载）
 	dictCache := cache.NewDictCache(dictStore)
@@ -94,6 +96,7 @@ func main() {
 	templateService := service.NewTemplateService(templateStore, templateCache, &cfg.Pagination)
 	eventTypeService := service.NewEventTypeService(eventTypeStore, eventTypeCache, eventTypeSchemaCache, &cfg.Pagination, &cfg.EventType)
 	eventTypeSchemaService := service.NewEventTypeSchemaService(eventTypeSchemaStore, eventTypeSchemaCache, &cfg.EventTypeSchema)
+	fsmConfigService := service.NewFsmConfigService(fsmConfigStore, fsmConfigCache, &cfg.Pagination, &cfg.FsmConfig)
 
 	// Handler（跨模块编排在 handler 层）
 	fieldHandler := handler.NewFieldHandler(fieldService, templateService, &cfg.Validation)
@@ -101,11 +104,12 @@ func main() {
 	dictHandler := handler.NewDictionaryHandler(dictCache)
 	eventTypeHandler := handler.NewEventTypeHandler(eventTypeService, eventTypeSchemaService, &cfg.EventType)
 	eventTypeSchemaHandler := handler.NewEventTypeSchemaHandler(eventTypeSchemaService, &cfg.EventTypeSchema)
-	exportHandler := handler.NewExportHandler(eventTypeService)
+	fsmConfigHandler := handler.NewFsmConfigHandler(fsmConfigService, &cfg.FsmConfig)
+	exportHandler := handler.NewExportHandler(eventTypeService, fsmConfigService)
 
 	// Router
 	r := gin.Default()
-	router.Setup(r, fieldHandler, dictHandler, templateHandler, eventTypeHandler, eventTypeSchemaHandler, exportHandler)
+	router.Setup(r, fieldHandler, dictHandler, templateHandler, eventTypeHandler, eventTypeSchemaHandler, fsmConfigHandler, exportHandler)
 
 	// Server
 	srv := &http.Server{

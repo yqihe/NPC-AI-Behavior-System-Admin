@@ -83,6 +83,23 @@ const (
 	ErrExtSchemaEditNotDisabled    = 42031 // 编辑前必须先停用
 )
 
+// --- 状态机管理 430xx ---
+
+const (
+	ErrFsmConfigNameExists        = 43001 // FSM 标识已存在（含软删除）
+	ErrFsmConfigNameInvalid       = 43002 // FSM 标识格式不合法
+	ErrFsmConfigNotFound          = 43003 // FSM 配置不存在
+	ErrFsmConfigStatesEmpty       = 43004 // 未定义任何状态
+	ErrFsmConfigStateNameInvalid  = 43005 // 状态名为空或重复
+	ErrFsmConfigInitialInvalid    = 43006 // 初始状态不在状态列表中
+	ErrFsmConfigTransitionInvalid = 43007 // 转换规则引用了不存在的状态
+	ErrFsmConfigConditionInvalid  = 43008 // 条件表达式不合法
+	ErrFsmConfigDeleteNotDisabled = 43009 // 删除前必须先停用
+	ErrFsmConfigEditNotDisabled   = 43010 // 编辑前必须先停用
+	ErrFsmConfigVersionConflict   = 43011 // 版本冲突（乐观锁）
+	ErrFsmConfigRefDelete         = 43012 // 被 NPC 引用，无法删除（占位，本期 ref_count 恒 0）
+)
+
 // --- 错误消息 ---
 
 var messages = map[int]string{
@@ -144,6 +161,19 @@ var messages = map[int]string{
 	ErrExtSchemaDeleteNotDisabled:  "请先停用该扩展字段再删除",
 	ErrExtSchemaVersionConflict:    "该扩展字段已被其他人修改，请刷新后重试",
 	ErrExtSchemaEditNotDisabled:    "请先停用该扩展字段再编辑",
+
+	ErrFsmConfigNameExists:        "状态机标识已存在",
+	ErrFsmConfigNameInvalid:       "状态机标识格式不合法，需小写字母开头，仅允许 a-z、0-9、下划线",
+	ErrFsmConfigNotFound:          "状态机配置不存在",
+	ErrFsmConfigStatesEmpty:       "请至少定义一个状态",
+	ErrFsmConfigStateNameInvalid:  "状态名不能为空且不能重复",
+	ErrFsmConfigInitialInvalid:    "初始状态必须是已定义的状态之一",
+	ErrFsmConfigTransitionInvalid: "转换规则引用了不存在的状态",
+	ErrFsmConfigConditionInvalid:  "条件表达式不合法",
+	ErrFsmConfigDeleteNotDisabled: "请先停用该状态机再删除",
+	ErrFsmConfigEditNotDisabled:   "请先停用该状态机再编辑",
+	ErrFsmConfigVersionConflict:   "该状态机已被其他人修改，请刷新后重试",
+	ErrFsmConfigRefDelete:         "当前状态机仍被引用，不能删除",
 }
 
 // Msg 获取错误码对应的默认消息
