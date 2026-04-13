@@ -9,18 +9,27 @@
 ## 1. 架构分层
 
 ```
-handler/         ← HTTP 入口
-service/         ← 业务逻辑
+handler/             ← HTTP 入口（纯业务 handler + wrap.go 泛型包装）
+service/             ← 业务逻辑（纯业务，无初始化/共享常量）
 store/
-  mysql/         ← MySQL 操作
-  redis/         ← Redis 缓存操作
-cache/           ← 进程内内存缓存
-model/           ← 数据模型
-errcode/         ← 错误码定义
-router/          ← 路由注册
-config/          ← 配置加载
-util/            ← 通用常量与工具
+  mysql/             ← MySQL 操作（纯业务 CRUD）
+  redis/             ← Redis 缓存操作（纯业务 cache，*_cache.go 命名）
+    config/          ← Redis 专属常量 + key 管理（common.go + keys.go）
+cache/               ← 进程内内存缓存（DictCache / EventTypeSchemaCache）
+model/               ← 数据模型
+errcode/             ← 错误码定义（业务码 codes.go + store 哨兵错误 store_errors.go）
+router/              ← 路由注册
+config/              ← 配置加载
+util/                ← 通用常量与工具（strings / const / pagination / validation）
+setup/               ← 统一聚合初始化（连接 + 分层注册，仅 main.go 引用）
 ```
+
+**文件职责分离原则**：
+- 业务文件只放业务逻辑，不定义跨文件共享的常量/工具
+- 初始化/连接/聚合注册统一在 `setup/` 包
+- 通用工具函数（校验、分页、转义）统一在 `util/` 包
+- 所有错误定义（业务码 + store 哨兵错误）统一在 `errcode/` 包
+- Redis 专属常量/key 在 `store/redis/config/` 子包（与业务 cache 分离）
 
 ---
 
@@ -28,13 +37,16 @@ util/            ← 通用常量与工具
 
 | 层 | 职责 | 禁止 |
 |---|---|---|
-| **handler** | 请求参数绑定 + 格式校验 + **跨模块编排**（开事务、调多个 service、commit/rollback）+ 返回响应 | 不写业务逻辑 |
+| **handler** | 请求参数绑定 + 格式校验 + **跨模块编排**（开事务、调多个 service、commit/rollback）+ 返回响应 | 不写业务逻辑，不定义共享校验函数 |
 | **service** | 编排同模块内的 store/cache，处理业务逻辑、Cache-Aside、乐观锁映射 | 不调用其他模块的 store/cache/service |
-| **store/mysql** | 单张表的 CRUD + 覆盖索引查询 | 不做业务判断 |
-| **store/redis** | Redis 缓存读写 + key 生成 + 分布式锁 | 不做业务判断 |
+| **store/mysql** | 单张表的 CRUD + 覆盖索引查询 | 不做业务判断，不定义共享工具 |
+| **store/redis** | Redis 缓存读写 + 分布式锁（纯业务） | 不定义常量/key，从 `redis/config` 包引用 |
+| **store/redis/config** | Redis 专属常量（NullMarker/TTL）+ key 前缀与生成函数 | 纯数据，不引用父包类型 |
 | **cache** | 进程内内存缓存（DictCache、EventTypeSchemaCache），启动加载，运行时只读 | 只读基础设施，任意 service 可调用 |
 | **model** | 数据模型定义（请求/响应/数据库行 struct） | 无逻辑 |
-| **errcode** | 错误码常量 + 默认消息 + Error 类型 | 无逻辑 |
+| **errcode** | 业务错误码（codes.go）+ store 哨兵错误（store_errors.go）+ Error 类型 | 无逻辑 |
+| **util** | 通用工具：标识符正则、LIKE 转义、分页校正、ID/Version 校验 | 只放被 2+ 模块使用的 |
+| **setup** | 统一聚合初始化：MySQL 连接 + Redis 连接 + 各层 New 注册 | 仅 main.go 引用，单向向下 |
 
 **跨模块编排规则**：
 

@@ -115,36 +115,55 @@ slog.Warn("service.获取锁失败，降级直查MySQL", "error", lockErr)   // 
 
 ### Handler 层一致性
 
-| 维度 | 权威模式（Field/Template） |
+| 维度 | 权威模式 |
 |---|---|
-| ID 校验 | 调共享 `checkID(id)`（定义在 field.go 包级别），消息 `"ID 不合法"` |
-| Version 校验 | 调共享 `checkVersion(version)`，消息 `"版本号不合法"` |
+| ID 校验 | 调 `util.CheckID(id)`（定义在 `util/validation.go`），消息 `"ID 不合法"` |
+| Version 校验 | 调 `util.CheckVersion(version)`，消息 `"版本号不合法"` |
+| Required 校验 | 调 `util.CheckRequired(value, fieldName)` |
+| 标识符正则 | 引用 `util.IdentPattern`（定义在 `util/strings.go`） |
+| 成功消息 | `util.SuccessMsg("保存成功")` / `util.SuccessMsg("操作成功")` |
 | slog Debug 时机 | 校验**之后**打印，不在校验前 |
 | slog 格式 | 中文点分 `"handler.创建字段"` |
-| Update 返回 | `*string` → `successMsg("保存成功")` |
+| Update 返回 | `*string` → `util.SuccessMsg("保存成功")` |
 | Delete 返回 | `*model.DeleteResult{ID, Name, Label}` |
-| ToggleEnabled 返回 | `*string` → `successMsg("操作成功")` |
+| ToggleEnabled 返回 | `*string` → `util.SuccessMsg("操作成功")` |
 | CheckName 校验 | 调完整的 `h.checkName()` 做正则+长度，不仅检查空 |
 
 ### Service 层一致性
 
 | 维度 | 权威模式 |
 |---|---|
+| 分页校正 | `util.NormalizePagination(&q.Page, &q.PageSize, cfg.DefaultPage, cfg.DefaultPageSize, cfg.MaxPageSize)` |
 | List 缓存检查 | `if cached, hit, err := cache.GetList(ctx, q); err == nil && hit` |
 | GetByID 缓存检查 | `if cached, hit, err := cache.GetDetail(ctx, id); err == nil && hit` |
 | 分布式锁错误 | `slog.Warn("service.获取锁失败，降级直查MySQL", ...)` |
+| Store 哨兵错误 | `errors.Is(err, errcode.ErrVersionConflict)` / `errcode.ErrNotFound`（定义在 `errcode/store_errors.go`） |
 | Store 错误处理 | `slog.Error` + `fmt.Errorf("xxx: %w", err)`，禁止 raw `return err` |
 | ToggleEnabled 签名 | `(ctx, *model.ToggleEnabledRequest) error`（调用方指定目标状态） |
 | Delete 返回 | `(*model.DeleteResult, error)` |
 | CheckName 成功 | `{Available: true, Message: "该标识可用"}` |
+| 日志格式 | 中文动词 `"service.创建状态机"`，禁止英文 dot notation `"service.fsm_config.create"` |
 
 ### Store 层一致性
 
 | 维度 | 权威模式 |
 |---|---|
+| db 字段类型 | 统一 `*sqlx.DB`，禁止用 interface |
 | Create 参数 | `(ctx, *model.CreateXxxRequest, ...)` 用请求结构体 |
 | Update 参数 | `(ctx, *model.UpdateXxxRequest, ...)` 用请求结构体 |
 | 禁止位置参数 | ~~`Create(ctx, name, displayName, mode string, ...)`~~ |
+| LIKE 转义 | 调 `util.EscapeLike()`，不在 store 包内定义 wrapper |
+| 哨兵错误 | 返回 `errcode.ErrVersionConflict` / `errcode.ErrNotFound`（不在 store 包内定义） |
+
+### Redis Cache 层一致性
+
+| 维度 | 权威模式 |
+|---|---|
+| 文件命名 | `{module}_cache.go`（如 `field_cache.go`、`fsm_config_cache.go`） |
+| 常量/key 引用 | 从 `store/redis/config` 子包导入（`rcfg.NullMarker`、`rcfg.TTL()`、`rcfg.FieldDetailKey()` 等） |
+| 日志前缀 | `"cache.{模块中文名}{动作}"`（如 `"cache.字段详情未命中"`、`"cache.状态机释放锁失败"`） |
+| TryLock 错误 | `fmt.Errorf("{module} try lock: %w", err)`（如 `"field try lock"`） |
+| 方法集 | GetDetail / SetDetail / DelDetail / getListVersion / GetList / SetList / InvalidateList / TryLock / Unlock |
 
 ### Frontend API 层一致性
 

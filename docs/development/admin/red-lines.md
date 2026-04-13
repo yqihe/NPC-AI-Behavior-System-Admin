@@ -71,15 +71,23 @@
 
 ## 禁止偏离已建立的跨模块代码模式
 
-- **禁止**新模块 handler 的 Update/Delete/ToggleEnabled 返回 `*model.Empty{}`。必须与 Field/Template 一致：Update → `*string("保存成功")`、Delete → `*DeleteResult{ID, Name, Label}`、ToggleEnabled → `*string("操作成功")`
+- **禁止**新模块 handler 的 Update/Delete/ToggleEnabled 返回 `*model.Empty{}`。必须与 Field/Template 一致：Update → `*util.SuccessMsg("保存成功")`、Delete → `*DeleteResult{ID, Name, Label}`、ToggleEnabled → `*util.SuccessMsg("操作成功")`
 - **禁止**新模块 service 的 `ToggleEnabled` 使用 `(ctx, id, version)` 签名自行取反 `!et.Enabled`。必须接收 `*model.ToggleEnabledRequest`（调用方指定目标 `enabled` 状态）
 - **禁止**新模块 service 缓存读取用 `_, hit, _ := cache.GetDetail(...)` 丢弃 error。必须用 `err == nil && hit` 模式（Redis 错误降级直查 MySQL，不误判为缓存命中）
 - **禁止**新模块 service 对 store 错误直接 `return err` 不包装。必须 `slog.Error` + `fmt.Errorf("xxx: %w", err)` 对齐 Field/Template
 - **禁止**新模块 store 的 Create/Update 使用展开的位置参数（如 ~~`Create(ctx, name, displayName, mode string, ...)`~~）。必须用 `*model.CreateXxxRequest` 结构体
-- **禁止**新模块 handler 自定义 ID/Version 校验逻辑和错误消息。必须调共享 `checkID()` / `checkVersion()`
+- **禁止**新模块 handler 自定义 ID/Version/Required 校验逻辑。必须调 `util.CheckID()` / `util.CheckVersion()` / `util.CheckRequired()`
 - **禁止**新模块 handler 在校验**之前**打 slog Debug 日志。日志必须在校验通过后打印
 - **禁止**新模块前端 API 文件重复定义 `ListData<T>` / `CheckNameResult`。必须从 `fields.ts` 导入
 - **禁止**新模块前端表单用 `detail.value!.xxx` 非空断言读取服务端数据。必须用独立 `ref()` 存储
+
+## 禁止文件职责混放
+
+- **禁止**在业务逻辑文件中定义跨模块共享的常量、工具函数、初始化代码。共享常量和工具放 `util/`，初始化聚合放 `setup/`，错误定义放 `errcode/`
+- **禁止**在同一 store 文件中既放业务 CRUD 又放共享工具（如 `escapeLike` 只定义一次却被 4 个 store 使用）。跨文件共享的工具必须放 `util/` 包
+- **禁止** store/redis 业务 cache 文件中定义 key 前缀、TTL 常量、key 生成函数。这些统一放 `store/redis/config/` 子包
+- **禁止**同一 store 用 interface 类型接收 `db` 而其他 store 用 `*sqlx.DB`。全部统一 `*sqlx.DB`
+- **禁止**新模块 redis cache 文件命名不带 `_cache` 后缀。统一 `{module}_cache.go`（如 `field_cache.go`、`fsm_config_cache.go`）
 
 ## 禁止表格排序按钮用 el-button text + Unicode 箭头
 

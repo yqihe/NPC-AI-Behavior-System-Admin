@@ -53,16 +53,19 @@ backend/
     admin/                 #   API 服务入口
     seed/                  #   字典种子脚本
   internal/
-    handler/               #   HTTP handler（REST API）
-    service/               #   业务逻辑
+    handler/               #   HTTP handler（纯业务 + wrap.go 泛型包装）
+    service/               #   业务逻辑（纯业务）
     store/
-      mysql/               #   MySQL 操作（字段/字典/引用关系）
-      redis/               #   Redis 缓存 + key 管理
-    cache/                 #   内存缓存（字典启动加载）
+      mysql/               #   MySQL 操作（纯业务 CRUD）
+      redis/               #   Redis 缓存操作（纯业务 *_cache.go）
+        config/            #   Redis 专属常量 + key 管理
+    cache/                 #   内存缓存（字典/Schema 启动加载）
     config/                #   配置加载
-    errcode/               #   错误码定义
+    errcode/               #   错误码（业务码 + store 哨兵错误）
     model/                 #   数据模型
     router/                #   路由注册
+    setup/                 #   统一聚合初始化（连接 + 分层注册）
+    util/                  #   通用工具（校验/分页/转义/常量）
   migrations/              #   SQL DDL 脚本
 frontend/
   src/
