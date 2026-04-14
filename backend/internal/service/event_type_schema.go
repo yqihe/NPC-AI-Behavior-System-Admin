@@ -3,6 +3,7 @@ package service
 import (
 	shared "github.com/yqihe/npc-ai-admin/backend/internal/service/shared"
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -134,8 +135,19 @@ func (s *EventTypeSchemaService) Update(ctx context.Context, req *model.UpdateEv
 		return err
 	}
 
+	tx, err := s.store.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			slog.Warn("service.编辑扩展字段事务回滚失败", "error", rbErr)
+		}
+	}()
+
+	// FOR SHARE：锁住 schema_refs 行，阻塞并发写入
 	// 被引用时禁止收紧约束（类型不可变已天然满足：UpdateRequest 不含 FieldType）
-	hasRefs, err := s.schemaRefStore.HasRefs(ctx, req.ID)
+	hasRefs, err := s.schemaRefStore.HasRefsTx(ctx, tx, req.ID)
 	if err != nil {
 		slog.Error("service.查询扩展字段引用失败", "error", err, "id", req.ID)
 		return fmt.Errorf("check schema refs: %w", err)
@@ -146,6 +158,7 @@ func (s *EventTypeSchemaService) Update(ctx context.Context, req *model.UpdateEv
 		}
 	}
 
+	// 纯计算校验，无副作用，在事务内调用无问题
 	if e := shared.ValidateConstraintsSelf(ets.FieldType, req.Constraints, errcode.ErrExtSchemaConstraintsInvalid); e != nil {
 		return e
 	}
@@ -155,15 +168,19 @@ func (s *EventTypeSchemaService) Update(ctx context.Context, req *model.UpdateEv
 		return errcode.Newf(errcode.ErrExtSchemaDefaultInvalid, "默认值不符合约束: %s", e.Error())
 	}
 
-	// 乐观锁更新
-	if err := s.store.Update(ctx, req); err != nil {
+	// 乐观锁更新（事务内）
+	if err := s.store.UpdateTx(ctx, tx, req); err != nil {
 		if errors.Is(err, errcode.ErrVersionConflict) {
 			return errcode.New(errcode.ErrExtSchemaVersionConflict)
 		}
 		return err
 	}
 
-	// 重新加载内存缓存
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+
+	// 内存缓存必须在 Commit 成功后 Reload（全量重查 DB，Commit 前读到旧数据）
 	if err := s.schemaCache.Reload(ctx); err != nil {
 		slog.Error("service.编辑扩展字段-重载缓存失败", "error", err)
 	}
@@ -186,8 +203,18 @@ func (s *EventTypeSchemaService) Delete(ctx context.Context, id int64) error {
 		return errcode.New(errcode.ErrExtSchemaDeleteNotDisabled)
 	}
 
-	// 被引用时禁止删除
-	hasRefs, err := s.schemaRefStore.HasRefs(ctx, id)
+	tx, err := s.store.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			slog.Warn("service.删除扩展字段事务回滚失败", "error", rbErr)
+		}
+	}()
+
+	// FOR SHARE：锁住 schema_refs 行，阻塞并发写入
+	hasRefs, err := s.schemaRefStore.HasRefsTx(ctx, tx, id)
 	if err != nil {
 		slog.Error("service.查询扩展字段引用失败", "error", err, "id", id)
 		return fmt.Errorf("check schema refs: %w", err)
@@ -196,14 +223,18 @@ func (s *EventTypeSchemaService) Delete(ctx context.Context, id int64) error {
 		return errcode.New(errcode.ErrExtSchemaRefDelete)
 	}
 
-	if err := s.store.SoftDelete(ctx, id); err != nil {
+	if err := s.store.SoftDeleteTx(ctx, tx, id); err != nil {
 		if errors.Is(err, errcode.ErrNotFound) {
 			return errcode.New(errcode.ErrExtSchemaNotFound)
 		}
 		return err
 	}
 
-	// 重新加载内存缓存
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+
+	// 内存缓存必须在 Commit 成功后 Reload（全量重查 DB，Commit 前读到旧数据）
 	if err := s.schemaCache.Reload(ctx); err != nil {
 		slog.Error("service.删除扩展字段-重载缓存失败", "error", err)
 	}

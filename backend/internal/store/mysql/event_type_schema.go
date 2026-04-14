@@ -22,6 +22,11 @@ func NewEventTypeSchemaStore(db *sqlx.DB) *EventTypeSchemaStore {
 	return &EventTypeSchemaStore{db: db}
 }
 
+// DB 暴露数据库连接（service 层开事务用）
+func (s *EventTypeSchemaStore) DB() *sqlx.DB {
+	return s.db
+}
+
 // Create 创建扩展字段定义，返回自增 ID
 func (s *EventTypeSchemaStore) Create(ctx context.Context, req *model.CreateEventTypeSchemaRequest) (int64, error) {
 	now := time.Now()
@@ -138,6 +143,45 @@ func (s *EventTypeSchemaStore) Update(ctx context.Context, req *model.UpdateEven
 // SoftDelete 软删除
 func (s *EventTypeSchemaStore) SoftDelete(ctx context.Context, id int64) error {
 	result, err := s.db.ExecContext(ctx,
+		`UPDATE event_type_schema SET deleted = 1, updated_at = ? WHERE id = ? AND deleted = 0`,
+		time.Now(), id,
+	)
+	if err != nil {
+		return fmt.Errorf("soft delete event_type_schema: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if rows == 0 {
+		return errcode.ErrNotFound
+	}
+	return nil
+}
+
+// UpdateTx 事务内编辑扩展字段定义（乐观锁）
+func (s *EventTypeSchemaStore) UpdateTx(ctx context.Context, tx *sqlx.Tx, req *model.UpdateEventTypeSchemaRequest) error {
+	result, err := tx.ExecContext(ctx,
+		`UPDATE event_type_schema SET field_label = ?, constraints = ?, default_value = ?, sort_order = ?, version = version + 1, updated_at = ?
+		 WHERE id = ? AND version = ? AND deleted = 0`,
+		req.FieldLabel, req.Constraints, req.DefaultValue, req.SortOrder, time.Now(), req.ID, req.Version,
+	)
+	if err != nil {
+		return fmt.Errorf("update event_type_schema: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if rows == 0 {
+		return errcode.ErrVersionConflict
+	}
+	return nil
+}
+
+// SoftDeleteTx 事务内软删除扩展字段定义
+func (s *EventTypeSchemaStore) SoftDeleteTx(ctx context.Context, tx *sqlx.Tx, id int64) error {
+	result, err := tx.ExecContext(ctx,
 		`UPDATE event_type_schema SET deleted = 1, updated_at = ? WHERE id = ? AND deleted = 0`,
 		time.Now(), id,
 	)
