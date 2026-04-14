@@ -17,21 +17,24 @@ import (
 
 // FieldHandler 字段管理业务处理
 type FieldHandler struct {
-	fieldService    *service.FieldService
-	templateService *service.TemplateService // 跨模块编排：GetReferences 补 template label
-	valCfg          *config.ValidationConfig
+	fieldService     *service.FieldService
+	templateService  *service.TemplateService  // 跨模块编排：GetReferences 补 template label
+	fsmConfigService *service.FsmConfigService // 跨模块编排：GetReferences 补 FSM display_name
+	valCfg           *config.ValidationConfig
 }
 
 // NewFieldHandler 创建 FieldHandler
 func NewFieldHandler(
 	fieldService *service.FieldService,
 	templateService *service.TemplateService,
+	fsmConfigService *service.FsmConfigService,
 	valCfg *config.ValidationConfig,
 ) *FieldHandler {
 	return &FieldHandler{
-		fieldService:    fieldService,
-		templateService: templateService,
-		valCfg:          valCfg,
+		fieldService:     fieldService,
+		templateService:  templateService,
+		fsmConfigService: fsmConfigService,
+		valCfg:           valCfg,
 	}
 }
 
@@ -164,9 +167,9 @@ func (h *FieldHandler) Delete(ctx context.Context, req *model.IDRequest) (*model
 	return h.fieldService.Delete(ctx, req.ID)
 }
 
-// CheckName 字段标识唯一性校验
+// CheckName 字段标识唯一性校验（先校验格式/长度，再查 DB）
 func (h *FieldHandler) CheckName(ctx context.Context, req *model.CheckNameRequest) (*model.CheckNameResult, error) {
-	if err := util.CheckRequired(req.Name, "字段标识"); err != nil {
+	if err := h.checkName(req.Name); err != nil {
 		return nil, err
 	}
 
@@ -213,6 +216,20 @@ func (h *FieldHandler) GetReferences(ctx context.Context, req *model.IDRequest) 
 			} else {
 				// 引用的模板已被删除（理论上不应发生，因为字段被引用时模板不能删）
 				slog.Warn("handler.引用详情模板缺失", "field_id", req.ID, "template_id", refID)
+			}
+		}
+	}
+
+	// 跨模块补齐 FSM display_name
+	if len(detail.Fsms) > 0 {
+		for i := range detail.Fsms {
+			fc, err := h.fsmConfigService.GetByID(ctx, detail.Fsms[i].RefID)
+			if err != nil {
+				slog.Warn("handler.补FSM_label失败", "error", err, "fsm_id", detail.Fsms[i].RefID)
+				continue
+			}
+			if fc != nil {
+				detail.Fsms[i].Label = fc.DisplayName
 			}
 		}
 	}

@@ -187,6 +187,65 @@ func (s *FsmConfigStore) ToggleEnabled(ctx context.Context, id int64, enabled bo
 	return nil
 }
 
+// ---- 事务版方法（handler 跨模块编排用）----
+
+// CreateTx 事务内创建状态机配置，返回自增 ID
+func (s *FsmConfigStore) CreateTx(ctx context.Context, tx *sqlx.Tx, req *model.CreateFsmConfigRequest, configJSON json.RawMessage) (int64, error) {
+	now := time.Now()
+	result, err := tx.ExecContext(ctx,
+		`INSERT INTO fsm_configs (name, display_name, config_json, enabled, version, created_at, updated_at, deleted)
+		 VALUES (?, ?, ?, 0, 1, ?, ?, 0)`,
+		req.Name, req.DisplayName, configJSON, now, now,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("insert fsm_config tx: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("last insert id: %w", err)
+	}
+	return id, nil
+}
+
+// UpdateTx 事务内编辑状态机配置（乐观锁）
+func (s *FsmConfigStore) UpdateTx(ctx context.Context, tx *sqlx.Tx, req *model.UpdateFsmConfigRequest, configJSON json.RawMessage) error {
+	result, err := tx.ExecContext(ctx,
+		`UPDATE fsm_configs SET display_name = ?, config_json = ?, version = version + 1, updated_at = ?
+		 WHERE id = ? AND version = ? AND deleted = 0`,
+		req.DisplayName, configJSON, time.Now(), req.ID, req.Version,
+	)
+	if err != nil {
+		return fmt.Errorf("update fsm_config tx: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if rows == 0 {
+		return errcode.ErrVersionConflict
+	}
+	return nil
+}
+
+// SoftDeleteTx 事务内软删除状态机配置
+func (s *FsmConfigStore) SoftDeleteTx(ctx context.Context, tx *sqlx.Tx, id int64) error {
+	result, err := tx.ExecContext(ctx,
+		`UPDATE fsm_configs SET deleted = 1, updated_at = ? WHERE id = ? AND deleted = 0`,
+		time.Now(), id,
+	)
+	if err != nil {
+		return fmt.Errorf("soft delete fsm_config tx: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if rows == 0 {
+		return errcode.ErrNotFound
+	}
+	return nil
+}
+
 // ExportAll 导出所有已启用且未删除的状态机配置
 //
 // 返回 (name, config_json) 二元组，handler 层原样输出到 HTTP 响应。

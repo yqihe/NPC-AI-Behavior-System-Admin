@@ -84,7 +84,7 @@
               v-model="form.type"
               placeholder="请选择字段类型"
               style="width: 100%"
-              :disabled="isView || (!isCreate && refCount > 0)"
+              :disabled="isView || (!isCreate && hasRefs)"
               @change="handleTypeChange"
             >
               <el-option
@@ -94,9 +94,9 @@
                 :value="item.name"
               />
             </el-select>
-            <div v-if="!isCreate && refCount > 0" class="field-warn">
+            <div v-if="!isCreate && hasRefs" class="field-warn">
               <el-icon><WarningFilled /></el-icon>
-              已被 {{ refCount }} 处引用，无法更改类型
+              该字段被引用中，无法更改类型
             </div>
           </el-form-item>
 
@@ -162,14 +162,14 @@
               v-if="form.type === 'integer' || form.type === 'float'"
               ref="constraintRef"
               v-model="form.properties.constraints"
-              :restricted="refCount > 0"
+              :restricted="hasRefs"
               :type-name="form.type"
             />
             <FieldConstraintString
               v-else-if="form.type === 'string'"
               ref="constraintRef"
               v-model="form.properties.constraints"
-              :restricted="refCount > 0"
+              :restricted="hasRefs"
             />
             <div v-else-if="form.type === 'boolean'" class="constraint-empty">
               布尔类型无需约束配置
@@ -178,13 +178,13 @@
               v-else-if="form.type === 'select'"
               ref="constraintRef"
               v-model="form.properties.constraints"
-              :restricted="refCount > 0"
+              :restricted="hasRefs"
               :disabled="isView"
             />
             <FieldConstraintReference
               v-else-if="form.type === 'reference'"
               v-model="form.properties.constraints"
-              :restricted="refCount > 0"
+              :restricted="hasRefs"
               :disabled="isView"
               :current-field-id="isCreate ? 0 : Number(route.params.id)"
             />
@@ -235,7 +235,7 @@ const nameMessage = ref('')
 const typeOptions = ref<DictionaryItem[]>([])
 const categoryOptions = ref<DictionaryItem[]>([])
 const version = ref(0)
-const refCount = ref(0)
+const hasRefs = ref(false)
 
 interface FormState {
   name: string
@@ -336,7 +336,7 @@ async function loadFieldDetail() {
       form.properties.constraints = constraints
     }
     version.value = data.version
-    refCount.value = data.ref_count || 0
+    hasRefs.value = data.has_refs || false
   } catch (err: unknown) {
     if ((err as BizError).code === 40011) {
       router.push('/fields')

@@ -89,19 +89,6 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="被引用数" width="80" align="center">
-          <template #default="{ row }">
-            <el-link
-              v-if="row.ref_count > 0"
-              type="primary"
-              :underline="false"
-              @click="handleShowRefs(row)"
-            >
-              {{ row.ref_count }}
-            </el-link>
-            <span v-else class="ref-zero">0</span>
-          </template>
-        </el-table-column>
         <el-table-column label="启用" width="80" align="center">
           <template #default="{ row }">
             <el-switch
@@ -192,6 +179,22 @@
           </el-table>
           <p v-else class="ref-empty">暂无字段引用</p>
         </div>
+
+        <!-- FSM 引用（BB Key） -->
+        <div class="ref-section" style="margin-top: 16px">
+          <p class="ref-subtitle">
+            FSM 引用（{{ refDialog.fsms.length }} 个状态机引用了该 BB Key）：
+          </p>
+          <el-table
+            v-if="refDialog.fsms.length > 0"
+            :data="refDialog.fsms"
+            size="small"
+          >
+            <el-table-column prop="label" label="状态机名称" />
+            <el-table-column prop="ref_type" label="类型" width="100" />
+          </el-table>
+          <p v-else class="ref-empty">暂无 FSM 引用</p>
+        </div>
       </div>
     </el-dialog>
   </div>
@@ -234,6 +237,7 @@ const refDialog = reactive({
   label: '',
   templates: [] as ReferenceItem[],
   fields: [] as ReferenceItem[],
+  fsms: [] as ReferenceItem[],
 })
 
 // ---------- 数据加载 ----------
@@ -337,10 +341,20 @@ async function handleDelete(row: FieldListItem) {
     guardRef.value?.open({ action: 'delete', entityType: 'field', entity: row })
     return
   }
-  if (row.ref_count > 0) {
-    // 有引用：显示警告 + 自动打开引用详情
-    await handleShowRefs(row)
-    ElMessage.warning(`该字段被 ${row.ref_count} 处引用，无法删除。请先移除引用关系。`)
+  // 已禁用：先查引用，有引用弹详情阻止，无引用确认删除
+  try {
+    const res = await fieldApi.references(row.id)
+    const tpls = res.data?.templates || []
+    const flds = res.data?.fields || []
+    const fsms = res.data?.fsms || []
+    const total = tpls.length + flds.length + fsms.length
+    if (total > 0) {
+      showRefDialog(row, tpls, flds, fsms)
+      ElMessage.warning(`该字段被 ${total} 处引用，无法删除。请先移除引用关系。`)
+      return
+    }
+  } catch {
+    // references API 失败拦截器已 toast；为安全起见不继续删除
     return
   }
   // 无引用：确认删除
@@ -355,24 +369,42 @@ async function handleDelete(row: FieldListItem) {
     fetchList()
   } catch (err: unknown) {
     if (err === 'cancel') return
+    // 后端兜底：REF_DELETE 时重新拉引用详情展示
     if ((err as BizError).code === FIELD_ERR.REF_DELETE) {
-      await handleShowRefs(row)
+      await loadAndShowRefs(row)
     }
     // 其他错误拦截器已 toast
   }
 }
 
-async function handleShowRefs(row: FieldListItem) {
+function showRefDialog(
+  row: FieldListItem,
+  templates: ReferenceItem[],
+  fields: ReferenceItem[],
+  fsms: ReferenceItem[],
+) {
+  refDialog.visible = true
+  refDialog.loading = false
+  refDialog.name = row.name
+  refDialog.label = row.label
+  refDialog.templates = templates
+  refDialog.fields = fields
+  refDialog.fsms = fsms
+}
+
+async function loadAndShowRefs(row: FieldListItem) {
   refDialog.visible = true
   refDialog.loading = true
   refDialog.name = row.name
   refDialog.label = row.label
   refDialog.templates = []
   refDialog.fields = []
+  refDialog.fsms = []
   try {
     const res = await fieldApi.references(row.id)
     refDialog.templates = res.data?.templates || []
     refDialog.fields = res.data?.fields || []
+    refDialog.fsms = res.data?.fsms || []
   } catch {
     // 拦截器已 toast
   } finally {
@@ -386,6 +418,7 @@ function resetRefDialog() {
   refDialog.label = ''
   refDialog.templates = []
   refDialog.fields = []
+  refDialog.fsms = []
 }
 
 // ---------- 辅助 ----------

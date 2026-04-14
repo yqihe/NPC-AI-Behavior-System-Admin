@@ -49,17 +49,6 @@
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="name" label="模板标识" min-width="160" />
         <el-table-column prop="label" label="中文标签" min-width="160" />
-        <el-table-column label="被引用数" width="100" align="center">
-          <template #default="{ row }: { row: TemplateListItem }">
-            <el-link
-              type="primary"
-              :underline="false"
-              @click="handleShowRefs(row)"
-            >
-              {{ row.ref_count }}
-            </el-link>
-          </template>
-        </el-table-column>
         <el-table-column label="启用" width="80" align="center">
           <template #default="{ row }: { row: TemplateListItem }">
             <el-switch
@@ -124,8 +113,6 @@
 
     <!-- 启用守卫弹窗 -->
     <EnabledGuardDialog ref="guardRef" @refresh="fetchList" />
-    <!-- 引用详情弹窗 -->
-    <TemplateReferencesDialog ref="refsRef" />
   </div>
 </template>
 
@@ -135,7 +122,6 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
 import EnabledGuardDialog from '@/components/EnabledGuardDialog.vue'
-import TemplateReferencesDialog from '@/components/TemplateReferencesDialog.vue'
 import { templateApi, TEMPLATE_ERR } from '@/api/templates'
 import type { TemplateListItem, TemplateListQuery } from '@/api/templates'
 import type { BizError } from '@/api/request'
@@ -146,7 +132,6 @@ const loading = ref(false)
 const tableData = ref<TemplateListItem[]>([])
 const total = ref(0)
 const guardRef = ref<InstanceType<typeof EnabledGuardDialog> | null>(null)
-const refsRef = ref<InstanceType<typeof TemplateReferencesDialog> | null>(null)
 
 const query = reactive<TemplateListQuery>({
   label: '',
@@ -241,14 +226,6 @@ async function handleDelete(row: TemplateListItem) {
     guardRef.value?.open({ action: 'delete', entityType: 'template', entity: row })
     return
   }
-  if (row.ref_count > 0) {
-    // 有 NPC 引用：前端展示引用详情，提示先移除引用
-    refsRef.value?.open(row)
-    ElMessage.warning(
-      `该模板被 ${row.ref_count} 个 NPC 引用，无法删除。请先移除引用关系。`,
-    )
-    return
-  }
   try {
     await ElMessageBox.confirm(
       `确认删除模板「${row.label}」（${row.name}）？删除后无法恢复，模板标识也不可再复用。`,
@@ -265,17 +242,9 @@ async function handleDelete(row: TemplateListItem) {
   } catch (err: unknown) {
     if (err === 'cancel') return
     const bizErr = err as BizError
-    if (bizErr.code === TEMPLATE_ERR.REF_DELETE) {
-      // 后端兜底：被 NPC 引用，自动打开引用详情
-      refsRef.value?.open(row)
-      return
-    }
+    // REF_DELETE(41007) 占位：NPC 上线后启用
     // 其他错误拦截器已 toast
   }
-}
-
-function handleShowRefs(row: TemplateListItem) {
-  refsRef.value?.open(row)
 }
 
 // ---------- 辅助 ----------

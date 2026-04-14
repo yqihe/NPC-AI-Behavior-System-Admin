@@ -64,7 +64,11 @@ interface FieldGroup {
 const props = defineProps<{
   fieldPool: FieldListItem[]
   disabled?: boolean
+  /** create 模式下 reference 子字段选择器过滤停用子字段；edit/view 保留 */
+  mode?: 'create' | 'edit' | 'view'
 }>()
+
+const isCreateMode = computed(() => props.mode === 'create')
 
 const selectedIds = defineModel<number[]>('selectedIds', { required: true })
 
@@ -109,7 +113,7 @@ function onCellClick(f: FieldListItem) {
   if (props.disabled) return
   if (f.type === 'reference') {
     pendingRefFieldId.value = f.id
-    popoverRef.value?.open(f, selectedIds.value)
+    popoverRef.value?.open(f, selectedIds.value, isCreateMode.value)
     return
   }
   if (isSelected(f.id)) {

@@ -3,9 +3,11 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"unicode/utf8"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
@@ -15,17 +17,23 @@ import (
 
 // FsmConfigHandler 状态机管理 HTTP handler
 type FsmConfigHandler struct {
+	db               *sqlx.DB
 	fsmConfigService *service.FsmConfigService
+	fieldService     *service.FieldService
 	fsmCfg           *config.FsmConfigConfig
 }
 
 // NewFsmConfigHandler 创建 FsmConfigHandler
 func NewFsmConfigHandler(
+	db *sqlx.DB,
 	fsmConfigService *service.FsmConfigService,
+	fieldService *service.FieldService,
 	fsmCfg *config.FsmConfigConfig,
 ) *FsmConfigHandler {
 	return &FsmConfigHandler{
+		db:               db,
 		fsmConfigService: fsmConfigService,
+		fieldService:     fieldService,
 		fsmCfg:           fsmCfg,
 	}
 }
@@ -64,8 +72,9 @@ func (h *FsmConfigHandler) List(ctx context.Context, req *model.FsmConfigListQue
 }
 
 // Create 创建状态机
+//
+// 跨模块事务：写 fsm_configs + 维护 field_refs(ref_type='fsm') BB Key 引用。
 func (h *FsmConfigHandler) Create(ctx context.Context, req *model.CreateFsmConfigRequest) (*model.CreateFsmConfigResponse, error) {
-	// Handler 格式校验
 	if e := h.checkName(req.Name); e != nil {
 		return nil, e
 	}
@@ -75,10 +84,32 @@ func (h *FsmConfigHandler) Create(ctx context.Context, req *model.CreateFsmConfi
 
 	slog.Debug("handler.创建状态机", "name", req.Name)
 
-	id, err := h.fsmConfigService.Create(ctx, req)
+	tx, err := h.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	id, _, err := h.fsmConfigService.CreateInTx(ctx, tx, req)
 	if err != nil {
 		return nil, err
 	}
+
+	// BB Key 引用追踪
+	newKeys := service.ExtractBBKeys(req.Transitions)
+	emptyKeys := make(map[string]bool)
+	affected, err := h.fieldService.SyncFsmBBKeyRefs(ctx, tx, id, emptyKeys, newKeys)
+	if err != nil {
+		return nil, fmt.Errorf("sync bb key refs: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+
+	// 清缓存
+	h.fsmConfigService.InvalidateList(ctx)
+	h.fieldService.InvalidateDetails(ctx, affected)
 
 	return &model.CreateFsmConfigResponse{ID: id, Name: req.Name}, nil
 }
@@ -123,6 +154,8 @@ func (h *FsmConfigHandler) Get(ctx context.Context, req *model.IDRequest) (*mode
 }
 
 // Update 编辑状态机
+//
+// 跨模块事务：更新 fsm_configs + diff BB Key 引用。
 func (h *FsmConfigHandler) Update(ctx context.Context, req *model.UpdateFsmConfigRequest) (*string, error) {
 	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
@@ -136,13 +169,40 @@ func (h *FsmConfigHandler) Update(ctx context.Context, req *model.UpdateFsmConfi
 
 	slog.Debug("handler.编辑状态机", "id", req.ID, "version", req.Version)
 
-	if err := h.fsmConfigService.Update(ctx, req); err != nil {
+	tx, err := h.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	oldFc, err := h.fsmConfigService.UpdateInTx(ctx, tx, req)
+	if err != nil {
 		return nil, err
 	}
+
+	// BB Key diff
+	oldKeys := service.ExtractBBKeysFromConfigJSON(oldFc.ConfigJSON)
+	newKeys := service.ExtractBBKeys(req.Transitions)
+	affected, err := h.fieldService.SyncFsmBBKeyRefs(ctx, tx, req.ID, oldKeys, newKeys)
+	if err != nil {
+		return nil, fmt.Errorf("sync bb key refs: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+
+	// 清缓存
+	h.fsmConfigService.InvalidateDetail(ctx, req.ID)
+	h.fsmConfigService.InvalidateList(ctx)
+	h.fieldService.InvalidateDetails(ctx, affected)
+
 	return util.SuccessMsg("保存成功"), nil
 }
 
 // Delete 删除状态机
+//
+// 跨模块事务：软删 fsm_configs + 清理 BB Key 引用。
 func (h *FsmConfigHandler) Delete(ctx context.Context, req *model.IDRequest) (*model.DeleteResult, error) {
 	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
@@ -150,7 +210,34 @@ func (h *FsmConfigHandler) Delete(ctx context.Context, req *model.IDRequest) (*m
 
 	slog.Debug("handler.删除状态机", "id", req.ID)
 
-	return h.fsmConfigService.Delete(ctx, req.ID)
+	tx, err := h.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	fc, err := h.fsmConfigService.SoftDeleteInTx(ctx, tx, req.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 清理 BB Key 引用
+	affected, err := h.fieldService.CleanFsmBBKeyRefs(ctx, tx, req.ID)
+	if err != nil {
+		return nil, fmt.Errorf("clean bb key refs: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+
+	// 清缓存
+	h.fsmConfigService.InvalidateDetail(ctx, req.ID)
+	h.fsmConfigService.InvalidateList(ctx)
+	h.fieldService.InvalidateDetails(ctx, affected)
+
+	slog.Info("handler.删除状态机成功", "id", req.ID, "name", fc.Name)
+	return &model.DeleteResult{ID: fc.ID, Name: fc.Name, Label: fc.DisplayName}, nil
 }
 
 // CheckName 状态机标识唯一性校验

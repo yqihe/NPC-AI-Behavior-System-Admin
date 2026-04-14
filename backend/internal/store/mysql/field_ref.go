@@ -42,7 +42,7 @@ func (s *FieldRefStore) Remove(ctx context.Context, tx *sqlx.Tx, fieldID int64, 
 	return nil
 }
 
-// RemoveBySource 移除某个引用方的所有引用，返回被引用的字段 ID 列表（用于 ref_count 维护）
+// RemoveBySource 移除某个引用方的所有引用，返回被引用的字段 ID 列表（用于缓存失效）
 // 例：删除 reference 类型字段时，清理它对其他字段的引用
 func (s *FieldRefStore) RemoveBySource(ctx context.Context, tx *sqlx.Tx, refType string, refID int64) ([]int64, error) {
 	// 先查出被引用的字段 ID 列表（必须在同一事务内）
@@ -83,6 +83,18 @@ func (s *FieldRefStore) GetByFieldID(ctx context.Context, fieldID int64) ([]mode
 		return nil, fmt.Errorf("get refs by field id: %w", err)
 	}
 	return refs, nil
+}
+
+// HasRefs 非事务检查引用（编辑前检查，判断是否需要约束保护）
+func (s *FieldRefStore) HasRefs(ctx context.Context, fieldID int64) (bool, error) {
+	var count int
+	err := s.db.GetContext(ctx, &count,
+		`SELECT COUNT(*) FROM field_refs WHERE field_id = ?`, fieldID,
+	)
+	if err != nil {
+		return false, fmt.Errorf("check has refs: %w", err)
+	}
+	return count > 0, nil
 }
 
 // HasRefsTx 事务内检查引用（删除前检查，防 TOCTOU）

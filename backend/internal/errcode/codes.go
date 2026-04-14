@@ -22,7 +22,7 @@ const (
 	ErrFieldRefDelete        = 40005 // 被引用无法删除
 	ErrFieldRefChangeType    = 40006 // 被引用无法修改类型
 	ErrFieldRefTighten       = 40007 // 被引用无法收紧约束
-	ErrFieldBBKeyInUse       = 40008 // BB Key 被行为树引用无法关闭
+	ErrFieldBBKeyInUse       = 40008 // BB Key 被 FSM/BT 引用无法关闭
 	ErrFieldCyclicRef        = 40009 // 循环引用
 	ErrFieldVersionConflict  = 40010 // 版本冲突（乐观锁）
 	ErrFieldNotFound         = 40011 // 字段不存在
@@ -79,6 +79,8 @@ const (
 	ErrExtSchemaConstraintsInvalid = 42025 // constraints 不自洽
 	ErrExtSchemaDefaultInvalid     = 42026 // default_value 不符合 constraints
 	ErrExtSchemaDeleteNotDisabled  = 42027 // 删除前必须先停用
+	ErrExtSchemaRefTighten         = 42028 // 被引用时约束收紧
+	ErrExtSchemaRefDelete          = 42029 // 被引用时无法删除
 	ErrExtSchemaVersionConflict    = 42030 // 版本冲突（乐观锁）
 	ErrExtSchemaEditNotDisabled    = 42031 // 编辑前必须先停用
 )
@@ -114,7 +116,7 @@ var messages = map[int]string{
 	ErrFieldRefDelete:        "该字段正被引用，无法删除",
 	ErrFieldRefChangeType:    "该字段已被引用，无法修改类型",
 	ErrFieldRefTighten:       "已有数据可能超出新约束范围，请先移除引用",
-	ErrFieldBBKeyInUse:       "该 Key 正被行为树使用，无法关闭",
+	ErrFieldBBKeyInUse:       "该 BB Key 正被 FSM/BT 引用，无法关闭暴露",
 	ErrFieldCyclicRef:        "检测到循环引用",
 	ErrFieldVersionConflict:  "该字段已被其他人修改，请刷新后重试",
 	ErrFieldNotFound:         "字段不存在",
@@ -159,6 +161,8 @@ var messages = map[int]string{
 	ErrExtSchemaConstraintsInvalid: "约束配置不自洽",
 	ErrExtSchemaDefaultInvalid:     "默认值不符合约束",
 	ErrExtSchemaDeleteNotDisabled:  "请先停用该扩展字段再删除",
+	ErrExtSchemaRefTighten:         "该扩展字段已被事件类型引用，约束只能放宽不能收紧",
+	ErrExtSchemaRefDelete:          "该扩展字段正被事件类型引用，无法删除",
 	ErrExtSchemaVersionConflict:    "该扩展字段已被其他人修改，请刷新后重试",
 	ErrExtSchemaEditNotDisabled:    "请先停用该扩展字段再编辑",
 

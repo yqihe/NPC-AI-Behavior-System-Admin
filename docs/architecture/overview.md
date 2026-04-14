@@ -93,7 +93,9 @@ setup/               ← 统一聚合初始化（连接 + 分层注册，仅 mai
 ```
 
 - `code=0` 成功，`code=4xxxx` 业务错误，`code=50000` 系统错误
-- HTTP 状态码统一 200，业务错误码在 `code` 字段
+- 业务请求（2xx 路径）HTTP 状态码统一 200，业务错误码在 `code` 字段
+- **未匹配路由**：HTTP 404，body 是 JSON `{"code":40000,"message":"请求的资源不存在","data":null}`（router 层注册 `NoRoute`）
+- **错误 HTTP 方法**：HTTP 405，body 是 JSON `{"code":40000,"message":"不支持的 HTTP 方法","data":null}`（router 层设置 `HandleMethodNotAllowed=true` + `NoMethod`）。禁止让 Gin 默认返回纯文本
 - 列表返回：`{"code": 0, "data": {"items": [...], "total": N, "page": P, "page_size": S}}`
 - 错误码定义在 `errcode/codes.go`，各模块码段见模块 backend.md
 

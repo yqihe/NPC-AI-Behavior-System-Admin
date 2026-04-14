@@ -10,28 +10,30 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
-	"github.com/yqihe/npc-ai-admin/backend/internal/service/constraint"
 	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
 	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // EventTypeSchemaService 事件类型扩展字段 Schema 业务逻辑
 type EventTypeSchemaService struct {
-	store       *storemysql.EventTypeSchemaStore
-	schemaCache *cache.EventTypeSchemaCache
-	etsCfg      *config.EventTypeSchemaConfig
+	store          *storemysql.EventTypeSchemaStore
+	schemaRefStore *storemysql.SchemaRefStore
+	schemaCache    *cache.EventTypeSchemaCache
+	etsCfg         *config.EventTypeSchemaConfig
 }
 
 // NewEventTypeSchemaService 创建 EventTypeSchemaService
 func NewEventTypeSchemaService(
 	store *storemysql.EventTypeSchemaStore,
+	schemaRefStore *storemysql.SchemaRefStore,
 	schemaCache *cache.EventTypeSchemaCache,
 	etsCfg *config.EventTypeSchemaConfig,
 ) *EventTypeSchemaService {
 	return &EventTypeSchemaService{
-		store:       store,
-		schemaCache: schemaCache,
-		etsCfg:      etsCfg,
+		store:          store,
+		schemaRefStore: schemaRefStore,
+		schemaCache:    schemaCache,
+		etsCfg:         etsCfg,
 	}
 }
 
@@ -84,12 +86,12 @@ func (s *EventTypeSchemaService) Create(ctx context.Context, req *model.CreateEv
 	}
 
 	// constraints 自洽校验
-	if e := constraint.ValidateConstraintsSelf(req.FieldType, req.Constraints); e != nil {
+	if e := util.ValidateConstraintsSelf(req.FieldType, req.Constraints, errcode.ErrExtSchemaConstraintsInvalid); e != nil {
 		return 0, e
 	}
 
 	// default_value 必须符合 constraints
-	if e := constraint.ValidateValue(req.FieldType, req.Constraints, req.DefaultValue); e != nil {
+	if e := util.ValidateValue(req.FieldType, req.Constraints, req.DefaultValue); e != nil {
 		return 0, errcode.Newf(errcode.ErrExtSchemaDefaultInvalid, "默认值不符合约束: %s", e.Error())
 	}
 
@@ -128,12 +130,24 @@ func (s *EventTypeSchemaService) Update(ctx context.Context, req *model.UpdateEv
 		return err
 	}
 
-	if e := constraint.ValidateConstraintsSelf(ets.FieldType, req.Constraints); e != nil {
+	// 被引用时禁止收紧约束（类型不可变已天然满足：UpdateRequest 不含 FieldType）
+	hasRefs, err := s.schemaRefStore.HasRefs(ctx, req.ID)
+	if err != nil {
+		slog.Error("service.查询扩展字段引用失败", "error", err, "id", req.ID)
+		return fmt.Errorf("check schema refs: %w", err)
+	}
+	if hasRefs {
+		if e := util.CheckConstraintTightened(ets.FieldType, ets.Constraints, req.Constraints, errcode.ErrExtSchemaRefTighten); e != nil {
+			return e
+		}
+	}
+
+	if e := util.ValidateConstraintsSelf(ets.FieldType, req.Constraints, errcode.ErrExtSchemaConstraintsInvalid); e != nil {
 		return e
 	}
 
 	// default_value 符合新 constraints
-	if e := constraint.ValidateValue(ets.FieldType, req.Constraints, req.DefaultValue); e != nil {
+	if e := util.ValidateValue(ets.FieldType, req.Constraints, req.DefaultValue); e != nil {
 		return errcode.Newf(errcode.ErrExtSchemaDefaultInvalid, "默认值不符合约束: %s", e.Error())
 	}
 
@@ -166,6 +180,16 @@ func (s *EventTypeSchemaService) Delete(ctx context.Context, id int64) error {
 	// 必须先停用
 	if ets.Enabled {
 		return errcode.New(errcode.ErrExtSchemaDeleteNotDisabled)
+	}
+
+	// 被引用时禁止删除
+	hasRefs, err := s.schemaRefStore.HasRefs(ctx, id)
+	if err != nil {
+		slog.Error("service.查询扩展字段引用失败", "error", err, "id", id)
+		return fmt.Errorf("check schema refs: %w", err)
+	}
+	if hasRefs {
+		return errcode.New(errcode.ErrExtSchemaRefDelete)
 	}
 
 	if err := s.store.SoftDelete(ctx, id); err != nil {
@@ -208,4 +232,50 @@ func (s *EventTypeSchemaService) ToggleEnabled(ctx context.Context, id int64, ve
 
 	slog.Info("service.切换扩展字段启用成功", "id", id, "enabled", newEnabled)
 	return nil
+}
+
+// ---- 引用查询 ----
+
+// GetReferences 查询扩展字段引用详情
+//
+// 返回 SchemaReferenceDetail，其中 EventTypes 的 Label 为空，由 handler 跨模块补齐。
+func (s *EventTypeSchemaService) GetReferences(ctx context.Context, id int64) (*model.SchemaReferenceDetail, error) {
+	ets, err := s.getOrNotFound(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	refs, err := s.schemaRefStore.GetBySchemaID(ctx, id)
+	if err != nil {
+		slog.Error("service.查询扩展字段引用失败", "error", err, "id", id)
+		return nil, fmt.Errorf("get schema refs: %w", err)
+	}
+
+	eventTypes := make([]model.SchemaReferenceItem, 0, len(refs))
+	for _, r := range refs {
+		if r.RefType == util.RefTypeEventType {
+			eventTypes = append(eventTypes, model.SchemaReferenceItem{
+				RefType: r.RefType,
+				RefID:   r.RefID,
+			})
+		}
+	}
+
+	return &model.SchemaReferenceDetail{
+		SchemaID:   id,
+		FieldLabel: ets.FieldLabel,
+		EventTypes: eventTypes,
+	}, nil
+}
+
+// FillHasRefs 为扩展字段列表填充 has_refs
+func (s *EventTypeSchemaService) FillHasRefs(ctx context.Context, items []model.EventTypeSchema) {
+	for i := range items {
+		hasRefs, err := s.schemaRefStore.HasRefs(ctx, items[i].ID)
+		if err != nil {
+			slog.Warn("service.填充扩展字段has_refs失败", "error", err, "id", items[i].ID)
+			continue
+		}
+		items[i].HasRefs = hasRefs
+	}
 }

@@ -14,8 +14,8 @@ type Field struct {
 	Category   string          `json:"category" db:"category"`
 	Properties json.RawMessage `json:"properties" db:"properties"`
 
-	RefCount  int       `json:"ref_count" db:"ref_count"`
-	Enabled   bool      `json:"enabled" db:"enabled"`
+	Enabled bool `json:"enabled" db:"enabled"`
+	HasRefs bool `json:"has_refs" db:"-"` // 非 DB 列，service 层通过 field_refs 填充
 	Version   int       `json:"version" db:"version"`
 	Deleted   bool      `json:"-" db:"deleted"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
@@ -43,7 +43,6 @@ type FieldListItem struct {
 	Label     string    `json:"label" db:"label"`
 	Type      string    `json:"type" db:"type"`
 	Category  string    `json:"category" db:"category"`
-	RefCount  int       `json:"ref_count" db:"ref_count"`
 	Enabled   bool      `json:"enabled" db:"enabled"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 
@@ -106,7 +105,7 @@ type IDRequest struct {
 
 // ReferenceItem 引用详情中的单条引用方
 type ReferenceItem struct {
-	RefType string `json:"ref_type"` // "template" / "field"
+	RefType string `json:"ref_type"` // "template" / "field" / "fsm"
 	RefID   int64  `json:"ref_id"`   // 引用方 ID
 	Label   string `json:"label"`    // 引用方中文名
 }
@@ -117,6 +116,7 @@ type ReferenceDetail struct {
 	FieldLabel string          `json:"field_label"`
 	Templates  []ReferenceItem `json:"templates"`
 	Fields     []ReferenceItem `json:"fields"`
+	Fsms       []ReferenceItem `json:"fsms"`
 }
 
 // ToggleEnabledRequest 启用/停用请求（改用 ID）

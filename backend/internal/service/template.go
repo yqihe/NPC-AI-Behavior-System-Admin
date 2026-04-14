@@ -227,7 +227,6 @@ func (s *TemplateService) ToggleEnabled(ctx context.Context, req *model.ToggleEn
 // 不做：
 //   - 字段存在性 / 启用性校验（属字段管理模块，handler 调 FieldService）
 //   - field_refs 写入（属字段管理模块）
-//   - 字段 ref_count 维护（属字段管理模块）
 func (s *TemplateService) CreateTx(ctx context.Context, tx *sqlx.Tx, req *model.CreateTemplateRequest) (int64, error) {
 	if err := s.validateFieldsBasic(req.Fields); err != nil {
 		return 0, err
@@ -267,7 +266,6 @@ func (s *TemplateService) CreateTx(ctx context.Context, tx *sqlx.Tx, req *model.
 // service 层做：
 //   - fields 基础校验
 //   - enabled 状态前置校验 → 41010
-//   - ref_count > 0 时 fields diff（集合/顺序/required 任一变化）→ 41008
 //   - 乐观锁错误转换 → 41011
 //
 // 不做：字段存在性/启用性校验、field_refs 写入。
@@ -289,11 +287,6 @@ func (s *TemplateService) UpdateTx(
 
 	// diff fields
 	fieldsChanged = isFieldsChanged(oldEntries, req.Fields)
-
-	// 被引用时锁死字段变更
-	if old.RefCount > 0 && fieldsChanged {
-		return false, nil, nil, errcode.New(errcode.ErrTemplateRefEditFields)
-	}
 
 	// 计算 toAdd / toRemove（仅字段集合维度，required-only 变化也归到 fieldsChanged 但不会有 add/remove）
 	if fieldsChanged {
@@ -320,7 +313,7 @@ func (s *TemplateService) UpdateTx(
 
 // SoftDeleteTx 事务内软删除模板
 //
-// 调用方（handler）必须先调 GetByID 校验存在 + enabled=0 + GetRefCountForDeleteTx 校验 ref_count=0。
+// 调用方（handler）必须先调 GetByID 校验存在 + enabled=0。
 func (s *TemplateService) SoftDeleteTx(ctx context.Context, tx *sqlx.Tx, id int64) error {
 	if err := s.store.SoftDeleteTx(ctx, tx, id); err != nil {
 		if errors.Is(err, errcode.ErrNotFound) {
@@ -331,20 +324,6 @@ func (s *TemplateService) SoftDeleteTx(ctx context.Context, tx *sqlx.Tx, id int6
 	}
 	slog.Info("service.软删除模板成功", "id", id)
 	return nil
-}
-
-// GetRefCountForDeleteTx 事务内获取模板 ref_count（FOR SHARE 防 TOCTOU）
-//
-// handler 删除流程在事务内调用此方法，ref_count > 0 则返回 41007 拒绝删除。
-func (s *TemplateService) GetRefCountForDeleteTx(ctx context.Context, tx *sqlx.Tx, id int64) (int, error) {
-	count, err := s.store.GetRefCountTx(ctx, tx, id)
-	if err != nil {
-		if errors.Is(err, errcode.ErrNotFound) {
-			return 0, errcode.Newf(errcode.ErrTemplateNotFound, "模板 ID=%d 不存在", id)
-		}
-		return 0, fmt.Errorf("get template ref_count tx: %w", err)
-	}
-	return count, nil
 }
 
 // ---- 缓存失效（跨模块编排 commit 后由 handler 调用）----
@@ -373,7 +352,6 @@ func (s *TemplateService) GetByIDsLite(ctx context.Context, ids []int64) ([]mode
 // isFieldsChanged 模板 fields 是否变更
 //
 // 集合 + 顺序 + required 任一不同都视为变更。
-// 被引用模板（ref_count > 0）这些都被锁死，统一返回 41008。
 func isFieldsChanged(old, new []model.TemplateFieldEntry) bool {
 	if len(old) != len(new) {
 		return true

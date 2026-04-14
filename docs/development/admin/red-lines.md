@@ -2,103 +2,125 @@
 
 通用禁令见 `../standards/red-lines/`。
 
-## 禁止破坏游戏服务端数据格式
+## 1. 禁止破坏游戏服务端数据格式
 
-- **禁止**修改游戏配置集合的 MongoDB 文档结构（`{name, config}` 格式由游戏服务端定义）。ADMIN 元数据集合（`component_schemas`、`npc_presets`）不受此限制
-- **禁止**在 config 字段中添加游戏服务端不认识的字段。运营平台私有数据用独立 collection
-- **禁止**校验用结构体字段类型与游戏服务端不一致（如 `default_severity` 必须 `float64` 不能 `int`）
-- **禁止**将装饰节点（`inverter`）归类为复合节点。装饰用 `child`（单对象），复合用 `children`（数组）
-- **禁止**放行游戏服务端不支持的枚举值（`op`、`policy`、`result`）。无效枚举在服务端静默降级，极难排查
-- **禁止**写入不属于当前 NPC 模板的 Blackboard Key。BB Key 白名单由组件 schema 的 `blackboard_keys` 字段定义，BT 编辑器只允许选择当前 NPC 模板已启用组件声明的 keys
+1. 禁止修改游戏配置集合的 MongoDB 文档结构（`{name, config}` 格式由服务端定义）
+2. 禁止在 config 字段中添加服务端不认识的字段，私有数据用独立 collection
+3. 禁止校验结构体字段类型与服务端不一致（如 `default_severity` 必须 `float64` 不能 `int`）
+4. 禁止将装饰节点（`inverter`）归类为复合节点。装饰用 `child`（单对象），复合用 `children`（数组）
+5. 禁止放行服务端不支持的枚举值（`op`/`policy`/`result`），无效枚举在服务端静默降级极难排查
+6. 禁止写入不属于当前 NPC 模板的 BB Key
 
-## 禁止引用完整性破坏
+## 2. 禁止引用完整性破坏
 
-- **禁止**删除正被 NPC 类型引用的 FSM/BT 配置
-- **禁止**创建 NPC 类型时引用不存在的 FSM 或 BT
-- **禁止**联调时先更新引用方（NPC type）再创建被引用项（BT tree）——会被校验拦截
+1. 禁止删除被引用的配置（字段被模板/字段/FSM 引用时不可删、扩展字段被事件类型引用时不可删）
+2. 禁止创建时引用不存在的配置
+3. 禁止联调时先更新引用方再创建被引用项（会被校验拦截）
+4. 禁止取消字段 `expose_bb` 时不检查 FSM BB Key 引用
+5. 禁止用冗余计数器（ref_count）替代关系表（field_refs/schema_refs）做引用追踪——引用关系的权威数据源是关系表
+6. 禁止编辑被引用配置时随意修改类型或收紧约束（类型不可改，约束只能放宽）
+7. 禁止前端列表页显示"被引用数"列（数字展示诱导轮询查询，引用只在删除时才查）
+8. 禁止前端删除流程跳过 references API 预检查直接调 delete（会弹出确认后再被拒绝，体验差）
+9. 禁止前端用 `ref_count` 数字驱动 UI 锁定，必须用后端返回的 `has_refs: boolean`
+10. 禁止 reference 子字段选择器在新建模式展示停用子字段（必须按 mode prop 过滤）
+11. 禁止 `EnabledGuardDialog` 组件中塞业务特有的引用检查（该组件只做"已禁用"一个前置条件，引用检查由调用方的 handleDelete 执行）
 
-## 禁止绕过 REST API
+## 3. 禁止绕过 REST API
 
-- **禁止**用 mongosh 或脚本直接写 MongoDB。所有数据变更必须通过 REST API，保证缓存同步
-- **禁止**联调时只修改 `configs/` 本地文件就回复 READY。`configs/` 是参考，API 才写入 MongoDB
+1. 禁止用 mongosh 或脚本直接写 MongoDB，所有数据变更必须通过 REST API 保证缓存同步
+2. 禁止联调时只修改 `configs/` 本地文件就回复 READY
 
-## 禁止硬编码
+## 4. 禁止硬编码
 
-- **禁止**在业务代码中直接写错误码数字。错误码统一定义在 `errcode/codes.go`，调用处引用常量
-- **禁止**在业务代码中直接写错误消息字符串。默认消息在 `errcode/codes.go` 的 messages map 中管理
-- **禁止**在代码中硬编码数据库连接字符串、端口号、连接池参数。全部写入 `config.yaml`，环境变量可覆盖
-- **禁止**在业务代码中直接拼 Redis key 字符串。key 前缀和生成规则统一定义在 `store/redis/keys.go`
-- **禁止**在代码中硬编码分页默认值、字段长度限制等可配置参数。统一在 `config.yaml` 中管理
-- **禁止**在代码中硬编码引用类型字符串（如 `"template"`、`"field"`）。使用 `model.RefTypeTemplate` / `model.RefTypeField` 常量
-- **禁止**在代码中硬编码字典组名字符串（如 `"field_type"`）。使用 `model.DictGroupFieldType` 等常量
-- **禁止** handler 层校验使用错误的错误码。name 校验用 `ErrFieldNameInvalid`，label/其他用 `ErrBadRequest`，不混用
+1. 错误码数字 → `errcode/codes.go` 常量
+2. 错误消息字符串 → `errcode/codes.go` messages map
+3. DB 连接串/端口/连接池 → `config.yaml`（环境变量可覆盖）
+4. Redis key 拼接 → `store/redis/config/` 子包生成
+5. 分页默认值/字段长度限制 → `config.yaml`
+6. 引用类型字符串（`"template"`/`"field"`/`"fsm"`/`"event_type"`）→ `util.RefTypeXxx` 常量
+7. 字典组名（`"field_type"`）→ `util.DictGroupXxx` 常量
+8. handler 校验用错误码：name 校验用 `ErrXxxNameInvalid`，其他用 `ErrBadRequest`，不混用
 
-## 禁止 ADMIN 过度设计
+## 4b. 禁止跳过 constraints 自洽校验
 
-- **禁止**实现用户认证/权限系统（毕设阶段所有用户等权）
-- **禁止**实现配置版本控制/回滚（Git 已有版本控制）
-- **禁止**实现实时协作编辑（单人编辑足够）
-- **禁止**实现工作流审批（保存即生效）
+1. 字段/扩展字段 Create/Update 必须调用 `util.ValidateConstraintsSelf(fieldType, constraints, errCode)`，禁止写入未校验的 constraints（曾漏拦 `min=100, max=10`、`precision<=0`、select 空 options、select 重复 value 等非法配置）
+2. 字段模块 errCode 用 `errcode.ErrBadRequest`（40000），扩展字段模块用 `errcode.ErrExtSchemaConstraintsInvalid`（42025），不混用
+3. `ValidateConstraintsSelf` 必须覆盖：int/float `min<=max`、float `precision>0`、string `minLength<=maxLength` 且非负、select `options` 非空 + value 不重复、select `minSelect<=maxSelect` 且非负
+4. reference 类型的 `refs` 校验走 `validateReferenceRefs`，不走 `ValidateConstraintsSelf`
+5. `check-name` 接口必须先走 handler 内部的 `checkName()`（格式+长度校验）再查 DB，禁止跳过格式校验直接查存在性（曾导致传 `BAD_FORMAT` 被误判为"可用"）
+6. 所有可接收外部输入的 name 字段（字段/模板/事件类型/Schema/FSM）的 check-name 接口都必须走同一前置校验模式
 
-## 禁止暴露技术细节给策划
+## 5. 禁止 ADMIN 过度设计
 
-- **禁止**在 UI 中展示原始 BB Key 名称（如 `threat_level`）。必须用中文标签（如"威胁等级"）
-- **禁止**让策划手写 JSON。所有配置通过表单组件输入
-- **禁止**让策划看到报错堆栈或 Go error 信息。错误提示必须是中文描述
-- **禁止**表单只显示技术英文标签。所有字段下方必须有灰色提示文字，用自然语言解释
-- **禁止**节点类型只显示英文。用中文标签 + 英文括注，如"顺序执行 (sequence)"
+禁止实现：用户认证/权限系统、配置版本回滚、实时协作编辑、工作流审批。
 
-## 禁止表单对非技术用户不友好
+## 6. 禁止暴露技术细节给策划
 
-- **禁止**下拉框依赖项为空时无引导。必须显示警告 + 跳转链接
-- **禁止**列表页空数据时只显示空白表格。用 `el-empty` + 引导按钮
-- **禁止**删除确认只写"确认删除？"。必须明确对象名和影响
-- **禁止**NPC 表单保存时不检查行为树绑定完整性
-- **禁止**新建时不在 blur 时检查名称重复
-- **禁止**启用/禁用操作不弹确认弹窗。启用需说明「启用后可被引用」，禁用需说明「已有引用不受影响」
-- **禁止**Toggle/编辑/删除等需要乐观锁的操作直接用列表数据的 version。列表接口可能不返回 version，必须先获取详情再操作
+1. UI 中 BB Key 必须用中文标签，不显示原始标识符
+2. 所有配置通过表单组件输入，不让策划手写 JSON
+3. 错误提示必须是中文描述，不暴露堆栈或 Go error
+4. 表单字段下方必须有灰色提示文字解释用途
+5. 节点类型用"中文标签 (english)"格式
 
-## 禁止危险操作引导不一致
+## 7. 禁止表单对非技术用户不友好
 
-- **禁止**对「启用状态下的危险操作拦截」用 `ElMessageBox.alert` 简陋单行提示。所有字段/模板/NPC/状态机/行为树的「启用中禁止编辑/删除」场景必须走统一的 `EnabledGuardDialog` 组件，视觉基线按 mockup `5aRMF` / `ka8Xu`：24×24 橙色圆角小图标 header + 加粗 lead 句 + 灰色 reason 段 + 灰底 `#F5F7FA` 前置条件/步骤区 + 「知道了」outline 按钮 + 「立即停用」橙底主按钮（带 SwitchButton 图标）
-- **禁止**每个列表页自己写守卫弹窗的私有副本。`EnabledGuardDialog` 必须做成泛型组件，通过 `entityType: 'field' | 'template' | 'npc' | ...` 切换文案和 API 调度。新增一种配置类型时只需在 `open({action, entityType, entity})` 加一个 case，不需要新增组件
-- **禁止**「立即停用」之后直接触发删除。edit 场景跳编辑页没问题；delete 场景 **只能停用 + 刷新列表让用户再点一次删除**，不能连锁触发删除以防误操作
+1. 下拉依赖为空时显示警告 + 跳转链接
+2. 列表空数据用 `el-empty` + 引导按钮
+3. 删除确认必须明确对象名和影响
+4. 启用/禁用必须弹确认弹窗，启用说"启用后可被引用"，禁用说"已有引用不受影响"
+5. 需要乐观锁的操作必须先 detail 拿最新 version，不直接用列表行数据
 
-## 禁止侧栏多级用不可折叠容器
+## 8. 禁止危险操作引导不一致
 
-- **禁止**用 `el-menu-item-group` 给菜单做多级结构。`el-menu-item-group` 只是静态分组标题 + 子项容器，不支持点击折叠。多级菜单必须用 `el-sub-menu`（原生支持折叠箭头、`default-openeds` 初始展开），一级分组标题用 `#title` slot 定义大号加粗字样（15px/600），二级项用 `el-menu-item` 缩进（`padding-left: 44px`）展示
-- **禁止**sidebar 深色系下只给 `.is-active` 设蓝底，忽略 `:hover` 态。深色 sidebar 必须同时定义 `:deep(.el-menu-item:hover)` 和 `:deep(.el-sub-menu__title:hover)` 的背景色（如 `#1F2D3D`），否则 hover 时视觉无反馈
+1. 「启用中禁止编辑/删除」场景必须走统一 `EnabledGuardDialog` 组件（视觉基线：橙色圆角图标 header + 加粗 lead + 灰色 reason + 灰底前置条件区 + 「知道了」+ 「立即禁用」橙底按钮）
+2. EnabledGuardDialog 做泛型，通过 `entityType` 切换文案和 API，不每页写私有副本
+3. 「立即禁用」后 delete 场景只刷新列表让用户再点删除，禁止连锁触发删除
 
-## 禁止偏离已建立的跨模块代码模式
+## 9. 禁止侧栏多级用不可折叠容器
 
-- **禁止**新模块 handler 的 Update/Delete/ToggleEnabled 返回 `*model.Empty{}`。必须与 Field/Template 一致：Update → `*util.SuccessMsg("保存成功")`、Delete → `*DeleteResult{ID, Name, Label}`、ToggleEnabled → `*util.SuccessMsg("操作成功")`
-- **禁止**新模块 service 的 `ToggleEnabled` 使用 `(ctx, id, version)` 签名自行取反 `!et.Enabled`。必须接收 `*model.ToggleEnabledRequest`（调用方指定目标 `enabled` 状态）
-- **禁止**新模块 service 缓存读取用 `_, hit, _ := cache.GetDetail(...)` 丢弃 error。必须用 `err == nil && hit` 模式（Redis 错误降级直查 MySQL，不误判为缓存命中）
-- **禁止**新模块 service 对 store 错误直接 `return err` 不包装。必须 `slog.Error` + `fmt.Errorf("xxx: %w", err)` 对齐 Field/Template
-- **禁止**新模块 store 的 Create/Update 使用展开的位置参数（如 ~~`Create(ctx, name, displayName, mode string, ...)`~~）。必须用 `*model.CreateXxxRequest` 结构体
-- **禁止**新模块 handler 自定义 ID/Version/Required 校验逻辑。必须调 `util.CheckID()` / `util.CheckVersion()` / `util.CheckRequired()`
-- **禁止**新模块 handler 在校验**之前**打 slog Debug 日志。日志必须在校验通过后打印
-- **禁止**新模块前端 API 文件重复定义 `ListData<T>` / `CheckNameResult`。必须从 `fields.ts` 导入
-- **禁止**新模块前端表单用 `detail.value!.xxx` 非空断言读取服务端数据。必须用独立 `ref()` 存储
+1. 禁止用 `el-menu-item-group` 做多级菜单，必须用 `el-sub-menu`（原生折叠箭头 + `default-openeds`）
+2. 深色 sidebar 必须同时定义 `:hover` 和 `.is-active` 背景色
 
-## 禁止文件职责混放
+## 10. 禁止偏离跨模块代码模式
 
-- **禁止**在业务逻辑文件中定义跨模块共享的常量、工具函数、初始化代码。共享常量和工具放 `util/`，初始化聚合放 `setup/`，错误定义放 `errcode/`
-- **禁止**在同一 store 文件中既放业务 CRUD 又放共享工具（如 `escapeLike` 只定义一次却被 4 个 store 使用）。跨文件共享的工具必须放 `util/` 包
-- **禁止** store/redis 业务 cache 文件中定义 key 前缀、TTL 常量、key 生成函数。这些统一放 `store/redis/config/` 子包
-- **禁止**同一 store 用 interface 类型接收 `db` 而其他 store 用 `*sqlx.DB`。全部统一 `*sqlx.DB`
-- **禁止**新模块 redis cache 文件命名不带 `_cache` 后缀。统一 `{module}_cache.go`（如 `field_cache.go`、`fsm_config_cache.go`）
+1. handler：Update → `*SuccessMsg("保存成功")`、Delete → `*DeleteResult{ID,Name,Label}`、ToggleEnabled → `*SuccessMsg("操作成功")`
+2. service：ToggleEnabled 接收 `*ToggleEnabledRequest`（调用方指定目标状态），不自行取反
+3. service：缓存读取 `err == nil && hit`，禁止 `_, hit, _` 丢弃 error
+4. service：store 错误必须 `slog.Error + fmt.Errorf("xxx: %w", err)`，禁止 raw return
+5. store：Create/Update 用 `*model.XxxRequest` 结构体，禁止展开位置参数
+6. handler：`util.CheckID/CheckVersion/CheckRequired` 校验，slog Debug 在校验后
+7. 前端 API：`ListData<T>` / `CheckNameResult` 从 `fields.ts` 导入
+8. 前端表单：用独立 `ref()` 存 version/refCount，禁止 `detail.value!.xxx` 非空断言
 
-## 禁止 Element Plus 表单禁用状态被子组件覆盖
+## 11. 禁止文件职责混放
 
-- **禁止**在 `el-form :disabled="true"` 内的子组件用 `:disabled="someCondition"` 而不包含 `isView`。Element Plus 的 `useFormDisabled` 内部使用 `??`（nullish coalescing）而非 `||`，子组件显式传入 `:disabled="false"` 会**覆盖**表单级 disabled。所有需要自定义 disabled 条件的组件必须写成 `:disabled="isView || someCondition"`
-- **禁止**依赖 `el-form :disabled` 来禁用 `el-link`、`el-icon @click` 等非表单感知元素。这些元素不参与 Element Plus 的 form disabled 注入，必须用 `v-if="!disabled"` 显式隐藏或用 `:disabled` / `pointer-events: none` 单独控制
+1. 共享常量/工具函数 → `util/`，初始化聚合 → `setup/`，错误定义 → `errcode/`
+2. 跨 store 共享工具（如 `EscapeLike`）→ `util/`，禁止在 store 文件内定义
+3. Redis key/TTL/前缀 → `store/redis/config/` 子包
+4. db 字段统一 `*sqlx.DB`，禁止 interface
+5. Redis cache 文件命名 `{module}_cache.go`
+6. **每层文件夹下不允许子文件夹**（`store/redis/config/` 例外）
 
-## 禁止业务错误码漏处理
+## 12. 禁止 Element Plus 表单 disabled 被子组件覆盖
 
-- **禁止**表单提交的 `.catch` 只写通用兜底而不逐一处理 API 定义的错误码。每个 `errcode/codes.go` 中定义的业务错误码都必须在表单 catch 块中有对应的中文用户提示，不能依赖全局拦截器的 toast（拦截器只显示后端原始消息，对策划不友好）
-- **禁止**新增后端错误码后不同步更新前端 catch 块。错误码和前端处理必须在同一 PR 中完成
+1. `el-form :disabled="true"` 内子组件 `:disabled` 必须写 `:disabled="isView || condition"`（Element Plus `??` 合并会被覆盖）
+2. `el-link`/`el-icon @click` 不受 form disabled 注入，需 `v-if` 或单独控制
 
-## 禁止表格排序按钮用 el-button text + Unicode 箭头
+## 13. 禁止业务错误码漏处理
 
-- **禁止**已选字段配置、字段优先级等 table 内行排序按钮用 `el-button text` 包 Unicode `↑` `↓`。视觉太粗 + 带按钮 padding + 不统一。必须用纯 `el-icon` 包 `ArrowUp` / `ArrowDown`，禁用态 `#C0C4CC` 灰、可点态 `#409EFF` 蓝、hover 态浅蓝底 `#ECF5FF`，两按钮 gap 14，容器 width 90 居中对齐（对齐 mockup `oE1Hj` / `ylI4t`）
+1. 表单提交 `.catch` 必须逐一处理 API 定义的每个错误码，不能只写通用兜底
+2. 新增后端错误码必须在同一 PR 更新前端 catch 块
+
+## 14. 禁止 HTTP 层响应格式不一致
+
+1. Gin Engine 必须设置 `HandleMethodNotAllowed = true`，并注册 `NoRoute` 和 `NoMethod` 返回统一 JSON `{code, message, data}`，禁止让 Gin 默认返回纯文本 `"404 page not found"`
+2. 所有 4xx/5xx 响应必须是 JSON 对象（含 `code` 字段），前端/测试脚本只需解析一种格式
+3. 未知路由 / 错误方法返回 `code=40000, message="请求的资源不存在"/"不支持的 HTTP 方法"`，HTTP 状态码分别 404/405
+4. 新增路由时禁止绕过 v1 Group，必须保证 NoRoute/NoMethod 对所有 `/api/v1/*` 路径生效
+
+## 15. 禁止 has_refs / ref_count 语义混用
+
+1. 后端字段/Schema 详情响应字段名统一用 **`has_refs: boolean`**，禁止返回 `ref_count: int`（引用关系的权威数据源是 `field_refs`/`schema_refs` 关系表，不做冗余计数器）
+2. 前端 UI 锁定逻辑必须读 `has_refs` 布尔值，禁止根据 `ref_count > 0` 判断
+3. 测试脚本的断言也必须对齐 `has_refs`，禁止断言 `.data.ref_count == N`（曾因此产生 70+ 假阴性测试失败）
+4. 引用详情（模板/字段/FSM 哪些在引用）通过专用 `/references` 接口获取，不在 detail 响应中返回

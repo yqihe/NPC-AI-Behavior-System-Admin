@@ -10,7 +10,6 @@ CREATE TABLE IF NOT EXISTS templates (
     description     VARCHAR(512) NOT NULL DEFAULT '',   -- 描述（可选）
     fields          JSON         NOT NULL,              -- [{field_id, required}, ...] 数组顺序=NPC 表单展示顺序
 
-    ref_count       INT          NOT NULL DEFAULT 0,    -- 被 NPC 引用数（冗余计数，事务内维护）
     enabled         TINYINT(1)   NOT NULL DEFAULT 0,    -- 启用状态（创建默认 0，给"配置窗口期"）
     version         INT          NOT NULL DEFAULT 1,    -- 乐观锁
     deleted         TINYINT(1)   NOT NULL DEFAULT 0,    -- 软删除
@@ -21,5 +20,5 @@ CREATE TABLE IF NOT EXISTS templates (
     -- 防止历史 NPC 引用混乱（详见 features.md 功能 5）
     UNIQUE KEY uk_name (name),
     -- 覆盖索引：列表查询按 id DESC 扫描，含 enabled / label 用于内存过滤
-    INDEX idx_list (deleted, id, name, label, ref_count, enabled, created_at)
+    INDEX idx_list (deleted, id, name, label, enabled, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
