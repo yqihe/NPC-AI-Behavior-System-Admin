@@ -8,7 +8,7 @@
 - [x] T4: MySQL store（fsm_state_dict + fsm_config 新增方法）
 - [x] T5: Service
 - [x] T6: Handler
-- [ ] T7: Router + setup 装配
+- [x] T7: Router + setup 装配
 - [ ] T8: Seed 数据
 
 ---

@@ -15,7 +15,8 @@ type Caches struct {
 	Field     *storeredis.FieldCache
 	Template  *storeredis.TemplateCache
 	EventType *storeredis.EventTypeCache
-	FsmConfig *storeredis.FsmConfigCache
+	FsmConfig    *storeredis.FsmConfigCache
+	FsmStateDict *storeredis.FsmStateDictCache
 }
 
 // NewCaches 连接 Redis + 一次性初始化所有 cache
@@ -38,7 +39,8 @@ func NewCaches(ctx context.Context, cfg *config.RedisConfig) *Caches {
 		Field:     storeredis.NewFieldCache(rdb),
 		Template:  storeredis.NewTemplateCache(rdb),
 		EventType: storeredis.NewEventTypeCache(rdb),
-		FsmConfig: storeredis.NewFsmConfigCache(rdb),
+		FsmConfig:    storeredis.NewFsmConfigCache(rdb),
+		FsmStateDict: storeredis.NewFsmStateDictCache(rdb),
 	}
 }
 

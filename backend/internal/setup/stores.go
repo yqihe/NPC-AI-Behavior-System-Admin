@@ -20,6 +20,7 @@ type Stores struct {
 	EventTypeSchema *storemysql.EventTypeSchemaStore
 	SchemaRef       *storemysql.SchemaRefStore
 	FsmConfig       *storemysql.FsmConfigStore
+	FsmStateDict    *storemysql.FsmStateDictStore
 }
 
 // NewStores 连接 MySQL + 一次性初始化所有 store
@@ -42,6 +43,7 @@ func NewStores(cfg *config.MySQLConfig) (*Stores, error) {
 		EventTypeSchema: storemysql.NewEventTypeSchemaStore(db),
 		SchemaRef:       storemysql.NewSchemaRefStore(db),
 		FsmConfig:       storemysql.NewFsmConfigStore(db),
+		FsmStateDict:    storemysql.NewFsmStateDictStore(db),
 	}, nil
 }
 
