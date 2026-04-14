@@ -2,7 +2,9 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -34,11 +36,52 @@ type MySQLConfig struct {
 	ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime"`
 }
 
+// LogValue 实现 slog.LogValuer，日志输出时脱敏 DSN 密码段。
+// DSN 格式 user:password@tcp(...)/db，password 部分替换为 ***。
+func (c MySQLConfig) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("dsn", maskDSN(c.DSN)),
+		slog.Int("max_open_conns", c.MaxOpenConns),
+		slog.Int("max_idle_conns", c.MaxIdleConns),
+		slog.Duration("conn_max_lifetime", c.ConnMaxLifetime),
+	)
+}
+
 // RedisConfig Redis 连接配置
 type RedisConfig struct {
 	Addr     string `yaml:"addr"`
 	Password string `yaml:"password"`
 	DB       int    `yaml:"db"`
+}
+
+// LogValue 实现 slog.LogValuer，日志输出时脱敏 Password。
+func (c RedisConfig) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("addr", c.Addr),
+		slog.String("password", maskSecret(c.Password)),
+		slog.Int("db", c.DB),
+	)
+}
+
+// maskDSN 脱敏 MySQL DSN 的密码段。原格式 user:password@tcp(host:port)/db → user:***@tcp(host:port)/db
+func maskDSN(dsn string) string {
+	atIdx := strings.LastIndex(dsn, "@")
+	if atIdx <= 0 {
+		return dsn
+	}
+	colonIdx := strings.Index(dsn[:atIdx], ":")
+	if colonIdx <= 0 {
+		return dsn
+	}
+	return dsn[:colonIdx+1] + "***" + dsn[atIdx:]
+}
+
+// maskSecret 空串返回空串，非空统一返回 ***。
+func maskSecret(s string) string {
+	if s == "" {
+		return ""
+	}
+	return "***"
 }
 
 // PaginationConfig 分页配置
