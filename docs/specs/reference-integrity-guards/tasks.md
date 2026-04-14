@@ -3,9 +3,9 @@
 ## 状态
 
 - [x] T1: store 层新增 SoftDeleteTx / UpdateTx
-- [ ] T2: EventTypeSchemaService.Delete — 事务 + FOR SHARE
-- [ ] T3: EventTypeSchemaService.Update — 事务 + FOR SHARE
-- [ ] T4: FieldService.Update — 事务 + FOR SHARE
+- [x] T2: EventTypeSchemaService.Delete — 事务 + FOR SHARE
+- [x] T3: EventTypeSchemaService.Update — 事务 + FOR SHARE
+- [x] T4: FieldService.Update — 事务 + FOR SHARE
 
 ---
 

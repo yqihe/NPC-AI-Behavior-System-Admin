@@ -22,6 +22,11 @@ func NewEventTypeSchemaStore(db *sqlx.DB) *EventTypeSchemaStore {
 	return &EventTypeSchemaStore{db: db}
 }
 
+// DB 暴露数据库连接（service 层开事务用）
+func (s *EventTypeSchemaStore) DB() *sqlx.DB {
+	return s.db
+}
+
 // Create 创建扩展字段定义，返回自增 ID
 func (s *EventTypeSchemaStore) Create(ctx context.Context, req *model.CreateEventTypeSchemaRequest) (int64, error) {
 	now := time.Now()
