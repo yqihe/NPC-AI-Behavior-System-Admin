@@ -118,7 +118,7 @@
 
 ---
 
-## T6：event_type + fsm_config handler 改用 util.CheckName / CheckLabel (R3)
+## T6：event_type + fsm_config handler 改用 util.CheckName / CheckLabel (R3) [x]
 
 **文件**（2）：
 - `backend/internal/handler/event_type.go`
