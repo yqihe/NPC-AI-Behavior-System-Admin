@@ -279,7 +279,7 @@ func (s *FieldService) Update(ctx context.Context, req *model.UpdateFieldRequest
 		oldProps, _ := parseProperties(old.Properties)
 		newProps, _ := parseProperties(req.Properties)
 		if oldProps != nil && newProps != nil {
-			if err := util.CheckConstraintTightened(old.Type, oldProps.Constraints, newProps.Constraints, errcode.ErrFieldRefTighten); err != nil {
+			if err := CheckConstraintTightened(old.Type, oldProps.Constraints, newProps.Constraints, errcode.ErrFieldRefTighten); err != nil {
 				return err
 			}
 		}
