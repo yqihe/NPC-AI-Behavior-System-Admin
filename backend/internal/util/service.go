@@ -1,9 +1,9 @@
 package util
 
-// 字段/扩展字段约束的公共校验工具。
+// service 层通用工具：分页规范化、约束 JSON 解析、值校验、约束自洽校验。
 //
-// 被字段管理（CheckConstraintTightened）和事件类型扩展字段（ValidateValue/ValidateConstraintsSelf）共用。
 // 此文件无状态，不持有任何 store/cache。
+// 注意：业务规则（如"约束只能放宽"）不放这里，参见 service/constraint_check.go。
 
 import (
 	"encoding/json"
@@ -13,9 +13,26 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 )
 
-// ──────────────────────────────────────────────
-// JSON 解析辅助
-// ──────────────────────────────────────────────
+// ============================================================
+// 分页规范化
+// ============================================================
+
+// NormalizePagination 分页参数校正（所有 List 方法共享）
+func NormalizePagination(page, pageSize *int, defaultPage, defaultPageSize, maxPageSize int) {
+	if *page < 1 {
+		*page = defaultPage
+	}
+	if *pageSize < 1 {
+		*pageSize = defaultPageSize
+	}
+	if *pageSize > maxPageSize {
+		*pageSize = maxPageSize
+	}
+}
+
+// ============================================================
+// 约束 JSON 解析辅助
+// ============================================================
 
 // ParseConstraintsMap 解析 constraints JSON 为 key→RawMessage map
 func ParseConstraintsMap(raw json.RawMessage) (map[string]json.RawMessage, error) {
@@ -77,9 +94,9 @@ func ParseSelectOptions(raw json.RawMessage) []string {
 	return values
 }
 
-// ──────────────────────────────────────────────
-// ValidateValue 校验单个值是否符合 (fieldType, constraints)
-// ──────────────────────────────────────────────
+// ============================================================
+// ValidateValue 单值校验
+// ============================================================
 
 // ValidateValue 校验 value 是否符合 fieldType + constraints 约束
 //
@@ -186,9 +203,9 @@ func validateSelect(cm map[string]json.RawMessage, value json.RawMessage) *errco
 	return nil
 }
 
-// ──────────────────────────────────────────────
-// ValidateConstraintsSelf 校验约束自身是否自洽
-// ──────────────────────────────────────────────
+// ============================================================
+// ValidateConstraintsSelf 约束自洽校验
+// ============================================================
 
 // ValidateConstraintsSelf 校验 constraints 内部是否自洽
 //
@@ -282,90 +299,5 @@ func selfCheckSelect(cm map[string]json.RawMessage, errCode int) *errcode.Error 
 	if hasMin && minSel < 0 {
 		return errcode.Newf(errCode, "minSelect 不能为负数")
 	}
-	return nil
-}
-
-// ──────────────────────────────────────────────
-// CheckConstraintTightened 约束收紧检查
-// ──────────────────────────────────────────────
-
-// CheckConstraintTightened 检查约束是否被收紧
-//
-// 被引用的字段/扩展字段编辑时调用：约束只能放宽不能收紧。
-// errCode 由调用方传入（字段模块用 40007，扩展字段模块用自己的错误码）。
-// 返回 nil 表示未收紧（允许保存），返回 *errcode.Error 表示收紧（拒绝保存）。
-func CheckConstraintTightened(fieldType string, oldConstraints, newConstraints json.RawMessage, errCode int) *errcode.Error {
-	oldMap, err := ParseConstraintsMap(oldConstraints)
-	if err != nil {
-		return nil
-	}
-	newMap, err := ParseConstraintsMap(newConstraints)
-	if err != nil {
-		return nil
-	}
-
-	switch fieldType {
-	case "integer", "int", "float":
-		if oldMin, ok := GetFloat(oldMap["min"]); ok {
-			if newMin, ok2 := GetFloat(newMap["min"]); ok2 && newMin > oldMin {
-				return errcode.Newf(errCode, "最小值从 %v 收紧为 %v，请先移除引用", oldMin, newMin)
-			}
-		}
-		if oldMax, ok := GetFloat(oldMap["max"]); ok {
-			if newMax, ok2 := GetFloat(newMap["max"]); ok2 && newMax < oldMax {
-				return errcode.Newf(errCode, "最大值从 %v 收紧为 %v，请先移除引用", oldMax, newMax)
-			}
-		}
-		if fieldType == "float" {
-			if oldPrec, ok := GetFloat(oldMap["precision"]); ok {
-				if newPrec, ok2 := GetFloat(newMap["precision"]); ok2 && newPrec < oldPrec {
-					return errcode.Newf(errCode, "precision 从 %v 降低为 %v，请先移除引用", oldPrec, newPrec)
-				}
-			}
-		}
-
-	case "string":
-		if oldMinLen, ok := GetFloat(oldMap["minLength"]); ok {
-			if newMinLen, ok2 := GetFloat(newMap["minLength"]); ok2 && newMinLen > oldMinLen {
-				return errcode.Newf(errCode, "最小长度从 %v 收紧为 %v，请先移除引用", oldMinLen, newMinLen)
-			}
-		}
-		if oldMaxLen, ok := GetFloat(oldMap["maxLength"]); ok {
-			if newMaxLen, ok2 := GetFloat(newMap["maxLength"]); ok2 && newMaxLen < oldMaxLen {
-				return errcode.Newf(errCode, "最大长度从 %v 收紧为 %v，请先移除引用", oldMaxLen, newMaxLen)
-			}
-		}
-		oldPat := GetString(oldMap["pattern"])
-		newPat := GetString(newMap["pattern"])
-		if newPat != "" && newPat != oldPat {
-			return errcode.Newf(errCode, "pattern 从 %q 变更为 %q，可能使已有数据失效，请先移除引用", oldPat, newPat)
-		}
-
-	case "select":
-		oldOptions := ParseSelectOptions(oldMap["options"])
-		newOptions := ParseSelectOptions(newMap["options"])
-		if len(oldOptions) > 0 {
-			newSet := make(map[string]bool, len(newOptions))
-			for _, o := range newOptions {
-				newSet[o] = true
-			}
-			for _, o := range oldOptions {
-				if !newSet[o] {
-					return errcode.Newf(errCode, "选项 '%s' 被删除，请先移除引用", o)
-				}
-			}
-		}
-		if oldMinSel, ok := GetFloat(oldMap["minSelect"]); ok {
-			if newMinSel, ok2 := GetFloat(newMap["minSelect"]); ok2 && newMinSel > oldMinSel {
-				return errcode.Newf(errCode, "minSelect 从 %v 收紧为 %v，请先移除引用", oldMinSel, newMinSel)
-			}
-		}
-		if oldMaxSel, ok := GetFloat(oldMap["maxSelect"]); ok {
-			if newMaxSel, ok2 := GetFloat(newMap["maxSelect"]); ok2 && newMaxSel < oldMaxSel {
-				return errcode.Newf(errCode, "maxSelect 从 %v 收紧为 %v，请先移除引用", oldMaxSel, newMaxSel)
-			}
-		}
-	}
-
 	return nil
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"unicode/utf8"
 
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
@@ -34,29 +33,6 @@ func NewEventTypeHandler(
 }
 
 // ---- 前置校验 ----
-
-func (h *EventTypeHandler) checkName(name string) *errcode.Error {
-	if name == "" {
-		return errcode.Newf(errcode.ErrEventTypeNameInvalid, "事件标识不能为空")
-	}
-	if !util.IdentPattern.MatchString(name) {
-		return errcode.New(errcode.ErrEventTypeNameInvalid)
-	}
-	if len(name) > h.etCfg.NameMaxLength {
-		return errcode.Newf(errcode.ErrEventTypeNameInvalid, "事件标识长度不能超过 %d 个字符", h.etCfg.NameMaxLength)
-	}
-	return nil
-}
-
-func (h *EventTypeHandler) checkDisplayName(displayName string) *errcode.Error {
-	if displayName == "" {
-		return errcode.Newf(errcode.ErrBadRequest, "中文名称不能为空")
-	}
-	if utf8.RuneCountInString(displayName) > h.etCfg.DisplayNameMaxLength {
-		return errcode.Newf(errcode.ErrBadRequest, "中文名称长度不能超过 %d 个字符", h.etCfg.DisplayNameMaxLength)
-	}
-	return nil
-}
 
 func checkPerceptionMode(mode string) *errcode.Error {
 	if !util.ValidPerceptionModes[mode] {
@@ -108,10 +84,10 @@ func (h *EventTypeHandler) List(ctx context.Context, req *model.EventTypeListQue
 // Create 创建事件类型
 func (h *EventTypeHandler) Create(ctx context.Context, req *model.CreateEventTypeRequest) (*model.CreateEventTypeResponse, error) {
 	// Handler 格式校验
-	if e := h.checkName(req.Name); e != nil {
+	if e := util.CheckName(req.Name, h.etCfg.NameMaxLength, errcode.ErrEventTypeNameInvalid, "事件标识"); e != nil {
 		return nil, e
 	}
-	if e := h.checkDisplayName(req.DisplayName); e != nil {
+	if e := util.CheckLabel(req.DisplayName, h.etCfg.DisplayNameMaxLength, "中文名称"); e != nil {
 		return nil, e
 	}
 	if e := checkPerceptionMode(req.PerceptionMode); e != nil {
@@ -231,7 +207,7 @@ func (h *EventTypeHandler) Update(ctx context.Context, req *model.UpdateEventTyp
 	if err := util.CheckVersion(req.Version); err != nil {
 		return nil, err
 	}
-	if e := h.checkDisplayName(req.DisplayName); e != nil {
+	if e := util.CheckLabel(req.DisplayName, h.etCfg.DisplayNameMaxLength, "中文名称"); e != nil {
 		return nil, e
 	}
 	if e := checkPerceptionMode(req.PerceptionMode); e != nil {
@@ -274,7 +250,7 @@ func (h *EventTypeHandler) Delete(ctx context.Context, req *model.IDRequest) (*m
 
 // CheckName 事件标识唯一性校验
 func (h *EventTypeHandler) CheckName(ctx context.Context, req *model.CheckNameRequest) (*model.CheckNameResult, error) {
-	if err := h.checkName(req.Name); err != nil {
+	if err := util.CheckName(req.Name, h.etCfg.NameMaxLength, errcode.ErrEventTypeNameInvalid, "事件标识"); err != nil {
 		return nil, err
 	}
 

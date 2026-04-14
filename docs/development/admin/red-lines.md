@@ -47,7 +47,7 @@
 2. 字段模块 errCode 用 `errcode.ErrBadRequest`（40000），扩展字段模块用 `errcode.ErrExtSchemaConstraintsInvalid`（42025），不混用
 3. `ValidateConstraintsSelf` 必须覆盖：int/float `min<=max`、float `precision>0`、string `minLength<=maxLength` 且非负、select `options` 非空 + value 不重复、select `minSelect<=maxSelect` 且非负
 4. reference 类型的 `refs` 校验走 `validateReferenceRefs`，不走 `ValidateConstraintsSelf`
-5. `check-name` 接口必须先走 handler 内部的 `checkName()`（格式+长度校验）再查 DB，禁止跳过格式校验直接查存在性（曾导致传 `BAD_FORMAT` 被误判为"可用"）
+5. `check-name` 接口必须先走 `util.CheckName()`（格式+长度校验）再查 DB，禁止跳过格式校验直接查存在性（曾导致传 `BAD_FORMAT` 被误判为"可用"）
 6. 所有可接收外部输入的 name 字段（字段/模板/事件类型/Schema/FSM）的 check-name 接口都必须走同一前置校验模式
 
 ## 5. 禁止 ADMIN 过度设计
@@ -100,6 +100,9 @@
 4. db 字段统一 `*sqlx.DB`，禁止 interface
 5. Redis cache 文件命名 `{module}_cache.go`
 6. **每层文件夹下不允许子文件夹**（`store/redis/config/` 例外）
+7. **`util/` 必须按架构层分文件**：`handler.go` / `service.go` / `store.go` / `const.go`，禁止按功能点分（如 `validation.go` / `pagination.go`）。每文件内用分节注释（`// ========== 分节 ==========`）组织。每层下不再放 util 子包，所有通用工具集中在 `backend/internal/util/`
+8. **业务规则不进 `util/`**：只有无业务语义的纯工具函数（如 `EscapeLike` / `NormalizePagination` / `ParseConstraintsMap`）才能放 util。跨模块共享的业务规则（如"被引用字段约束只能放宽"）放 `service/` 根目录的专用文件（如 `service/constraint_check.go`）
+9. **`service/` 根目录文件纪律**：只允许两类文件——(a) 各业务模块的聚合文件（`field.go` / `event_type.go` 等）；(b) 被 2 个及以上 service 模块调用的**业务规则共享文件**，文件名**必须带业务语义**（如 `constraint_check.go`），禁止 `helpers.go` / `common.go` / `utils.go` 这类泛化名
 
 ## 12. 禁止 Element Plus 表单 disabled 被子组件覆盖
 

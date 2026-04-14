@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
-	"unicode/utf8"
 
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
@@ -34,29 +33,6 @@ func NewEventTypeSchemaHandler(
 }
 
 // ---- 前置校验 ----
-
-func (h *EventTypeSchemaHandler) checkFieldName(name string) *errcode.Error {
-	if name == "" {
-		return errcode.Newf(errcode.ErrExtSchemaNameInvalid, "扩展字段标识不能为空")
-	}
-	if !util.IdentPattern.MatchString(name) {
-		return errcode.New(errcode.ErrExtSchemaNameInvalid)
-	}
-	if len(name) > h.etsCfg.FieldNameMaxLength {
-		return errcode.Newf(errcode.ErrExtSchemaNameInvalid, "扩展字段标识长度不能超过 %d 个字符", h.etsCfg.FieldNameMaxLength)
-	}
-	return nil
-}
-
-func (h *EventTypeSchemaHandler) checkFieldLabel(label string) *errcode.Error {
-	if label == "" {
-		return errcode.Newf(errcode.ErrBadRequest, "扩展字段中文名不能为空")
-	}
-	if utf8.RuneCountInString(label) > h.etsCfg.FieldLabelMaxLength {
-		return errcode.Newf(errcode.ErrBadRequest, "扩展字段中文名长度不能超过 %d 个字符", h.etsCfg.FieldLabelMaxLength)
-	}
-	return nil
-}
 
 func checkFieldType(fieldType string) *errcode.Error {
 	if !util.ValidExtFieldTypes[fieldType] {
@@ -99,10 +75,10 @@ func (h *EventTypeSchemaHandler) List(ctx context.Context, req *model.EventTypeS
 func (h *EventTypeSchemaHandler) Create(ctx context.Context, req *model.CreateEventTypeSchemaRequest) (*model.CreateEventTypeSchemaResponse, error) {
 	slog.Debug("handler.event_type_schema.create", "field_name", req.FieldName)
 
-	if e := h.checkFieldName(req.FieldName); e != nil {
+	if e := util.CheckName(req.FieldName, h.etsCfg.FieldNameMaxLength, errcode.ErrExtSchemaNameInvalid, "扩展字段标识"); e != nil {
 		return nil, e
 	}
-	if e := h.checkFieldLabel(req.FieldLabel); e != nil {
+	if e := util.CheckLabel(req.FieldLabel, h.etsCfg.FieldLabelMaxLength, "扩展字段中文名"); e != nil {
 		return nil, e
 	}
 	if e := checkFieldType(req.FieldType); e != nil {
@@ -133,7 +109,7 @@ func (h *EventTypeSchemaHandler) Update(ctx context.Context, req *model.UpdateEv
 	if req.Version <= 0 {
 		return nil, errcode.Newf(errcode.ErrBadRequest, "version 必须 > 0")
 	}
-	if e := h.checkFieldLabel(req.FieldLabel); e != nil {
+	if e := util.CheckLabel(req.FieldLabel, h.etsCfg.FieldLabelMaxLength, "扩展字段中文名"); e != nil {
 		return nil, e
 	}
 	if e := checkJSONObjectShape(req.Constraints, "约束"); e != nil {

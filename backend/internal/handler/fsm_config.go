@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"unicode/utf8"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
@@ -38,31 +37,6 @@ func NewFsmConfigHandler(
 	}
 }
 
-// ---- 前置校验 ----
-
-func (h *FsmConfigHandler) checkName(name string) *errcode.Error {
-	if name == "" {
-		return errcode.Newf(errcode.ErrFsmConfigNameInvalid, "状态机标识不能为空")
-	}
-	if !util.IdentPattern.MatchString(name) {
-		return errcode.New(errcode.ErrFsmConfigNameInvalid)
-	}
-	if len(name) > h.fsmCfg.NameMaxLength {
-		return errcode.Newf(errcode.ErrFsmConfigNameInvalid, "状态机标识长度不能超过 %d 个字符", h.fsmCfg.NameMaxLength)
-	}
-	return nil
-}
-
-func (h *FsmConfigHandler) checkDisplayName(displayName string) *errcode.Error {
-	if displayName == "" {
-		return errcode.Newf(errcode.ErrBadRequest, "中文名称不能为空")
-	}
-	if utf8.RuneCountInString(displayName) > h.fsmCfg.DisplayNameMaxLength {
-		return errcode.Newf(errcode.ErrBadRequest, "中文名称长度不能超过 %d 个字符", h.fsmCfg.DisplayNameMaxLength)
-	}
-	return nil
-}
-
 // ---- 接口实现 ----
 
 // List 状态机列表
@@ -75,10 +49,10 @@ func (h *FsmConfigHandler) List(ctx context.Context, req *model.FsmConfigListQue
 //
 // 跨模块事务：写 fsm_configs + 维护 field_refs(ref_type='fsm') BB Key 引用。
 func (h *FsmConfigHandler) Create(ctx context.Context, req *model.CreateFsmConfigRequest) (*model.CreateFsmConfigResponse, error) {
-	if e := h.checkName(req.Name); e != nil {
+	if e := util.CheckName(req.Name, h.fsmCfg.NameMaxLength, errcode.ErrFsmConfigNameInvalid, "状态机标识"); e != nil {
 		return nil, e
 	}
-	if e := h.checkDisplayName(req.DisplayName); e != nil {
+	if e := util.CheckLabel(req.DisplayName, h.fsmCfg.DisplayNameMaxLength, "中文名称"); e != nil {
 		return nil, e
 	}
 
@@ -163,7 +137,7 @@ func (h *FsmConfigHandler) Update(ctx context.Context, req *model.UpdateFsmConfi
 	if err := util.CheckVersion(req.Version); err != nil {
 		return nil, err
 	}
-	if e := h.checkDisplayName(req.DisplayName); e != nil {
+	if e := util.CheckLabel(req.DisplayName, h.fsmCfg.DisplayNameMaxLength, "中文名称"); e != nil {
 		return nil, e
 	}
 
@@ -242,7 +216,7 @@ func (h *FsmConfigHandler) Delete(ctx context.Context, req *model.IDRequest) (*m
 
 // CheckName 状态机标识唯一性校验
 func (h *FsmConfigHandler) CheckName(ctx context.Context, req *model.CheckNameRequest) (*model.CheckNameResult, error) {
-	if err := h.checkName(req.Name); err != nil {
+	if err := util.CheckName(req.Name, h.fsmCfg.NameMaxLength, errcode.ErrFsmConfigNameInvalid, "状态机标识"); err != nil {
 		return nil, err
 	}
 

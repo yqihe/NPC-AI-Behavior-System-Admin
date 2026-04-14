@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"unicode/utf8"
 
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
@@ -40,29 +39,6 @@ func NewFieldHandler(
 
 // ---- 前置校验（必填/格式/长度，不查 DB） ----
 
-func (h *FieldHandler) checkName(name string) *errcode.Error {
-	if name == "" {
-		return errcode.Newf(errcode.ErrFieldNameInvalid, "字段标识不能为空")
-	}
-	if !util.IdentPattern.MatchString(name) {
-		return errcode.New(errcode.ErrFieldNameInvalid)
-	}
-	if len(name) > h.valCfg.FieldNameMaxLength {
-		return errcode.Newf(errcode.ErrFieldNameInvalid, "字段标识长度不能超过 %d 个字符", h.valCfg.FieldNameMaxLength)
-	}
-	return nil
-}
-
-func (h *FieldHandler) checkLabel(label string) *errcode.Error {
-	if label == "" {
-		return errcode.Newf(errcode.ErrBadRequest, "中文标签不能为空")
-	}
-	if utf8.RuneCountInString(label) > h.valCfg.FieldLabelMaxLength {
-		return errcode.Newf(errcode.ErrBadRequest, "中文标签长度不能超过 %d 个字符", h.valCfg.FieldLabelMaxLength)
-	}
-	return nil
-}
-
 // checkPropertiesShape 校验 properties 原始字节必须是 JSON 对象（首字符 '{'）。
 // 防御客户端传 null / [] / "foo" / 123 / true 这类非对象形状；
 // json.RawMessage 对 `null` 不会变 nil，是 []byte("null")，所以需要单独拦。
@@ -88,10 +64,10 @@ func (h *FieldHandler) List(ctx context.Context, req *model.FieldListQuery) (*mo
 
 // Create 创建字段
 func (h *FieldHandler) Create(ctx context.Context, req *model.CreateFieldRequest) (*model.CreateFieldResponse, error) {
-	if err := h.checkName(req.Name); err != nil {
+	if err := util.CheckName(req.Name, h.valCfg.FieldNameMaxLength, errcode.ErrFieldNameInvalid, "字段标识"); err != nil {
 		return nil, err
 	}
-	if err := h.checkLabel(req.Label); err != nil {
+	if err := util.CheckLabel(req.Label, h.valCfg.FieldLabelMaxLength, "中文标签"); err != nil {
 		return nil, err
 	}
 	if err := util.CheckRequired(req.Type, "字段类型"); err != nil {
@@ -130,7 +106,7 @@ func (h *FieldHandler) Update(ctx context.Context, req *model.UpdateFieldRequest
 	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
 	}
-	if err := h.checkLabel(req.Label); err != nil {
+	if err := util.CheckLabel(req.Label, h.valCfg.FieldLabelMaxLength, "中文标签"); err != nil {
 		return nil, err
 	}
 	if err := util.CheckRequired(req.Type, "字段类型"); err != nil {
@@ -169,7 +145,7 @@ func (h *FieldHandler) Delete(ctx context.Context, req *model.IDRequest) (*model
 
 // CheckName 字段标识唯一性校验（先校验格式/长度，再查 DB）
 func (h *FieldHandler) CheckName(ctx context.Context, req *model.CheckNameRequest) (*model.CheckNameResult, error) {
-	if err := h.checkName(req.Name); err != nil {
+	if err := util.CheckName(req.Name, h.valCfg.FieldNameMaxLength, errcode.ErrFieldNameInvalid, "字段标识"); err != nil {
 		return nil, err
 	}
 

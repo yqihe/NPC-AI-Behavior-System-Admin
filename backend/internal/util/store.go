@@ -1,14 +1,12 @@
 package util
 
-import (
-	"regexp"
-	"strings"
-)
+// store 层通用工具：SQL LIKE 转义等。
 
-// IdentPattern 通用标识符正则：a-z 开头，仅 a-z0-9_
-//
-// 所有配置类型（字段/模板/事件类型/扩展字段 Schema）的 name/field_name 共用。
-var IdentPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+import "strings"
+
+// ============================================================
+// SQL LIKE 转义
+// ============================================================
 
 // EscapeLike 转义 LIKE 通配符，防止用户输入 % 或 _ 匹配所有记录
 //

@@ -65,7 +65,11 @@ backend/
     model/                 #   数据模型
     router/                #   路由注册
     setup/                 #   统一聚合初始化（连接 + 分层注册）
-    util/                  #   通用工具（校验/分页/转义/常量）
+    util/                  #   跨模块通用工具（按架构层分文件）
+      handler.go           #     handler 层：ID/版本/必填/名称/标签格式校验、响应辅助
+      service.go           #     service 层：分页规范化、约束 JSON 解析、值/自洽校验
+      store.go             #     store 层：SQL LIKE 转义
+      const.go             #     跨层共享常量（枚举、ref_type、字典组名）
   migrations/              #   SQL DDL 脚本
 frontend/
   src/

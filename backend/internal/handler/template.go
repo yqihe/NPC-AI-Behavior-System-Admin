@@ -43,29 +43,6 @@ func NewTemplateHandler(
 
 // ---- 前置校验（必填/格式/长度，不查 DB） ----
 
-func (h *TemplateHandler) checkTemplateName(name string) *errcode.Error {
-	if name == "" {
-		return errcode.Newf(errcode.ErrTemplateNameInvalid, "模板标识不能为空")
-	}
-	if !util.IdentPattern.MatchString(name) {
-		return errcode.New(errcode.ErrTemplateNameInvalid)
-	}
-	if len(name) > h.valCfg.TemplateNameMaxLength {
-		return errcode.Newf(errcode.ErrTemplateNameInvalid, "模板标识长度不能超过 %d 个字符", h.valCfg.TemplateNameMaxLength)
-	}
-	return nil
-}
-
-func (h *TemplateHandler) checkTemplateLabel(label string) *errcode.Error {
-	if label == "" {
-		return errcode.Newf(errcode.ErrBadRequest, "中文标签不能为空")
-	}
-	if utf8.RuneCountInString(label) > h.valCfg.FieldLabelMaxLength {
-		return errcode.Newf(errcode.ErrBadRequest, "中文标签长度不能超过 %d 个字符", h.valCfg.FieldLabelMaxLength)
-	}
-	return nil
-}
-
 // checkDescription 描述长度校验
 func (h *TemplateHandler) checkDescription(description string) *errcode.Error {
 	if utf8.RuneCountInString(description) > h.valCfg.DescriptionMaxLength {
@@ -111,7 +88,7 @@ func (h *TemplateHandler) List(ctx context.Context, q *model.TemplateListQuery) 
 
 // CheckName 模板标识唯一性校验
 func (h *TemplateHandler) CheckName(ctx context.Context, req *model.CheckNameRequest) (*model.CheckNameResult, error) {
-	if err := h.checkTemplateName(req.Name); err != nil {
+	if err := util.CheckName(req.Name, h.valCfg.TemplateNameMaxLength, errcode.ErrTemplateNameInvalid, "模板标识"); err != nil {
 		return nil, err
 	}
 	slog.Debug("handler.校验模板名", "name", req.Name)
@@ -164,10 +141,10 @@ func (h *TemplateHandler) GetReferences(ctx context.Context, req *model.IDReques
 //  5. 清两个模块的缓存
 func (h *TemplateHandler) Create(ctx context.Context, req *model.CreateTemplateRequest) (*model.CreateTemplateResponse, error) {
 	// 1. 格式校验
-	if err := h.checkTemplateName(req.Name); err != nil {
+	if err := util.CheckName(req.Name, h.valCfg.TemplateNameMaxLength, errcode.ErrTemplateNameInvalid, "模板标识"); err != nil {
 		return nil, err
 	}
-	if err := h.checkTemplateLabel(req.Label); err != nil {
+	if err := util.CheckLabel(req.Label, h.valCfg.FieldLabelMaxLength, "中文标签"); err != nil {
 		return nil, err
 	}
 	if err := h.checkDescription(req.Description); err != nil {
@@ -307,7 +284,7 @@ func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateR
 	if err := util.CheckID(req.ID); err != nil {
 		return nil, err
 	}
-	if err := h.checkTemplateLabel(req.Label); err != nil {
+	if err := util.CheckLabel(req.Label, h.valCfg.FieldLabelMaxLength, "中文标签"); err != nil {
 		return nil, err
 	}
 	if err := h.checkDescription(req.Description); err != nil {

@@ -137,7 +137,7 @@ func (s *EventTypeSchemaService) Update(ctx context.Context, req *model.UpdateEv
 		return fmt.Errorf("check schema refs: %w", err)
 	}
 	if hasRefs {
-		if e := util.CheckConstraintTightened(ets.FieldType, ets.Constraints, req.Constraints, errcode.ErrExtSchemaRefTighten); e != nil {
+		if e := CheckConstraintTightened(ets.FieldType, ets.Constraints, req.Constraints, errcode.ErrExtSchemaRefTighten); e != nil {
 			return e
 		}
 	}
