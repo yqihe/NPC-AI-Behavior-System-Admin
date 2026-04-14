@@ -164,7 +164,7 @@
 
 ---
 
-## T8：util/handler_test.go 新增单测 (R6)
+## T8：util/handler_test.go 新增单测 (R6) [x]
 
 **文件**（1）：
 - `backend/internal/util/handler_test.go`（新建）
