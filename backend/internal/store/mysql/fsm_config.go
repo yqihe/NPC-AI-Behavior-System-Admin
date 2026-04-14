@@ -252,6 +252,26 @@ func (s *FsmConfigStore) SoftDeleteTx(ctx context.Context, tx *sqlx.Tx, id int64
 	return nil
 }
 
+// ListFsmConfigsReferencingState 查询所有在 config_json.states[].name 中引用了指定状态名的 FSM 配置
+//
+// 用于状态字典删除前的引用检查（T4 R17）。
+// LIMIT 避免响应过大（最多 20 条）。
+func (s *FsmConfigStore) ListFsmConfigsReferencingState(ctx context.Context, stateName string, limit int) ([]model.FsmConfigRef, error) {
+	refs := make([]model.FsmConfigRef, 0)
+	err := s.db.SelectContext(ctx, &refs,
+		`SELECT id, name, display_name, enabled
+		 FROM fsm_configs
+		 WHERE deleted = 0
+		   AND JSON_SEARCH(config_json, 'one', ?, NULL, '$.states[*].name') IS NOT NULL
+		 LIMIT ?`,
+		stateName, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list fsm_configs referencing state %q: %w", stateName, err)
+	}
+	return refs, nil
+}
+
 // ExportAll 导出所有已启用且未删除的状态机配置
 //
 // 返回 (name, config_json) 二元组，handler 层原样输出到 HTTP 响应。
