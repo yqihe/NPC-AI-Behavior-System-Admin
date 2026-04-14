@@ -570,6 +570,9 @@ async function handleSubmit() {
 }
 
 .form-card {
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
   background: #fff;
   border: 1px solid #E4E7ED;
   border-radius: 8px;
