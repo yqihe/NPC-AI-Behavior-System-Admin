@@ -106,6 +106,12 @@ const router = createRouter({
       component: () => import('@/views/EventTypeSchemaForm.vue'),
       meta: { title: '编辑扩展字段', isCreate: false },
     },
+    {
+      path: '/:pathMatch(.*)*',
+      name: 'not-found',
+      component: () => import('@/views/NotFound.vue'),
+      meta: { title: '页面不存在' },
+    },
   ],
 })
 
