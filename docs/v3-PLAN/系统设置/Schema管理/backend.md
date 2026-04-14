@@ -115,7 +115,7 @@ type EventTypeSchemaHandler struct {
 1. getOrNotFound(id)
 2. schemaRefStore.HasRefs(ctx, id) — 非事务查询
 3. 如果 hasRefs=true:
-   util.CheckConstraintTightened(ets.FieldType, ets.Constraints, req.Constraints, errcode.ErrExtSchemaRefTighten)
+   service.CheckConstraintTightened(ets.FieldType, ets.Constraints, req.Constraints, errcode.ErrExtSchemaRefTighten)
    → 收紧则返回 42028 拒绝
 4. util.ValidateConstraintsSelf(ets.FieldType, req.Constraints, errcode.ErrExtSchemaConstraintsInvalid) — 约束自洽校验
 5. util.ValidateValue(ets.FieldType, req.Constraints, req.DefaultValue) — 默认值校验
@@ -133,7 +133,7 @@ type EventTypeSchemaHandler struct {
 | select | `options` 非空, `value` 不重复, `minSelect <= maxSelect`, `minSelect >= 0` |
 | bool/boolean | 无约束 |
 
-**约束收紧检查规则**（`util.CheckConstraintTightened`）：
+**约束收紧检查规则**（`service.CheckConstraintTightened`）：
 
 | 字段类型 | 收紧判定 |
 |----------|----------|
