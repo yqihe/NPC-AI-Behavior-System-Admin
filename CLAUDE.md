@@ -53,15 +53,18 @@ backend/
     seed/                  #   字典种子脚本
   internal/
     handler/               #   HTTP handler（纯业务 + wrap.go 泛型包装）
-      validate.go          #     请求校验辅助（CheckID/CheckName/CheckLabel/SuccessMsg）
+      shared/              #     层内工具（package shared，import alias shared）
+        validate.go        #       请求校验辅助（CheckID/CheckName/CheckLabel/SuccessMsg）
     service/               #   业务逻辑（纯业务）
-      validate.go          #     值/约束校验（ValidateValue/ValidateConstraintsSelf/NormalizePagination）
-      jsonutil.go          #     JSON 提取辅助（ParseConstraintsMap/GetFloat/GetString/...）
+      shared/              #     层内工具（package shared，import alias shared）
+        validate.go        #       值/约束校验（ValidateValue/ValidateConstraintsSelf/NormalizePagination）
+        jsonutil.go        #       JSON 提取辅助（ParseConstraintsMap/GetFloat/GetString/...）
     store/
       mysql/               #   MySQL 操作（纯业务 CRUD）
-        sqlutil.go         #     SQL 辅助（EscapeLike/Is1062）
+        shared/            #     层内工具（package shared，import alias shared）
+          sqlutil.go       #       SQL 辅助（EscapeLike/Is1062）
       redis/               #   Redis 缓存操作（纯业务 *_cache.go）
-        config/            #   Redis 专属常量 + key 管理（shared 子包，import alias rcfg）
+        shared/            #   Redis 专属常量 + key 管理（package shared，import alias rcfg）
     cache/                 #   内存缓存（字典/Schema 启动加载）
     config/                #   配置加载
     errcode/               #   错误码（业务码 + store 哨兵错误）

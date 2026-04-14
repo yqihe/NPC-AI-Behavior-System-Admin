@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	shared "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql/shared"
 	"context"
 	"database/sql"
 	"fmt"
@@ -42,7 +43,7 @@ func (s *TemplateStore) CreateTx(ctx context.Context, tx *sqlx.Tx, req *model.Cr
 		req.Name, req.Label, req.Description, fieldsJSON, now, now,
 	)
 	if err != nil {
-		if Is1062(err) {
+		if shared.Is1062(err) {
 			return 0, errcode.ErrDuplicate
 		}
 		return 0, fmt.Errorf("insert template: %w", err)
@@ -92,7 +93,7 @@ func (s *TemplateStore) List(ctx context.Context, q *model.TemplateListQuery) ([
 
 	if q.Label != "" {
 		where = append(where, "label LIKE ?")
-		args = append(args, "%"+EscapeLike(q.Label)+"%")
+		args = append(args, "%"+shared.EscapeLike(q.Label)+"%")
 	}
 	if q.Enabled != nil {
 		where = append(where, "enabled = ?")

@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	shared "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql/shared"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -39,7 +40,7 @@ func (s *FsmConfigStore) Create(ctx context.Context, req *model.CreateFsmConfigR
 		req.Name, req.DisplayName, configJSON, now, now,
 	)
 	if err != nil {
-		if Is1062(err) {
+		if shared.Is1062(err) {
 			return 0, errcode.ErrDuplicate
 		}
 		return 0, fmt.Errorf("insert fsm_config: %w", err)
@@ -89,7 +90,7 @@ func (s *FsmConfigStore) List(ctx context.Context, q *model.FsmConfigListQuery) 
 
 	if q.Label != "" {
 		where = append(where, "display_name LIKE ?")
-		args = append(args, "%"+EscapeLike(q.Label)+"%")
+		args = append(args, "%"+shared.EscapeLike(q.Label)+"%")
 	}
 	if q.Enabled != nil {
 		where = append(where, "enabled = ?")
@@ -200,7 +201,7 @@ func (s *FsmConfigStore) CreateTx(ctx context.Context, tx *sqlx.Tx, req *model.C
 		req.Name, req.DisplayName, configJSON, now, now,
 	)
 	if err != nil {
-		if Is1062(err) {
+		if shared.Is1062(err) {
 			return 0, errcode.ErrDuplicate
 		}
 		return 0, fmt.Errorf("insert fsm_config tx: %w", err)

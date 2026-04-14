@@ -9,7 +9,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
-	rcfg "github.com/yqihe/npc-ai-admin/backend/internal/store/redis/config"
+	rcfg "github.com/yqihe/npc-ai-admin/backend/internal/store/redis/shared"
 )
 
 // FsmConfigCache Redis 状态机配置缓存

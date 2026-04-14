@@ -1,6 +1,7 @@
 package service
 
 import (
+	shared "github.com/yqihe/npc-ai-admin/backend/internal/service/shared"
 	"context"
 	"errors"
 	"fmt"
@@ -86,12 +87,12 @@ func (s *EventTypeSchemaService) Create(ctx context.Context, req *model.CreateEv
 	}
 
 	// constraints 自洽校验
-	if e := ValidateConstraintsSelf(req.FieldType, req.Constraints, errcode.ErrExtSchemaConstraintsInvalid); e != nil {
+	if e := shared.ValidateConstraintsSelf(req.FieldType, req.Constraints, errcode.ErrExtSchemaConstraintsInvalid); e != nil {
 		return 0, e
 	}
 
 	// default_value 必须符合 constraints
-	if e := ValidateValue(req.FieldType, req.Constraints, req.DefaultValue); e != nil {
+	if e := shared.ValidateValue(req.FieldType, req.Constraints, req.DefaultValue); e != nil {
 		return 0, errcode.Newf(errcode.ErrExtSchemaDefaultInvalid, "默认值不符合约束: %s", e.Error())
 	}
 
@@ -145,12 +146,12 @@ func (s *EventTypeSchemaService) Update(ctx context.Context, req *model.UpdateEv
 		}
 	}
 
-	if e := ValidateConstraintsSelf(ets.FieldType, req.Constraints, errcode.ErrExtSchemaConstraintsInvalid); e != nil {
+	if e := shared.ValidateConstraintsSelf(ets.FieldType, req.Constraints, errcode.ErrExtSchemaConstraintsInvalid); e != nil {
 		return e
 	}
 
 	// default_value 符合新 constraints
-	if e := ValidateValue(ets.FieldType, req.Constraints, req.DefaultValue); e != nil {
+	if e := shared.ValidateValue(ets.FieldType, req.Constraints, req.DefaultValue); e != nil {
 		return errcode.Newf(errcode.ErrExtSchemaDefaultInvalid, "默认值不符合约束: %s", e.Error())
 	}
 

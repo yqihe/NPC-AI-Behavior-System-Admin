@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	shared "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql/shared"
 	"context"
 	"database/sql"
 	"fmt"
@@ -36,7 +37,7 @@ func (s *FieldStore) Create(ctx context.Context, req *model.CreateFieldRequest) 
 		req.Name, req.Label, req.Type, req.Category, string(req.Properties), now, now,
 	)
 	if err != nil {
-		if Is1062(err) {
+		if shared.Is1062(err) {
 			return 0, errcode.ErrDuplicate
 		}
 		return 0, fmt.Errorf("insert field: %w", err)
@@ -96,7 +97,7 @@ func (s *FieldStore) List(ctx context.Context, q *model.FieldListQuery) ([]model
 
 	if q.Label != "" {
 		where = append(where, "label LIKE ?")
-		args = append(args, "%"+EscapeLike(q.Label)+"%")
+		args = append(args, "%"+shared.EscapeLike(q.Label)+"%")
 	}
 	if q.Type != "" {
 		where = append(where, "type = ?")

@@ -1,6 +1,7 @@
 package service
 
 import (
+	shared "github.com/yqihe/npc-ai-admin/backend/internal/service/shared"
 	"context"
 	"encoding/json"
 	"errors"
@@ -203,7 +204,7 @@ func (s *FsmConfigService) validateCondition(cond *model.FsmCondition, depth, ma
 // List 分页列表
 func (s *FsmConfigService) List(ctx context.Context, q *model.FsmConfigListQuery) (*model.ListData, error) {
 	// 分页校正
-	NormalizePagination(&q.Page, &q.PageSize, s.pagCfg.DefaultPage, s.pagCfg.DefaultPageSize, s.pagCfg.MaxPageSize)
+	shared.NormalizePagination(&q.Page, &q.PageSize, s.pagCfg.DefaultPage, s.pagCfg.DefaultPageSize, s.pagCfg.MaxPageSize)
 
 	// 查缓存（Redis 挂了跳过，降级直查 MySQL）
 	if cached, hit, err := s.cache.GetList(ctx, q); err == nil && hit {

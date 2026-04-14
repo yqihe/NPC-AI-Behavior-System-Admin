@@ -1,9 +1,9 @@
-package service
+package shared
 
 // validate.go — service 层校验辅助
 //
 // 分页规范化、字段值校验、约束自洽校验。
-// 业务规则（如"约束只能放宽"）不放这里，见 constraint_check.go。
+// 业务规则（如"约束只能放宽"）不放这里，见 service/constraint_check.go。
 
 import (
 	"encoding/json"

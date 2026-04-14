@@ -51,9 +51,11 @@
 
 **例外**：`DictCache`、`EventTypeSchemaCache` 是只读基础设施，可被任意 service 直接调用。
 
-**层内辅助文件**：层特有的辅助函数直接放在该层目录内，作为同包文件，不需要子包。命名按功能点（如 `validate.go` / `jsonutil.go` / `sqlutil.go`）。`store/redis/config/` 是例外——redis 的 key 生成函数和常量需要被 service 层或跨 cache 文件共享，因此放子包（import alias `rcfg`）；未来若需要类似跨包共享的内部常量，子包命名用 `shared` 而非 `config`（`config` 语义歧义）。
+**层内辅助文件**：层特有的辅助函数放在该层的 `shared/` 子目录（`package shared`），与业务代码目录区分。调用方加 `import alias shared`，调用时写 `shared.CheckID(...)` 等。按功能点命名文件（`validate.go` / `jsonutil.go` / `sqlutil.go`）。`store/redis/config/` 沿用旧命名（import alias `rcfg`），未来新增跨包子包统一命名 `shared`。
 
-**util/ 职责**（红线 §11.7-§11.8）：`util/` 只放**每层都可能用到的跨层常量**，按功能点分文件——`const.go`（枚举、ref_type、字典组名等跨层常量）。层特有的工具函数放回各自层：`handler/validate.go`（ID/版本/必填/名称/标签校验、响应辅助）、`service/validate.go`（值/约束校验、NormalizePagination）、`service/jsonutil.go`（JSON 提取辅助）、`store/mysql/sqlutil.go`（SQL LIKE 转义、Is1062）。**业务规则禁止进 util/**，跨模块业务规则放 `service/` 根目录的专用文件（如 `service/constraint_check.go`）。
+**层内工具与业务规则的界限**：纯工具（校验、JSON 解析、SQL 转义等无业务语义的函数）放 `shared/`；跨模块业务规则（如约束收紧检查）放 `service/` 根目录的专用文件（如 `service/constraint_check.go`），并按需 `import shared ".../service/shared"` 使用工具函数。
+
+**util/ 职责**（红线 §11.7-§11.8）：`util/` 只放**每层都可能用到的跨层常量**，按功能点分文件——`const.go`（枚举、ref_type、字典组名等跨层常量）。层特有工具放各自层的 `shared/`：`handler/shared/validate.go`（ID/版本/必填/名称/标签校验、响应辅助）、`service/shared/validate.go`（值/约束校验、NormalizePagination）、`service/shared/jsonutil.go`（JSON 提取辅助）、`store/mysql/shared/sqlutil.go`（SQL LIKE 转义、Is1062）。**业务规则禁止进 util/ 或 shared/**。
 
 ## 2. 引用系统通用模式
 
@@ -151,12 +153,12 @@ slog.Warn("service.获取锁失败，降级直查MySQL", ...)   // 降级场景
 | db 字段 | 统一 `*sqlx.DB` |
 | Create/Update | `*model.CreateXxxRequest` 结构体，禁止位置参数 |
 | 哨兵错误 | `errcode.ErrVersionConflict` / `errcode.ErrNotFound` |
-| LIKE | `EscapeLike()`（同包 `store/mysql/sqlutil.go`） |
-| 1062 检测 | `Is1062(err)`（同包 `store/mysql/sqlutil.go`） |
+| LIKE | `EscapeLike()`（shared. 调用，位于 `store/mysql/shared/sqlutil.go`） |
+| 1062 检测 | `Is1062(err)`（shared. 调用，位于 `store/mysql/shared/sqlutil.go`） |
 
 ### Redis Cache 层
 
-文件命名 `{module}_cache.go` → 常量从 `store/redis/config` 导入 → 方法集：GetDetail/SetDetail/DelDetail/GetList/SetList/InvalidateList/TryLock/Unlock
+文件命名 `{module}_cache.go` → 常量从 `store/redis/shared` 导入 → 方法集：GetDetail/SetDetail/DelDetail/GetList/SetList/InvalidateList/TryLock/Unlock
 
 ### 前端一致性
 

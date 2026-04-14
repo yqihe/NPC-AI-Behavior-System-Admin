@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	shared "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql/shared"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -40,7 +41,7 @@ func (s *EventTypeStore) Create(ctx context.Context, req *model.CreateEventTypeR
 		req.Name, req.DisplayName, req.PerceptionMode, configJSON, now, now,
 	)
 	if err != nil {
-		if Is1062(err) {
+		if shared.Is1062(err) {
 			return 0, errcode.ErrDuplicate
 		}
 		return 0, fmt.Errorf("insert event_type: %w", err)
@@ -90,7 +91,7 @@ func (s *EventTypeStore) List(ctx context.Context, q *model.EventTypeListQuery) 
 
 	if q.Label != "" {
 		where = append(where, "display_name LIKE ?")
-		args = append(args, "%"+EscapeLike(q.Label)+"%")
+		args = append(args, "%"+shared.EscapeLike(q.Label)+"%")
 	}
 	if q.PerceptionMode != "" {
 		where = append(where, "perception_mode = ?")
@@ -205,7 +206,7 @@ func (s *EventTypeStore) CreateTx(ctx context.Context, tx *sqlx.Tx, req *model.C
 		req.Name, req.DisplayName, req.PerceptionMode, configJSON, now, now,
 	)
 	if err != nil {
-		if Is1062(err) {
+		if shared.Is1062(err) {
 			return 0, errcode.ErrDuplicate
 		}
 		return 0, fmt.Errorf("insert event_type tx: %w", err)

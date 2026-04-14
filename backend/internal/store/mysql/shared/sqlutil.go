@@ -1,4 +1,4 @@
-package mysql
+package shared
 
 // sqlutil.go — store/mysql 层 SQL 辅助
 //

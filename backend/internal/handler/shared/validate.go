@@ -1,4 +1,4 @@
-package handler
+package shared
 
 // validate.go — handler 层请求校验辅助
 //

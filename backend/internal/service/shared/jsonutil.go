@@ -1,4 +1,4 @@
-package service
+package shared
 
 // jsonutil.go — service 层 JSON 提取辅助
 //

@@ -1,6 +1,7 @@
 package service
 
 import (
+	shared "github.com/yqihe/npc-ai-admin/backend/internal/service/shared"
 	"context"
 	"encoding/json"
 	"errors"
@@ -100,7 +101,7 @@ func (s *TemplateService) ParseFieldEntries(raw json.RawMessage) ([]model.Templa
 
 // List 模板列表（Cache-Aside：Redis → MySQL → 写 Redis）
 func (s *TemplateService) List(ctx context.Context, q *model.TemplateListQuery) (*model.ListData, error) {
-	NormalizePagination(&q.Page, &q.PageSize, s.pagCfg.DefaultPage, s.pagCfg.DefaultPageSize, s.pagCfg.MaxPageSize)
+	shared.NormalizePagination(&q.Page, &q.PageSize, s.pagCfg.DefaultPage, s.pagCfg.DefaultPageSize, s.pagCfg.MaxPageSize)
 
 	// 1. 查 Redis 缓存
 	if cached, hit, err := s.cache.GetList(ctx, q); err == nil && hit {

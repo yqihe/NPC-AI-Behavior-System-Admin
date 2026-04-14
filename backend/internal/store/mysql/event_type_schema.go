@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	shared "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql/shared"
 	"context"
 	"database/sql"
 	"fmt"
@@ -30,7 +31,7 @@ func (s *EventTypeSchemaStore) Create(ctx context.Context, req *model.CreateEven
 		req.FieldName, req.FieldLabel, req.FieldType, req.Constraints, req.DefaultValue, req.SortOrder, now, now,
 	)
 	if err != nil {
-		if Is1062(err) {
+		if shared.Is1062(err) {
 			return 0, errcode.ErrDuplicate
 		}
 		return 0, fmt.Errorf("insert event_type_schema: %w", err)
