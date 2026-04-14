@@ -144,7 +144,7 @@
 
 ---
 
-## T7：event_type_schema handler 改用 util.CheckName / CheckLabel (R3)
+## T7：event_type_schema handler 改用 util.CheckName / CheckLabel (R3) [x]
 
 **文件**（1）：
 - `backend/internal/handler/event_type_schema.go`
