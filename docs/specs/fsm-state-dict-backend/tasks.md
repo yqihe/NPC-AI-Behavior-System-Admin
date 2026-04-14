@@ -9,7 +9,7 @@
 - [x] T5: Service
 - [x] T6: Handler
 - [x] T7: Router + setup 装配
-- [ ] T8: Seed 数据
+- [x] T8: Seed 数据
 
 ---
 

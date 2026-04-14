@@ -148,6 +148,12 @@ func main() {
 	}
 
 	fmt.Printf("种子数据写入完成：%d 条\n", len(all))
+
+	// FSM 状态字典种子
+	if err := seedFsmStateDicts(ctx, db); err != nil {
+		slog.Error("seed.状态字典写入失败", "error", err)
+		os.Exit(1)
+	}
 }
 
 func mustRawJSON(v any) *json.RawMessage {
@@ -157,4 +163,79 @@ func mustRawJSON(v any) *json.RawMessage {
 	}
 	raw := json.RawMessage(b)
 	return &raw
+}
+
+type fsmStateDictSeed struct {
+	Name        string
+	DisplayName string
+	Category    string
+	Description string
+}
+
+func seedFsmStateDicts(ctx context.Context, db *sqlx.DB) error {
+	seeds := []fsmStateDictSeed{
+		// 通用（4 条）
+		{Name: "idle", DisplayName: "空闲", Category: "通用", Description: "NPC 无事可做时的默认待机状态"},
+		{Name: "moving", DisplayName: "移动中", Category: "通用", Description: "NPC 正在向目标位置移动"},
+		{Name: "interacting", DisplayName: "交互中", Category: "通用", Description: "NPC 正在与对象或玩家交互"},
+		{Name: "busy", DisplayName: "忙碌", Category: "通用", Description: "NPC 正在执行占用行动槽的任务"},
+
+		// 战斗（11 条）
+		{Name: "alert", DisplayName: "警戒", Category: "战斗", Description: "NPC 发现威胁，进入警觉状态"},
+		{Name: "engage", DisplayName: "接战", Category: "战斗", Description: "NPC 选定目标并准备发起攻击"},
+		{Name: "attack_melee", DisplayName: "近战攻击", Category: "战斗", Description: "NPC 执行近战攻击动作"},
+		{Name: "attack_ranged", DisplayName: "远程攻击", Category: "战斗", Description: "NPC 执行远程攻击动作"},
+		{Name: "cast_spell", DisplayName: "施法", Category: "战斗", Description: "NPC 正在释放技能或法术"},
+		{Name: "dodge", DisplayName: "闪避", Category: "战斗", Description: "NPC 执行闪避/回避动作"},
+		{Name: "stagger", DisplayName: "硬直", Category: "战斗", Description: "NPC 受击后进入短暂硬直状态"},
+		{Name: "dying", DisplayName: "濒死", Category: "战斗", Description: "NPC 生命值极低，进入濒死状态"},
+		{Name: "dead", DisplayName: "死亡", Category: "战斗", Description: "NPC 已死亡"},
+		{Name: "flee", DisplayName: "逃跑", Category: "战斗", Description: "NPC 判定无法胜出，选择逃离"},
+		{Name: "revive", DisplayName: "复活", Category: "战斗", Description: "NPC 从死亡或濒死状态恢复"},
+
+		// 移动（6 条）
+		{Name: "patrol", DisplayName: "巡逻", Category: "移动", Description: "NPC 沿预设路径或区域巡逻"},
+		{Name: "wander", DisplayName: "游荡", Category: "移动", Description: "NPC 在一定范围内随机漫步"},
+		{Name: "chase", DisplayName: "追击", Category: "移动", Description: "NPC 追踪并靠近目标"},
+		{Name: "return_home", DisplayName: "返回原点", Category: "移动", Description: "NPC 返回出生点或指定锚点"},
+		{Name: "follow", DisplayName: "跟随", Category: "移动", Description: "NPC 跟随指定目标移动"},
+		{Name: "escort", DisplayName: "护送", Category: "移动", Description: "NPC 护送目标前往指定位置"},
+
+		// 社交（5 条）
+		{Name: "greet", DisplayName: "打招呼", Category: "社交", Description: "NPC 主动向玩家或其他 NPC 打招呼"},
+		{Name: "talk", DisplayName: "对话中", Category: "社交", Description: "NPC 正在进行对话交流"},
+		{Name: "trade", DisplayName: "交易中", Category: "社交", Description: "NPC 正在与玩家进行商品交易"},
+		{Name: "quest_offer", DisplayName: "发布任务", Category: "社交", Description: "NPC 向玩家提供或说明任务"},
+		{Name: "farewell", DisplayName: "告别", Category: "社交", Description: "NPC 结束交互并告别"},
+
+		// 活动（5 条）
+		{Name: "sleep", DisplayName: "睡眠", Category: "活动", Description: "NPC 正在休息或睡眠"},
+		{Name: "eat", DisplayName: "进食", Category: "活动", Description: "NPC 正在进食"},
+		{Name: "sit", DisplayName: "坐下", Category: "活动", Description: "NPC 处于坐姿休息状态"},
+		{Name: "craft", DisplayName: "制作", Category: "活动", Description: "NPC 正在制作道具或物品"},
+		{Name: "gather", DisplayName: "采集", Category: "活动", Description: "NPC 正在采集资源"},
+	}
+
+	const insertSQL = `
+INSERT IGNORE INTO fsm_state_dicts (name, display_name, category, description, enabled, version, deleted)
+VALUES (?, ?, ?, ?, 1, 1, 0)`
+
+	skipped := 0
+	inserted := 0
+	for _, s := range seeds {
+		result, err := db.ExecContext(ctx, insertSQL, s.Name, s.DisplayName, s.Category, s.Description)
+		if err != nil {
+			return fmt.Errorf("insert fsm_state_dict %q: %w", s.Name, err)
+		}
+		rows, _ := result.RowsAffected()
+		if rows == 0 {
+			skipped++
+			fmt.Printf("  [跳过] %s（已存在）\n", s.Name)
+		} else {
+			inserted++
+		}
+	}
+
+	fmt.Printf("FSM 状态字典写入完成：新增 %d 条，跳过 %d 条（已存在）\n", inserted, skipped)
+	return nil
 }
