@@ -138,12 +138,13 @@ func main() {
 	}
 
 	// fsm_state_category: 5 种状态分类
+	// name 使用中文，与 fsm_state_dicts.category 字段值保持一致（软约束）
 	fsmStateCategories := []model.Dictionary{
-		{GroupName: util.DictGroupFsmStateCategory, Name: "general", Label: "通用", SortOrder: 1},
-		{GroupName: util.DictGroupFsmStateCategory, Name: "combat", Label: "战斗", SortOrder: 2},
-		{GroupName: util.DictGroupFsmStateCategory, Name: "movement", Label: "移动", SortOrder: 3},
-		{GroupName: util.DictGroupFsmStateCategory, Name: "social", Label: "社交", SortOrder: 4},
-		{GroupName: util.DictGroupFsmStateCategory, Name: "activity", Label: "活动", SortOrder: 5},
+		{GroupName: util.DictGroupFsmStateCategory, Name: "通用", Label: "通用", SortOrder: 1},
+		{GroupName: util.DictGroupFsmStateCategory, Name: "战斗", Label: "战斗", SortOrder: 2},
+		{GroupName: util.DictGroupFsmStateCategory, Name: "移动", Label: "移动", SortOrder: 3},
+		{GroupName: util.DictGroupFsmStateCategory, Name: "社交", Label: "社交", SortOrder: 4},
+		{GroupName: util.DictGroupFsmStateCategory, Name: "活动", Label: "活动", SortOrder: 5},
 	}
 
 	all := make([]model.Dictionary, 0, len(fieldTypes)+len(fieldCategories)+len(fieldProperties)+len(fsmStateCategories))
