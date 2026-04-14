@@ -101,7 +101,7 @@ func (h *EventTypeSchemaHandler) Create(ctx context.Context, req *model.CreateEv
 }
 
 // Update 编辑扩展字段定义
-func (h *EventTypeSchemaHandler) Update(ctx context.Context, req *model.UpdateEventTypeSchemaRequest) (*model.Empty, error) {
+func (h *EventTypeSchemaHandler) Update(ctx context.Context, req *model.UpdateEventTypeSchemaRequest) (*string, error) {
 	slog.Debug("handler.event_type_schema.update", "id", req.ID)
 
 	if req.ID <= 0 {
@@ -123,25 +123,33 @@ func (h *EventTypeSchemaHandler) Update(ctx context.Context, req *model.UpdateEv
 	if err := h.schemaService.Update(ctx, req); err != nil {
 		return nil, err
 	}
-	return &model.Empty{}, nil
+	return shared.SuccessMsg("保存成功"), nil
 }
 
 // Delete 删除扩展字段定义
-func (h *EventTypeSchemaHandler) Delete(ctx context.Context, req *model.IDRequest) (*model.Empty, error) {
+func (h *EventTypeSchemaHandler) Delete(ctx context.Context, req *model.IDRequest) (*model.DeleteResult, error) {
 	slog.Debug("handler.event_type_schema.delete", "id", req.ID)
 
 	if req.ID <= 0 {
 		return nil, errcode.Newf(errcode.ErrBadRequest, "ID 必须 > 0")
 	}
 
+	ets, err := h.schemaService.GetByID(ctx, req.ID)
+	if err != nil {
+		return nil, err
+	}
+	if ets == nil {
+		return nil, errcode.New(errcode.ErrExtSchemaNotFound)
+	}
+
 	if err := h.schemaService.Delete(ctx, req.ID); err != nil {
 		return nil, err
 	}
-	return &model.Empty{}, nil
+	return &model.DeleteResult{ID: req.ID, Name: ets.FieldName, Label: ets.FieldLabel}, nil
 }
 
 // ToggleEnabled 启用/停用切换
-func (h *EventTypeSchemaHandler) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) (*model.Empty, error) {
+func (h *EventTypeSchemaHandler) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) (*string, error) {
 	slog.Debug("handler.event_type_schema.toggle_enabled", "id", req.ID)
 
 	if req.ID <= 0 {
@@ -154,7 +162,7 @@ func (h *EventTypeSchemaHandler) ToggleEnabled(ctx context.Context, req *model.T
 	if err := h.schemaService.ToggleEnabled(ctx, req.ID, req.Version); err != nil {
 		return nil, err
 	}
-	return &model.Empty{}, nil
+	return shared.SuccessMsg("操作成功"), nil
 }
 
 // GetReferences 扩展字段引用详情
