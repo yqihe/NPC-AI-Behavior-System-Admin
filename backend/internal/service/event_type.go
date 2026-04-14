@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -209,10 +210,17 @@ func (s *EventTypeService) Create(ctx context.Context, req *model.CreateEventTyp
 	if err != nil {
 		return 0, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			slog.Warn("service.事件类型创建事务回滚失败", "error", rbErr)
+		}
+	}()
 
 	id, err := s.store.CreateTx(ctx, tx, req, configJSON)
 	if err != nil {
+		if errors.Is(err, errcode.ErrDuplicate) {
+			return 0, errcode.Newf(errcode.ErrEventTypeNameExists, "事件标识 '%s' 已存在", req.Name)
+		}
 		slog.Error("service.创建事件类型失败", "error", err, "name", req.Name)
 		return 0, fmt.Errorf("create event_type: %w", err)
 	}
@@ -222,12 +230,12 @@ func (s *EventTypeService) Create(ctx context.Context, req *model.CreateEventTyp
 		return 0, err
 	}
 
+	// 先清缓存再 Commit（消除 Commit 后清缓存窗口期的脏读风险）
+	s.cache.InvalidateList(ctx)
+
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("commit: %w", err)
 	}
-
-	// 清列表缓存
-	s.cache.InvalidateList(ctx)
 
 	slog.Info("service.创建事件类型成功", "id", id, "name", req.Name)
 	return id, nil
@@ -323,7 +331,11 @@ func (s *EventTypeService) Update(ctx context.Context, req *model.UpdateEventTyp
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			slog.Warn("service.事件类型编辑事务回滚失败", "error", rbErr)
+		}
+	}()
 
 	if err := s.store.UpdateTx(ctx, tx, req, configJSON); err != nil {
 		if errors.Is(err, errcode.ErrVersionConflict) {
@@ -338,13 +350,13 @@ func (s *EventTypeService) Update(ctx context.Context, req *model.UpdateEventTyp
 		return err
 	}
 
+	// 先清缓存再 Commit（消除 Commit 后清缓存窗口期的脏读风险）
+	s.cache.DelDetail(ctx, req.ID)
+	s.cache.InvalidateList(ctx)
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit: %w", err)
 	}
-
-	// 清缓存
-	s.cache.DelDetail(ctx, req.ID)
-	s.cache.InvalidateList(ctx)
 
 	slog.Info("service.编辑事件类型成功", "id", req.ID)
 	return nil
@@ -371,7 +383,11 @@ func (s *EventTypeService) Delete(ctx context.Context, id int64) (*model.DeleteR
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			slog.Warn("service.事件类型删除事务回滚失败", "error", rbErr)
+		}
+	}()
 
 	if err := s.store.SoftDeleteTx(ctx, tx, id); err != nil {
 		if errors.Is(err, errcode.ErrNotFound) {
@@ -386,13 +402,13 @@ func (s *EventTypeService) Delete(ctx context.Context, id int64) (*model.DeleteR
 		return nil, fmt.Errorf("remove schema refs: %w", err)
 	}
 
+	// 先清缓存再 Commit（消除 Commit 后清缓存窗口期的脏读风险）
+	s.cache.DelDetail(ctx, id)
+	s.cache.InvalidateList(ctx)
+
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit: %w", err)
 	}
-
-	// 清缓存
-	s.cache.DelDetail(ctx, id)
-	s.cache.InvalidateList(ctx)
 
 	slog.Info("service.删除事件类型成功", "id", id, "name", et.Name)
 	return &model.DeleteResult{ID: id, Name: et.Name, Label: et.DisplayName}, nil
@@ -499,12 +515,14 @@ func (s *EventTypeService) syncSchemaRefs(ctx context.Context, tx *sqlx.Tx, even
 			// 需要从 ListAllLite 查，但这里在事务内不方便。
 			// 更简单的方式：直接从 schema_refs 按 ref 删除再重建。
 			// 但按 schema_id 删需要知道 ID。走 ListAllLite 查一次。
-			allSchemas, err := s.store.DB().QueryContext(ctx,
+			// 使用 tx.QueryContext 读事务一致快照，防止绕过事务隔离。
+			allSchemas, err := tx.QueryContext(ctx,
 				`SELECT id FROM event_type_schema WHERE field_name = ? AND deleted = 0`, key)
 			if err != nil {
 				slog.Warn("service.查schema_id失败", "key", key, "error", err)
 				continue
 			}
+			defer allSchemas.Close()
 			var schemaID int64
 			if allSchemas.Next() {
 				allSchemas.Scan(&schemaID)

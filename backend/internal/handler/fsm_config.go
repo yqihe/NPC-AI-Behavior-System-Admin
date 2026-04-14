@@ -2,7 +2,9 @@ package handler
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -62,7 +64,11 @@ func (h *FsmConfigHandler) Create(ctx context.Context, req *model.CreateFsmConfi
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			slog.Warn("handler.状态机创建事务回滚失败", "error", rbErr)
+		}
+	}()
 
 	id, _, err := h.fsmConfigService.CreateInTx(ctx, tx, req)
 	if err != nil {
@@ -77,13 +83,13 @@ func (h *FsmConfigHandler) Create(ctx context.Context, req *model.CreateFsmConfi
 		return nil, fmt.Errorf("sync bb key refs: %w", err)
 	}
 
+	// 先清缓存再 Commit（消除 Commit 后清缓存窗口期的脏读风险）
+	h.fsmConfigService.InvalidateList(ctx)
+	h.fieldService.InvalidateDetails(ctx, affected)
+
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit: %w", err)
 	}
-
-	// 清缓存
-	h.fsmConfigService.InvalidateList(ctx)
-	h.fieldService.InvalidateDetails(ctx, affected)
 
 	return &model.CreateFsmConfigResponse{ID: id, Name: req.Name}, nil
 }
@@ -147,7 +153,11 @@ func (h *FsmConfigHandler) Update(ctx context.Context, req *model.UpdateFsmConfi
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			slog.Warn("handler.状态机编辑事务回滚失败", "error", rbErr)
+		}
+	}()
 
 	oldFc, err := h.fsmConfigService.UpdateInTx(ctx, tx, req)
 	if err != nil {
@@ -162,14 +172,14 @@ func (h *FsmConfigHandler) Update(ctx context.Context, req *model.UpdateFsmConfi
 		return nil, fmt.Errorf("sync bb key refs: %w", err)
 	}
 
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit: %w", err)
-	}
-
-	// 清缓存
+	// 先清缓存再 Commit（消除 Commit 后清缓存窗口期的脏读风险）
 	h.fsmConfigService.InvalidateDetail(ctx, req.ID)
 	h.fsmConfigService.InvalidateList(ctx)
 	h.fieldService.InvalidateDetails(ctx, affected)
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
 
 	return util.SuccessMsg("保存成功"), nil
 }
@@ -188,7 +198,11 @@ func (h *FsmConfigHandler) Delete(ctx context.Context, req *model.IDRequest) (*m
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			slog.Warn("handler.状态机删除事务回滚失败", "error", rbErr)
+		}
+	}()
 
 	fc, err := h.fsmConfigService.SoftDeleteInTx(ctx, tx, req.ID)
 	if err != nil {
@@ -201,14 +215,14 @@ func (h *FsmConfigHandler) Delete(ctx context.Context, req *model.IDRequest) (*m
 		return nil, fmt.Errorf("clean bb key refs: %w", err)
 	}
 
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit: %w", err)
-	}
-
-	// 清缓存
+	// 先清缓存再 Commit（消除 Commit 后清缓存窗口期的脏读风险）
 	h.fsmConfigService.InvalidateDetail(ctx, req.ID)
 	h.fsmConfigService.InvalidateList(ctx)
 	h.fieldService.InvalidateDetails(ctx, affected)
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
 
 	slog.Info("handler.删除状态机成功", "id", req.ID, "name", fc.Name)
 	return &model.DeleteResult{ID: fc.ID, Name: fc.Name, Label: fc.DisplayName}, nil

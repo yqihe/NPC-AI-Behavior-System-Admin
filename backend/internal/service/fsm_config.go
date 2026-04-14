@@ -280,6 +280,9 @@ func (s *FsmConfigService) Create(ctx context.Context, req *model.CreateFsmConfi
 	// 写 MySQL
 	id, err := s.store.Create(ctx, req, configJSON)
 	if err != nil {
+		if errors.Is(err, errcode.ErrDuplicate) {
+			return 0, errcode.Newf(errcode.ErrFsmConfigNameExists, "状态机标识 '%s' 已存在", req.Name)
+		}
 		slog.Error("service.创建状态机失败", "error", err, "name", req.Name)
 		return 0, fmt.Errorf("create fsm_config: %w", err)
 	}
@@ -434,6 +437,9 @@ func (s *FsmConfigService) CreateInTx(ctx context.Context, tx *sqlx.Tx, req *mod
 
 	id, err := s.store.CreateTx(ctx, tx, req, configJSON)
 	if err != nil {
+		if errors.Is(err, errcode.ErrDuplicate) {
+			return 0, nil, errcode.Newf(errcode.ErrFsmConfigNameExists, "状态机标识 '%s' 已存在", req.Name)
+		}
 		slog.Error("service.创建状态机失败", "error", err, "name", req.Name)
 		return 0, nil, fmt.Errorf("create fsm_config: %w", err)
 	}

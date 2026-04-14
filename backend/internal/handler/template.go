@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"unicode/utf8"
@@ -178,7 +180,11 @@ func (h *TemplateHandler) Create(ctx context.Context, req *model.CreateTemplateR
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			slog.Warn("handler.模板创建事务回滚失败", "error", rbErr)
+		}
+	}()
 
 	templateID, err := h.templateService.CreateTx(ctx, tx, req)
 	if err != nil {
@@ -190,13 +196,13 @@ func (h *TemplateHandler) Create(ctx context.Context, req *model.CreateTemplateR
 		return nil, err
 	}
 
+	// 5. 先清缓存再 Commit（消除 Commit 后清缓存窗口期的脏读风险）
+	h.templateService.InvalidateList(ctx)
+	h.fieldService.InvalidateDetails(ctx, affected)
+
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit: %w", err)
 	}
-
-	// 5. 清缓存（commit 后，service 各管自己）
-	h.templateService.InvalidateList(ctx)
-	h.fieldService.InvalidateDetails(ctx, affected)
 
 	slog.Info("handler.创建模板成功", "id", templateID, "name", req.Name)
 	return &model.CreateTemplateResponse{ID: templateID, Name: req.Name}, nil
@@ -324,7 +330,11 @@ func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateR
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			slog.Warn("handler.模板编辑事务回滚失败", "error", rbErr)
+		}
+	}()
 
 	fieldsChanged, toAdd, toRemove, err := h.templateService.UpdateTx(ctx, tx, req, old, oldEntries)
 	if err != nil {
@@ -349,11 +359,7 @@ func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateR
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit: %w", err)
-	}
-
-	// 5. 清缓存
+	// 5. 先清缓存再 Commit（消除 Commit 后清缓存窗口期的脏读风险）
 	h.templateService.InvalidateDetail(ctx, req.ID)
 	h.templateService.InvalidateList(ctx)
 	if len(detachAffected) > 0 {
@@ -361,6 +367,10 @@ func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateR
 	}
 	if len(attachAffected) > 0 {
 		h.fieldService.InvalidateDetails(ctx, attachAffected)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
 	}
 
 	slog.Info("handler.编辑模板成功", "id", req.ID, "fields_changed", fieldsChanged)
@@ -407,7 +417,11 @@ func (h *TemplateHandler) Delete(ctx context.Context, req *model.IDRequest) (*mo
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			slog.Warn("handler.模板删除事务回滚失败", "error", rbErr)
+		}
+	}()
 
 	if err := h.templateService.SoftDeleteTx(ctx, tx, req.ID); err != nil {
 		return nil, err
@@ -418,14 +432,14 @@ func (h *TemplateHandler) Delete(ctx context.Context, req *model.IDRequest) (*mo
 		return nil, err
 	}
 
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit: %w", err)
-	}
-
-	// 清缓存
+	// 先清缓存再 Commit（消除 Commit 后清缓存窗口期的脏读风险）
 	h.templateService.InvalidateDetail(ctx, req.ID)
 	h.templateService.InvalidateList(ctx)
 	h.fieldService.InvalidateDetails(ctx, affected)
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
 
 	slog.Info("handler.删除模板成功", "id", req.ID, "name", tpl.Name)
 	return &model.DeleteResult{ID: tpl.ID, Name: tpl.Name, Label: tpl.Label}, nil

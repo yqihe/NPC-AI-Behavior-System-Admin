@@ -109,6 +109,9 @@ func (s *EventTypeSchemaService) Create(ctx context.Context, req *model.CreateEv
 	// 写 MySQL
 	id, err := s.store.Create(ctx, req)
 	if err != nil {
+		if errors.Is(err, errcode.ErrDuplicate) {
+			return 0, errcode.Newf(errcode.ErrExtSchemaNameExists, "扩展字段标识 '%s' 已存在", req.FieldName)
+		}
 		return 0, err
 	}
 

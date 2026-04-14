@@ -252,6 +252,9 @@ func (s *TemplateService) CreateTx(ctx context.Context, tx *sqlx.Tx, req *model.
 
 	id, err := s.store.CreateTx(ctx, tx, req, fieldsJSON)
 	if err != nil {
+		if errors.Is(err, errcode.ErrDuplicate) {
+			return 0, errcode.Newf(errcode.ErrTemplateNameExists, "模板标识 '%s' 已存在", req.Name)
+		}
 		slog.Error("service.创建模板失败", "error", err, "name", req.Name)
 		return 0, fmt.Errorf("create template: %w", err)
 	}
