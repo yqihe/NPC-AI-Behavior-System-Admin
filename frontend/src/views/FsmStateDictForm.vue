@@ -67,17 +67,20 @@
             />
           </el-form-item>
 
-          <!-- 分类 -->
-          <el-form-item label="分类" prop="category">
-            <el-input
+          <!-- 状态分类 -->
+          <el-form-item label="状态分类" prop="category">
+            <el-select
               v-model="form.category"
-              placeholder="如 通用、战斗、移动（可从已有分类选择或自行输入）"
-              list="category-datalist"
+              placeholder="请选择状态分类"
               style="width: 100%"
-            />
-            <datalist id="category-datalist">
-              <option v-for="cat in categories" :key="cat" :value="cat" />
-            </datalist>
+            >
+              <el-option
+                v-for="item in categoryOptions"
+                :key="item.name"
+                :label="item.label"
+                :value="item.name"
+              />
+            </el-select>
           </el-form-item>
 
           <!-- 描述 -->
@@ -100,15 +103,13 @@
               <el-input :model-value="formatTime(updatedAt)" :disabled="true" style="width: 100%" />
             </el-form-item>
           </template>
-        </el-form>
-      </div>
 
-      <!-- 表单操作（查看模式隐藏） -->
-      <div v-if="!isView" class="form-card form-actions">
-        <el-button @click="$router.push('/fsm-state-dicts')">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="handleSubmit">
-          保存
-        </el-button>
+          <!-- 表单操作（查看模式隐藏） -->
+          <div v-if="!isView" class="form-actions">
+            <el-button @click="$router.push('/fsm-state-dicts')">取消</el-button>
+            <el-button type="primary" :loading="submitting" @click="handleSubmit">保存</el-button>
+          </div>
+        </el-form>
       </div>
     </div>
   </div>
@@ -125,6 +126,8 @@ import {
 } from '@element-plus/icons-vue'
 import { fsmStateDictApi, FSM_STATE_DICT_ERR } from '@/api/fsmStateDicts'
 import type { BizError } from '@/api/request'
+import { dictApi } from '@/api/dictionaries'
+import type { DictionaryItem } from '@/api/dictionaries'
 
 const route = useRoute()
 const router = useRouter()
@@ -135,7 +138,7 @@ const formRef = ref<FormInstance>()
 const submitting = ref(false)
 const nameStatus = ref<'' | 'checking' | 'available' | 'taken'>('')
 const version = ref(0)
-const categories = ref<string[]>([])
+const categoryOptions = ref<DictionaryItem[]>([])
 const createdAt = ref('')
 const updatedAt = ref('')
 
@@ -179,8 +182,8 @@ onMounted(async () => {
 
 async function loadCategories() {
   try {
-    const res = await fsmStateDictApi.listCategories()
-    categories.value = res.data ?? []
+    const res = await dictApi.list('fsm_state_category')
+    categoryOptions.value = res.data?.items ?? []
   } catch {
     // 非关键，静默失败
   }

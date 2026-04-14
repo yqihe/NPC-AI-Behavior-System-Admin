@@ -16,23 +16,23 @@
     <!-- 筛选栏 -->
     <div class="filter-bar">
       <el-input
-        v-model="query.name"
-        placeholder="搜索状态标识"
+        v-model="query.display_name"
+        placeholder="搜索中文标签"
         clearable
         class="filter-item filter-item-wide"
         @keyup.enter="handleSearch"
       />
       <el-select
         v-model="query.category"
-        placeholder="分类"
+        placeholder="状态分类"
         clearable
         class="filter-item"
       >
         <el-option
-          v-for="cat in categories"
-          :key="cat"
-          :label="cat"
-          :value="cat"
+          v-for="item in categoryOptions"
+          :key="item.name"
+          :label="item.label"
+          :value="item.name"
         />
       </el-select>
       <el-select
@@ -59,9 +59,10 @@
         :row-class-name="rowClassName"
         style="width: 100%"
       >
+        <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="name" label="状态标识" min-width="160" />
-        <el-table-column prop="display_name" label="中文名" min-width="140" />
-        <el-table-column prop="category" label="分类" width="120" />
+        <el-table-column prop="display_name" label="中文标签" min-width="140" />
+        <el-table-column prop="category" label="状态分类" width="120" />
         <el-table-column label="启用" width="80" align="center">
           <template #default="{ row }">
             <el-switch
@@ -152,18 +153,20 @@ import type {
   FsmStateDictDeleteResult,
 } from '@/api/fsmStateDicts'
 import type { BizError } from '@/api/request'
+import { dictApi } from '@/api/dictionaries'
+import type { DictionaryItem } from '@/api/dictionaries'
 
 const loading = ref(false)
 const tableData = ref<FsmStateDictListItem[]>([])
 const total = ref(0)
-const categories = ref<string[]>([])
+const categoryOptions = ref<DictionaryItem[]>([])
 const guardRef = ref<InstanceType<typeof EnabledGuardDialog> | null>(null)
 
 const refDeleteVisible = ref(false)
 const refDeleteResult = ref<FsmStateDictDeleteResult | null>(null)
 
 const query = reactive<FsmStateDictListQuery>({
-  name: '',
+  display_name: '',
   category: '',
   enabled: null,
   page: 1,
@@ -179,7 +182,7 @@ async function fetchList() {
       page: query.page,
       page_size: query.page_size,
     }
-    if (query.name) params.name = query.name
+    if (query.display_name) params.display_name = query.display_name
     if (query.category) params.category = query.category
     if (query.enabled !== null && query.enabled !== undefined) {
       params.enabled = query.enabled
@@ -194,10 +197,10 @@ async function fetchList() {
   }
 }
 
-async function fetchCategories() {
+async function loadCategoryOptions() {
   try {
-    const res = await fsmStateDictApi.listCategories()
-    categories.value = res.data ?? []
+    const res = await dictApi.list('fsm_state_category')
+    categoryOptions.value = res.data?.items ?? []
   } catch {
     // 非关键，静默失败
   }
@@ -205,7 +208,7 @@ async function fetchCategories() {
 
 onMounted(() => {
   fetchList()
-  fetchCategories()
+  loadCategoryOptions()
 })
 
 // ---------- 筛选 ----------
@@ -216,7 +219,7 @@ function handleSearch() {
 }
 
 function handleReset() {
-  query.name = ''
+  query.display_name = ''
   query.category = ''
   query.enabled = null
   query.page = 1

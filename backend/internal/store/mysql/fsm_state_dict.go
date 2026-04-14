@@ -82,10 +82,10 @@ func (s *FsmStateDictStore) List(ctx context.Context, q *model.FsmStateDictListQ
 	where := []string{"deleted = 0"}
 	args := make([]any, 0, 5)
 
-	if q.Name != "" {
-		escaped := shared.EscapeLike(q.Name)
-		where = append(where, "(name LIKE ? OR display_name LIKE ?)")
-		args = append(args, "%"+escaped+"%", "%"+escaped+"%")
+	if q.DisplayName != "" {
+		escaped := shared.EscapeLike(q.DisplayName)
+		where = append(where, "display_name LIKE ?")
+		args = append(args, "%"+escaped+"%")
 	}
 	if q.Category != "" {
 		where = append(where, "category = ?")

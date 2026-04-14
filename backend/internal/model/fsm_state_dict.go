@@ -58,11 +58,11 @@ func (d *FsmStateDictListData) ToListData() *ListData {
 
 // FsmStateDictListQuery 列表查询参数
 type FsmStateDictListQuery struct {
-	Name     string `json:"name"`              // name/display_name 模糊搜索（OR）
-	Category string `json:"category"`          // 分类精确过滤
-	Enabled  *bool  `json:"enabled,omitempty"` // nil=不筛选，true=仅启用，false=仅停用
-	Page     int    `json:"page"`
-	PageSize int    `json:"page_size"`
+	DisplayName string `json:"display_name"`      // 中文标签模糊搜索
+	Category    string `json:"category"`          // 分类精确过滤
+	Enabled     *bool  `json:"enabled,omitempty"` // nil=不筛选，true=仅启用，false=仅停用
+	Page        int    `json:"page"`
+	PageSize    int    `json:"page_size"`
 }
 
 // CreateFsmStateDictRequest 创建状态字典条目请求

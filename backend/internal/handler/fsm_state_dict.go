@@ -33,7 +33,7 @@ func NewFsmStateDictHandler(
 
 // List 状态字典列表
 func (h *FsmStateDictHandler) List(ctx context.Context, req *model.FsmStateDictListQuery) (*model.ListData, error) {
-	slog.Debug("handler.状态字典列表", "name", req.Name, "category", req.Category)
+	slog.Debug("handler.状态字典列表", "display_name", req.DisplayName, "category", req.Category)
 	return h.dictService.List(ctx, req)
 }
 
