@@ -74,7 +74,7 @@
 
 ---
 
-## T4：util/store.go 建立 + strings.go 删除 (R1)
+## T4：util/store.go 建立 + strings.go 删除 (R1) [x]
 
 **文件**（2）：
 - `backend/internal/util/store.go`（新建）
