@@ -1,8 +1,13 @@
 package util
 
-// store 层通用工具：SQL LIKE 转义等。
+// store 层通用工具：SQL LIKE 转义、MySQL 错误识别等。
 
-import "strings"
+import (
+	"errors"
+	"strings"
+
+	"github.com/go-sql-driver/mysql"
+)
 
 // ============================================================
 // SQL LIKE 转义
@@ -16,4 +21,16 @@ func EscapeLike(s string) string {
 	s = strings.ReplaceAll(s, `%`, `\%`)
 	s = strings.ReplaceAll(s, `_`, `\_`)
 	return s
+}
+
+// ============================================================
+// MySQL 错误识别
+// ============================================================
+
+// Is1062 判断 err 是否为 MySQL duplicate entry (1062)。
+//
+// 穿透 fmt.Errorf wrap，store 层 CREATE 出现唯一键冲突时使用。
+func Is1062(err error) bool {
+	var me *mysql.MySQLError
+	return errors.As(err, &me) && me.Number == 1062
 }

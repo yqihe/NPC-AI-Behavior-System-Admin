@@ -37,7 +37,7 @@ T1..T15 ─────────────── T16 docs
 
 ---
 
-### T2：`Is1062` helper `(R2)`
+### [x] T2：`Is1062` helper `(R2)`
 
 **文件**：`backend/internal/util/store.go`
 
