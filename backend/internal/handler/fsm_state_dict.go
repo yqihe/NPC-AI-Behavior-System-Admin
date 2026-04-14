@@ -129,16 +129,6 @@ func (h *FsmStateDictHandler) ToggleEnabled(ctx context.Context, req *model.Togg
 	return shared.SuccessMsg("操作成功"), nil
 }
 
-// ListCategories 返回所有分类列表
-func (h *FsmStateDictHandler) ListCategories(ctx context.Context, _ *struct{}) (*[]string, error) {
-	slog.Debug("handler.状态字典分类列表")
-	categories, err := h.dictService.ListCategories(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return &categories, nil
-}
-
 // ---- 前置校验辅助 ----
 
 // checkCategory 校验分类：非空 + UTF-8 字符数上限

@@ -137,10 +137,20 @@ func main() {
 		})},
 	}
 
-	all := make([]model.Dictionary, 0, len(fieldTypes)+len(fieldCategories)+len(fieldProperties))
+	// fsm_state_category: 5 种状态分类
+	fsmStateCategories := []model.Dictionary{
+		{GroupName: util.DictGroupFsmStateCategory, Name: "general", Label: "通用", SortOrder: 1},
+		{GroupName: util.DictGroupFsmStateCategory, Name: "combat", Label: "战斗", SortOrder: 2},
+		{GroupName: util.DictGroupFsmStateCategory, Name: "movement", Label: "移动", SortOrder: 3},
+		{GroupName: util.DictGroupFsmStateCategory, Name: "social", Label: "社交", SortOrder: 4},
+		{GroupName: util.DictGroupFsmStateCategory, Name: "activity", Label: "活动", SortOrder: 5},
+	}
+
+	all := make([]model.Dictionary, 0, len(fieldTypes)+len(fieldCategories)+len(fieldProperties)+len(fsmStateCategories))
 	all = append(all, fieldTypes...)
 	all = append(all, fieldCategories...)
 	all = append(all, fieldProperties...)
+	all = append(all, fsmStateCategories...)
 
 	if err := store.BatchCreate(ctx, all); err != nil {
 		slog.Error("seed.写入种子数据失败", "error", err)

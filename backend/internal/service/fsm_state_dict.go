@@ -265,13 +265,4 @@ func (s *FsmStateDictService) ToggleEnabled(ctx context.Context, id int64, versi
 	return nil
 }
 
-// ListCategories 返回所有分类（直查 MySQL，不缓存）
-func (s *FsmStateDictService) ListCategories(ctx context.Context) ([]string, error) {
-	categories, err := s.store.ListCategories(ctx)
-	if err != nil {
-		slog.Error("service.查询状态字典分类失败", "error", err)
-		return nil, fmt.Errorf("list categories: %w", err)
-	}
-	return categories, nil
-}
 

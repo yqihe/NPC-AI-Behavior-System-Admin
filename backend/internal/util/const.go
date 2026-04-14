@@ -66,7 +66,8 @@ const (
 // ──────────────────────────────────────────────
 
 const (
-	DictGroupFieldType       = "field_type"
-	DictGroupFieldCategory   = "field_category"
-	DictGroupFieldProperties = "field_properties"
+	DictGroupFieldType        = "field_type"
+	DictGroupFieldCategory    = "field_category"
+	DictGroupFieldProperties  = "field_properties"
+	DictGroupFsmStateCategory = "fsm_state_category"
 )
