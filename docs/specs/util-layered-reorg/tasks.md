@@ -48,7 +48,7 @@
 
 ---
 
-## T3：util/service.go 建立 + constraint.go/pagination.go 删除 (R1)
+## T3：util/service.go 建立 + constraint.go/pagination.go 删除 (R1) [x]
 
 **文件**（3）：
 - `backend/internal/util/service.go`（新建）
