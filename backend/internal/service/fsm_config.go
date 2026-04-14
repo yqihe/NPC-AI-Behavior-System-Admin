@@ -306,12 +306,12 @@ func (s *FsmConfigService) GetByID(ctx context.Context, id int64) (*model.FsmCon
 	if s.fsmCfg.CacheLockTTL > 0 {
 		lockTTL = s.fsmCfg.CacheLockTTL
 	}
-	locked, lockErr := s.cache.TryLock(ctx, id, lockTTL)
+	lockID, lockErr := s.cache.TryLock(ctx, id, lockTTL)
 	if lockErr != nil {
 		slog.Warn("service.获取锁失败，降级直查MySQL", "error", lockErr, "id", id)
 	}
-	if locked {
-		defer s.cache.Unlock(ctx, id)
+	if lockID != "" {
+		defer s.cache.Unlock(ctx, id, lockID)
 		// double-check
 		if cached, hit, err := s.cache.GetDetail(ctx, id); err == nil && hit {
 			if cached == nil {

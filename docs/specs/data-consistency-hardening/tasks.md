@@ -56,7 +56,7 @@ T1..T15 ─────────────── T16 docs
 
 ---
 
-### T3：field / template Cache — TryLock/Unlock 改签名 `(R1)`
+### [x] T3：field / template Cache — TryLock/Unlock 改签名 `(R1)`
 
 **文件**：
 - `backend/internal/store/redis/field_cache.go`
@@ -93,7 +93,7 @@ func (c *FieldCache) Unlock(ctx context.Context, id int64, lockID string) {
 
 ---
 
-### T4：event_type / fsm_config Cache — TryLock/Unlock 改签名 `(R1)`
+### [x] T4：event_type / fsm_config Cache — TryLock/Unlock 改签名 `(R1)`
 
 **文件**：
 - `backend/internal/store/redis/event_type_cache.go`

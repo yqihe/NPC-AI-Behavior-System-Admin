@@ -142,16 +142,16 @@ func (s *TemplateService) GetByID(ctx context.Context, id int64) (*model.Templat
 	}
 
 	// 2. 分布式锁防缓存击穿
-	locked, lockErr := s.cache.TryLock(ctx, id, 3*time.Second)
+	lockID, lockErr := s.cache.TryLock(ctx, id, 3*time.Second)
 	if lockErr != nil {
 		slog.Warn("service.获取模板锁失败，降级直查MySQL", "error", lockErr, "id", id)
 	}
-	if locked {
-		defer s.cache.Unlock(ctx, id)
+	if lockID != "" {
+		defer s.cache.Unlock(ctx, id, lockID)
 	}
 
 	// 获得锁后 double-check 缓存
-	if locked {
+	if lockID != "" {
 		if cached, hit, err := s.cache.GetDetail(ctx, id); err == nil && hit {
 			if cached == nil {
 				return nil, errcode.Newf(errcode.ErrTemplateNotFound, "模板 ID=%d 不存在", id)

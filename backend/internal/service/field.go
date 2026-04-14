@@ -194,16 +194,16 @@ func (s *FieldService) GetByID(ctx context.Context, id int64) (*model.Field, err
 	}
 
 	// 2. 分布式锁防缓存击穿
-	locked, lockErr := s.fieldCache.TryLock(ctx, id, 3*time.Second)
+	lockID, lockErr := s.fieldCache.TryLock(ctx, id, 3*time.Second)
 	if lockErr != nil {
 		slog.Warn("service.获取锁失败，降级直查MySQL", "error", lockErr, "id", id)
 	}
-	if locked {
-		defer s.fieldCache.Unlock(ctx, id)
+	if lockID != "" {
+		defer s.fieldCache.Unlock(ctx, id, lockID)
 	}
 
 	// 获得锁后再查一次缓存（double-check）
-	if locked {
+	if lockID != "" {
 		if cached, hit, err := s.fieldCache.GetDetail(ctx, id); err == nil && hit {
 			if cached == nil {
 				return nil, errcode.Newf(errcode.ErrFieldNotFound, "字段 ID=%d 不存在", id)
