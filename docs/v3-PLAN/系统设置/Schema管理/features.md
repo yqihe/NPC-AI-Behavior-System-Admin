@@ -69,7 +69,7 @@
 
 - `field_name` / `field_type` 不可变（UpdateRequest 不含这两个字段）。
 - 可修改：`field_label`、`constraints`、`default_value`、`sort_order`。
-- **引用保护**：如果该 Schema 被事件类型引用（`schemaRefStore.HasRefs`），则调用 `util.CheckConstraintTightened` 检查约束是否被收紧。收紧则拒绝（42028），放宽或不变则允许。
+- **引用保护**：如果该 Schema 被事件类型引用（`schemaRefStore.HasRefs`），则调用 `service.CheckConstraintTightened` 检查约束是否被收紧。收紧则拒绝（42028），放宽或不变则允许。
 - 约束自洽校验 + 默认值符合新约束。
 - 乐观锁更新 → Reload 内存缓存。
 

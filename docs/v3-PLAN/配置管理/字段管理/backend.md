@@ -230,7 +230,7 @@ service.Delete:
 4. old.Enabled == true → 40015 ErrFieldEditNotDisabled
 5. fieldRefStore.HasRefs(ctx, req.ID) → hasRefs
 6. hasRefs && old.Type != req.Type → 40006 ErrFieldRefChangeType
-7. hasRefs && old.Type == req.Type → util.CheckConstraintTightened → 40007 ErrFieldRefTighten
+7. hasRefs && old.Type == req.Type → service.CheckConstraintTightened → 40007 ErrFieldRefTighten
 8. req.Type == "reference" → validateReferenceRefs(ctx, req.ID, newRefIDs, oldRefSet)
    → 40017/40014/40013/40016/40009
 9. expose_bb: true→false 且 field_refs 中存在 ref_type='fsm' → 40008 ErrFieldBBKeyInUse
@@ -277,7 +277,7 @@ tx.Commit()
 
 `FOR SHARE` 的作用：在当前事务提交前，阻止其他事务对匹配行执行 INSERT/DELETE，防止"查询时无引用 → 并发写入引用 → 删除"的 TOCTOU 竞态。
 
-### 6.4 约束收紧检查（util.CheckConstraintTightened）
+### 6.4 约束收紧检查（service.CheckConstraintTightened）
 
 签名：
 ```go

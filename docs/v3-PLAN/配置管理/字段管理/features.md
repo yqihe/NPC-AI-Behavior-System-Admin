@@ -85,7 +85,7 @@
 
 11. **引用追踪**：通过 `field_refs` 表记录所有引用关系（联合主键 `field_id + ref_type + ref_id`，INSERT IGNORE 幂等）。
 12. **编辑保护 — 类型不可改**：`HasRefs` 为 true 且类型变更时，返回 40006。
-13. **编辑保护 — 约束只能放宽**：`HasRefs` 为 true 且类型未变时，调 `util.CheckConstraintTightened` 检查，收紧返回 40007。
+13. **编辑保护 — 约束只能放宽**：`HasRefs` 为 true 且类型未变时，调 `service.CheckConstraintTightened` 检查，收紧返回 40007。
 14. **删除保护**：事务内 `HasRefsTx(FOR SHARE)` 检查，有引用返回 40005。
 15. **引用详情 API**：返回三类引用方（template/field/fsm），handler 层跨模块补齐 label。
 
