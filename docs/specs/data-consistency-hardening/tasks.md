@@ -152,7 +152,7 @@ template 的 `CreateTx` 方法同理（对 `tx.ExecContext` 的错误也加 1062
 
 ---
 
-### T8：`service/field.go` — R1 调用侧 + R2 兜底 + R3 缓存时序 + R5 `(R1+R2+R3+R5)`
+### [x] T8：`service/field.go` — R1 调用侧 + R2 兜底 + R3 缓存时序 + R5 `(R1+R2+R3+R5)`
 
 **文件**：`backend/internal/service/field.go`
 
@@ -208,7 +208,7 @@ defer func() {
 
 ---
 
-### T9：`service/event_type.go` — R1+R2+R3+R4+R5 `(全部)`
+### [x] T9：`service/event_type.go` — R1+R2+R3+R4+R5 `(全部)`
 
 **文件**：`backend/internal/service/event_type.go`
 
@@ -243,7 +243,7 @@ func (s *EventTypeService) syncSchemaRefs(ctx context.Context, tx *sqlx.Tx, ...)
 
 ---
 
-### T10：`service/template.go` — R1 调用侧 + R2 兜底 `(R1+R2)`
+### [x] T10：`service/template.go` — R1 调用侧 + R2 兜底 `(R1+R2)`
 
 **文件**：`backend/internal/service/template.go`
 
@@ -255,7 +255,7 @@ func (s *EventTypeService) syncSchemaRefs(ctx context.Context, tx *sqlx.Tx, ...)
 
 ---
 
-### T11：`service/fsm_config.go` — R1 调用侧 + R2 兜底 `(R1+R2)`
+### [x] T11：`service/fsm_config.go` — R1 调用侧 + R2 兜底 `(R1+R2)`
 
 **文件**：`backend/internal/service/fsm_config.go`
 
@@ -267,7 +267,7 @@ func (s *EventTypeService) syncSchemaRefs(ctx context.Context, tx *sqlx.Tx, ...)
 
 ---
 
-### T12：`service/event_type_schema.go` — R2 兜底 `(R2)`
+### [x] T12：`service/event_type_schema.go` — R2 兜底 `(R2)`
 
 **文件**：`backend/internal/service/event_type_schema.go`
 
@@ -277,7 +277,7 @@ func (s *EventTypeService) syncSchemaRefs(ctx context.Context, tx *sqlx.Tx, ...)
 
 ---
 
-### T13：`handler/template.go` — R3 缓存时序 + R5 `(R3+R5)`
+### [x] T13：`handler/template.go` — R3 缓存时序 + R5 `(R3+R5)`
 
 **文件**：`backend/internal/handler/template.go`
 
@@ -302,7 +302,7 @@ if err := tx.Commit(); err != nil { ... }
 
 ---
 
-### T14：`handler/fsm_config.go` — R3 缓存时序 + R5 `(R3+R5)`
+### [x] T14：`handler/fsm_config.go` — R3 缓存时序 + R5 `(R3+R5)`
 
 **文件**：`backend/internal/handler/fsm_config.go`
 
@@ -316,7 +316,7 @@ if err := tx.Commit(); err != nil { ... }
 
 ---
 
-### T15：单元测试 `(R6)`
+### [x] T15：单元测试 `(R6)`
 
 **文件**：
 - `backend/internal/store/redis/field_cache_test.go`（新建）
@@ -336,7 +336,7 @@ if err := tx.Commit(); err != nil { ... }
 
 ---
 
-### T16：文档更新 `(R7)`
+### [x] T16：文档更新 `(R7)`
 
 **文件**：
 - `docs/development/admin/dev-rules.md`

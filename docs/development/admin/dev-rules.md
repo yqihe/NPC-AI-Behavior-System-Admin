@@ -13,8 +13,32 @@
 **模块边界**：每个模块拥有自己的表。字段模块拥有 fields + field_refs，模板模块拥有 templates，事件类型模块拥有 event_types，扩展字段模块拥有 event_type_schema + schema_refs，FSM 模块拥有 fsm_configs。
 
 **跨模块事务处理**：
-- handler 调 `db.BeginTxx` → 传 `*sqlx.Tx` 给多个 service 的 Tx 版方法 → handler 统一 Commit/Rollback → commit 后清两个模块缓存
+- handler 调 `db.BeginTxx` → 传 `*sqlx.Tx` 给多个 service 的 Tx 版方法 → handler 统一 Commit/Rollback → **Commit 前**清两个模块缓存
 - ADMIN 是 HTTP 单体，跨模块事务就是普通 MySQL `BEGIN...COMMIT`，不需要分布式事务
+
+**缓存清除顺序**（有事务的写路径）：
+- `DelDetail`/`InvalidateList` **必须在 `tx.Commit()` 之前**调用
+- Commit 失败时缓存已清无害（下次读重建）；Commit 成功后不清则有脏读窗口
+- 示例：先 `cache.DelDetail(ctx, id)`，再 `tx.Commit()`
+
+**分布式锁使用规范**：
+- `TryLock` 返回 `(lockID string, error)`；空串表示未获锁，非空串表示获锁成功
+- `Unlock` 必须传入同一 `lockID`，Lua 脚本原子判断后再删，防止 TTL 超时后误删他人锁
+- 禁止直接 `DEL` 锁 key，必须走 `LuaUnlock` 脚本
+
+**事务内查询纪律**：
+- 在已开启的事务路径中，所有 DB 查询必须走 `tx.QueryContext`/`tx.GetContext`/`tx.ExecContext`
+- 禁止调 `store.DB().QueryContext`（绕过事务隔离，读到事务外的快照）
+
+**`defer tx.Rollback()` 规范**：
+- 必须用 error-aware 模式，过滤 `sql.ErrTxDone`（Commit 后 Rollback 返回此错误，属正常）：
+  ```go
+  defer func() {
+      if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+          slog.Warn("xxx事务回滚失败", "error", rbErr)
+      }
+  }()
+  ```
 
 **典型编排场景**：
 

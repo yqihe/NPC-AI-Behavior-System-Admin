@@ -127,3 +127,22 @@
 2. 前端 UI 锁定逻辑必须读 `has_refs` 布尔值，禁止根据 `ref_count > 0` 判断
 3. 测试脚本的断言也必须对齐 `has_refs`，禁止断言 `.data.ref_count == N`（曾因此产生 70+ 假阴性测试失败）
 4. 引用详情（模板/字段/FSM 哪些在引用）通过专用 `/references` 接口获取，不在 detail 响应中返回
+
+
+## 16. 禁止 Commit 后清缓存
+
+1. 有事务的写路径（service 或 handler），`DelDetail`/`InvalidateList`/`InvalidateDetail` **必须在 `tx.Commit()` 调用前**完成
+2. 违反此顺序会产生脏读窗口：Commit 成功但缓存尚未清除，其他请求读到旧值
+3. Commit 失败时缓存已清无害（下次读走 DB 重建），因此提前清是安全的
+
+## 17. 禁止 Unlock 不传 lockID
+
+1. 分布式锁解锁**必须**携带 `lockID`，使用 `LuaUnlock` Lua 脚本原子判断后再删
+2. 禁止直接 `DEL` 锁 key（等价于旧版 `rdb.Del(ctx, key)`）
+3. 未携带 lockID 的 Unlock 在锁 TTL 超时场景下会误删他人锁，导致多个 goroutine 同时认为自己持有锁
+
+## 18. 禁止事务内绕过事务查询
+
+1. 已开启事务的路径中，**所有** DB 查询必须走 `tx.QueryContext`/`tx.GetContext`/`tx.ExecContext`
+2. 禁止在事务路径中调 `store.DB().QueryContext`（读事务外快照，破坏隔离性）
+3. 典型错误：`syncSchemaRefs` 内用 `s.store.DB().QueryContext` 而非传入的 `tx.QueryContext`
