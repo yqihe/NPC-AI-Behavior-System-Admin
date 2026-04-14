@@ -186,7 +186,7 @@
 
 ---
 
-## T9：service/constraint_check_test.go 新增单测 (R6)
+## T9：service/constraint_check_test.go 新增单测 (R6) [x]
 
 **文件**（1）：
 - `backend/internal/service/constraint_check_test.go`（新建）
