@@ -22,10 +22,15 @@ const (
 	prefixFsmConfigDetail = "fsm_configs:detail:"
 	prefixFsmConfigLock   = "fsm_configs:lock:"
 
-	FieldListVersionKey     = "fields:list:version"
-	TemplateListVersionKey  = "templates:list:version"
-	EventTypeListVersionKey = "event_types:list:version"
-	FsmConfigListVersionKey = "fsm_configs:list:version"
+	prefixFsmStateDictList   = "fsm_state_dicts:list:"
+	prefixFsmStateDictDetail = "fsm_state_dicts:detail:"
+	prefixFsmStateDictLock   = "fsm_state_dicts:lock:"
+
+	FieldListVersionKey        = "fields:list:version"
+	TemplateListVersionKey     = "templates:list:version"
+	EventTypeListVersionKey    = "event_types:list:version"
+	FsmConfigListVersionKey    = "fsm_configs:list:version"
+	FsmStateDictListVersionKey = "fsm_state_dicts:list:version"
 )
 
 // ── Dict ──
@@ -67,6 +72,14 @@ func FsmConfigListKey(version int64, label string, enabled *bool, page, pageSize
 }
 func FsmConfigDetailKey(id int64) string { return fmt.Sprintf("%s%d", prefixFsmConfigDetail, id) }
 func FsmConfigLockKey(id int64) string   { return fmt.Sprintf("%s%d", prefixFsmConfigLock, id) }
+
+// ── FsmStateDict ──
+
+func FsmStateDictListKey(version int64, name, category string, enabled *bool, page, pageSize int) string {
+	return fmt.Sprintf("%sv%d:%s:%s:%s:%d:%d", prefixFsmStateDictList, version, name, category, boolStr(enabled), page, pageSize)
+}
+func FsmStateDictDetailKey(id int64) string { return fmt.Sprintf("%s%d", prefixFsmStateDictDetail, id) }
+func FsmStateDictLockKey(id int64) string   { return fmt.Sprintf("%s%d", prefixFsmStateDictLock, id) }
 
 // boolStr 将 *bool 转为 key 分段
 func boolStr(b *bool) string {
