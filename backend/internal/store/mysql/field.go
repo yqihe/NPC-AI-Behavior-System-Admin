@@ -164,6 +164,26 @@ func (s *FieldStore) Update(ctx context.Context, req *model.UpdateFieldRequest) 
 	return nil
 }
 
+// UpdateTx 事务内编辑字段（乐观锁）
+func (s *FieldStore) UpdateTx(ctx context.Context, tx *sqlx.Tx, req *model.UpdateFieldRequest) error {
+	result, err := tx.ExecContext(ctx,
+		`UPDATE fields SET label = ?, type = ?, category = ?, properties = ?, version = version + 1, updated_at = ?
+		 WHERE id = ? AND version = ? AND deleted = 0`,
+		req.Label, req.Type, req.Category, string(req.Properties), time.Now(), req.ID, req.Version,
+	)
+	if err != nil {
+		return fmt.Errorf("update field: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if rows == 0 {
+		return errcode.ErrVersionConflict
+	}
+	return nil
+}
+
 // SoftDeleteTx 事务内软删除字段（按 ID）
 func (s *FieldStore) SoftDeleteTx(ctx context.Context, tx *sqlx.Tx, id int64) error {
 	result, err := tx.ExecContext(ctx,
