@@ -251,7 +251,7 @@ const version = ref(0)
 // 扩展字段
 const extensionSchema = ref<ExtensionSchemaItem[]>([])
 const extensionValues = reactive<Record<string, unknown>>({})
-const dirtyExtensions = reactive(new Set<string>())
+const dirtyExtensions = ref(new Set<string>())
 
 interface FormState {
   name: string
@@ -365,7 +365,7 @@ function loadExtensionsFromConfig(
   for (const ext of schema) {
     if (ext.field_name in config && !systemKeys.has(ext.field_name)) {
       extensionValues[ext.field_name] = config[ext.field_name]
-      dirtyExtensions.add(ext.field_name)
+      dirtyExtensions.value.add(ext.field_name)
     } else {
       extensionValues[ext.field_name] = ext.default_value
     }
@@ -411,7 +411,7 @@ function handleModeChange(mode: string) {
 // ---------- 扩展字段 ----------
 
 function markDirty(fieldName: string) {
-  dirtyExtensions.add(fieldName)
+  dirtyExtensions.value.add(fieldName)
 }
 
 function extTypeLabel(type: string): string {
@@ -430,7 +430,7 @@ function getSelectOptions(ext: ExtensionSchemaItem): unknown[] {
 
 function buildExtensions(): Record<string, unknown> {
   const result: Record<string, unknown> = {}
-  for (const key of dirtyExtensions) {
+  for (const key of dirtyExtensions.value) {
     result[key] = extensionValues[key]
   }
   return result
