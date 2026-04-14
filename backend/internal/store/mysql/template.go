@@ -43,6 +43,9 @@ func (s *TemplateStore) CreateTx(ctx context.Context, tx *sqlx.Tx, req *model.Cr
 		req.Name, req.Label, req.Description, fieldsJSON, now, now,
 	)
 	if err != nil {
+		if util.Is1062(err) {
+			return 0, errcode.ErrDuplicate
+		}
 		return 0, fmt.Errorf("insert template: %w", err)
 	}
 	id, err := result.LastInsertId()

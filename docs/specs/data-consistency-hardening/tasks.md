@@ -105,7 +105,7 @@ func (c *FieldCache) Unlock(ctx context.Context, id int64, lockID string) {
 
 ---
 
-### T5：field / template Store — Create 检测 1062 `(R2)`
+### [x] T5：field / template Store — Create 检测 1062 `(R2)`
 
 **文件**：
 - `backend/internal/store/mysql/field.go`
@@ -130,7 +130,7 @@ template 的 `CreateTx` 方法同理（对 `tx.ExecContext` 的错误也加 1062
 
 ---
 
-### T6：event_type / event_type_schema Store — Create 检测 1062 `(R2)`
+### [x] T6：event_type / event_type_schema Store — Create 检测 1062 `(R2)`
 
 **文件**：
 - `backend/internal/store/mysql/event_type.go`
@@ -142,7 +142,7 @@ template 的 `CreateTx` 方法同理（对 `tx.ExecContext` 的错误也加 1062
 
 ---
 
-### T7：fsm_config Store — Create 检测 1062 `(R2)`
+### [x] T7：fsm_config Store — Create 检测 1062 `(R2)`
 
 **文件**：`backend/internal/store/mysql/fsm_config.go`
 

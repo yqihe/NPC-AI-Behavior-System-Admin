@@ -41,6 +41,9 @@ func (s *EventTypeStore) Create(ctx context.Context, req *model.CreateEventTypeR
 		req.Name, req.DisplayName, req.PerceptionMode, configJSON, now, now,
 	)
 	if err != nil {
+		if util.Is1062(err) {
+			return 0, errcode.ErrDuplicate
+		}
 		return 0, fmt.Errorf("insert event_type: %w", err)
 	}
 	id, err := result.LastInsertId()
@@ -203,6 +206,9 @@ func (s *EventTypeStore) CreateTx(ctx context.Context, tx *sqlx.Tx, req *model.C
 		req.Name, req.DisplayName, req.PerceptionMode, configJSON, now, now,
 	)
 	if err != nil {
+		if util.Is1062(err) {
+			return 0, errcode.ErrDuplicate
+		}
 		return 0, fmt.Errorf("insert event_type tx: %w", err)
 	}
 	id, err := result.LastInsertId()

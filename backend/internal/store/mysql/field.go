@@ -37,6 +37,9 @@ func (s *FieldStore) Create(ctx context.Context, req *model.CreateFieldRequest) 
 		req.Name, req.Label, req.Type, req.Category, string(req.Properties), now, now,
 	)
 	if err != nil {
+		if util.Is1062(err) {
+			return 0, errcode.ErrDuplicate
+		}
 		return 0, fmt.Errorf("insert field: %w", err)
 	}
 	id, err := result.LastInsertId()

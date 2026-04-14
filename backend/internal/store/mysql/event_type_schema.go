@@ -9,6 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
+	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // EventTypeSchemaStore event_type_schema 表操作
@@ -30,6 +31,9 @@ func (s *EventTypeSchemaStore) Create(ctx context.Context, req *model.CreateEven
 		req.FieldName, req.FieldLabel, req.FieldType, req.Constraints, req.DefaultValue, req.SortOrder, now, now,
 	)
 	if err != nil {
+		if util.Is1062(err) {
+			return 0, errcode.ErrDuplicate
+		}
 		return 0, fmt.Errorf("insert event_type_schema: %w", err)
 	}
 	id, err := result.LastInsertId()
