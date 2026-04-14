@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -160,6 +161,9 @@ func (s *FieldService) Create(ctx context.Context, req *model.CreateFieldRequest
 	// 写入
 	id, err := s.fieldStore.Create(ctx, req)
 	if err != nil {
+		if errors.Is(err, errcode.ErrDuplicate) {
+			return 0, errcode.Newf(errcode.ErrFieldNameExists, "字段标识 '%s' 已存在", req.Name)
+		}
 		slog.Error("service.创建字段失败", "error", err, "name", req.Name)
 		return 0, fmt.Errorf("create field: %w", err)
 	}
@@ -396,7 +400,11 @@ func (s *FieldService) Delete(ctx context.Context, id int64) (*model.DeleteResul
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			slog.Warn("service.字段删除事务回滚失败", "error", rbErr)
+		}
+	}()
 
 	hasRefs, err := s.fieldRefStore.HasRefsTx(ctx, tx, id)
 	if err != nil {
@@ -422,16 +430,16 @@ func (s *FieldService) Delete(ctx context.Context, id int64) (*model.DeleteResul
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit: %w", err)
-	}
-
-	// 清缓存
+	// 先清缓存再 Commit（消除 Commit 后清缓存窗口期的脏读风险）
 	s.fieldCache.DelDetail(ctx, id)
 	for _, affectedID := range affectedIDs {
 		s.fieldCache.DelDetail(ctx, affectedID)
 	}
 	s.fieldCache.InvalidateList(ctx)
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
 
 	slog.Info("service.删除字段成功", "id", id, "name", field.Name)
 	return &model.DeleteResult{ID: id, Name: field.Name, Label: field.Label}, nil
@@ -833,7 +841,11 @@ func (s *FieldService) syncFieldRefs(ctx context.Context, sourceFieldID int64, o
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			slog.Warn("service.字段引用同步事务回滚失败", "error", rbErr)
+		}
+	}()
 
 	for _, targetID := range toAdd {
 		if err := s.fieldRefStore.Add(ctx, tx, targetID, util.RefTypeField, sourceFieldID); err != nil {
