@@ -45,3 +45,9 @@ fsm_config:
   cache_detail_ttl: 10m
   cache_list_ttl: 5m
   cache_lock_ttl: 3s
+
+fsm_state_dict:
+  name_max_length: 64
+  display_name_max_length: 128
+  category_max_length: 64
+  description_max_length: 512

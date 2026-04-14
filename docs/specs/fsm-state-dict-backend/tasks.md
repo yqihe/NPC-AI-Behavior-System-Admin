@@ -3,7 +3,7 @@
 ## 状态
 
 - [x] T1: errcode + model
-- [ ] T2: config + migration
+- [x] T2: config + migration
 - [ ] T3: Redis cache（keys + cache）
 - [ ] T4: MySQL store（fsm_state_dict + fsm_config 新增方法）
 - [ ] T5: Service
