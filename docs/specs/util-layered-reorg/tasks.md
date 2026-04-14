@@ -206,7 +206,7 @@
 
 ---
 
-## T10：更新文档 CLAUDE.md + admin red-lines + admin dev-rules (R5)
+## T10：更新文档 CLAUDE.md + admin red-lines + admin dev-rules (R5) [x]
 
 **文件**（3）：
 - `CLAUDE.md`

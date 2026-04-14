@@ -29,6 +29,8 @@
 
 **层内文件夹**：每层文件夹下不允许子文件夹。通用函数放 `util/` 包（`store/redis/config/` 例外，是红线规定的 key 管理子包）。
 
+**util/ 分层**（红线 §11.7-§11.8）：`util/` 按架构层分 4 个文件——`handler.go`（ID/版本/必填/名称/标签校验、响应辅助）、`service.go`（分页、约束解析/校验）、`store.go`（SQL LIKE 转义）、`const.go`（跨层常量）。**业务规则禁止进 util/**，跨模块业务规则放 `service/` 根目录的 `*_check.go`（如 `service/constraint_check.go` 承载"约束只能放宽"规则）。
+
 ## 2. 引用系统通用模式
 
 ### 2.1 "对新隐藏、对旧保留"原则
@@ -43,7 +45,7 @@
 |---|---|
 | **新建页** | 选择池只展示 enabled=true 的配置 |
 | **已有配置编辑页** | 被引用的已禁用配置保留展示（标灰 + "已禁用" tag） |
-| **编辑保护** | 有引用时：类型不可改，约束只能放宽（`util.CheckConstraintTightened`） |
+| **编辑保护** | 有引用时：类型不可改，约束只能放宽（`service.CheckConstraintTightened`，同包直接调用） |
 | **删除保护** | 必须先禁用 → 检查引用关系表 → 有引用弹详情阻止 → 无引用才允许 |
 
 ### 2.2 引用追踪表
@@ -100,7 +102,9 @@ slog.Warn("service.获取锁失败，降级直查MySQL", ...)   // 降级场景
 | 维度 | 权威模式 |
 |---|---|
 | ID/Version/Required 校验 | `util.CheckID()` / `util.CheckVersion()` / `util.CheckRequired()` |
-| 标识符正则 | `util.IdentPattern` |
+| 名称格式校验 | `util.CheckName(name, maxLen, errCode, subject)` — subject 如"字段标识"/"模板标识" |
+| 标签格式校验 | `util.CheckLabel(label, maxLen, subject)` — 统一 `ErrBadRequest`，支持 UTF-8 字符数 |
+| 标识符正则 | `util.IdentPattern`（通常不直接用，走 `util.CheckName`） |
 | slog Debug | 校验通过**之后**打印 |
 | Update 返回 | `*string` → `util.SuccessMsg("保存成功")` |
 | Delete 返回 | `*model.DeleteResult{ID, Name, Label}` |
@@ -185,12 +189,15 @@ if err := s.validatePropertiesConstraints(req.Type, req.Properties); err != nil 
 
 ## 7c. check-name 接口前置校验模式
 
-所有 check-name 接口必须先跑 handler 内部 `checkName()`（空/正则/长度），再查 DB：
+所有 check-name 接口必须先跑 `util.CheckName()`（空/正则/长度），再查 DB：
 
 ```go
 func (h *XxxHandler) CheckName(ctx, req) (*CheckNameResult, error) {
-    if err := h.checkName(req.Name); err != nil { return nil, err }  // 格式校验
-    return h.xxxService.CheckName(ctx, req.Name)                      // 查存在性
+    if err := util.CheckName(req.Name, h.cfg.NameMaxLength,
+        errcode.ErrXxxNameInvalid, "XX标识"); err != nil {
+        return nil, err                             // 格式校验
+    }
+    return h.xxxService.CheckName(ctx, req.Name)    // 查存在性
 }
 ```
 
