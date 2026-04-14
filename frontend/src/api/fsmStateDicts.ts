@@ -19,6 +19,7 @@ export interface FsmStateDictListItem {
   name: string
   display_name: string
   category: string
+  category_label: string
   enabled: boolean
   created_at: string
 }

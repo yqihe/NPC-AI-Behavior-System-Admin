@@ -26,12 +26,13 @@ type FsmStateDict struct {
 
 // FsmStateDictListItem 列表页展示项
 type FsmStateDictListItem struct {
-	ID          int64     `json:"id" db:"id"`
-	Name        string    `json:"name" db:"name"`
-	DisplayName string    `json:"display_name" db:"display_name"`
-	Category    string    `json:"category" db:"category"`
-	Enabled     bool      `json:"enabled" db:"enabled"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+	ID            int64     `json:"id" db:"id"`
+	Name          string    `json:"name" db:"name"`
+	DisplayName   string    `json:"display_name" db:"display_name"`
+	Category      string    `json:"category" db:"category"`
+	CategoryLabel string    `json:"category_label" db:"-"` // service 层翻译
+	Enabled       bool      `json:"enabled" db:"enabled"`
+	CreatedAt     time.Time `json:"created_at" db:"created_at"`
 }
 
 // FsmStateDictListData 列表缓存数据（类型安全，避免 any 反序列化丢类型）

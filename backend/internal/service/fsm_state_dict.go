@@ -7,35 +7,40 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/yqihe/npc-ai-admin/backend/internal/cache"
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
 	storeredis "github.com/yqihe/npc-ai-admin/backend/internal/store/redis"
 	rcfg "github.com/yqihe/npc-ai-admin/backend/internal/store/redis/shared"
+	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // FsmStateDictService 状态字典业务逻辑
 type FsmStateDictService struct {
-	store         *storemysql.FsmStateDictStore
+	store          *storemysql.FsmStateDictStore
 	fsmConfigStore *storemysql.FsmConfigStore
-	cache         *storeredis.FsmStateDictCache
-	pagCfg        *config.PaginationConfig
-	dictCfg       *config.FsmStateDictConfig
+	cache          *storeredis.FsmStateDictCache
+	dictCache      *cache.DictCache
+	pagCfg         *config.PaginationConfig
+	dictCfg        *config.FsmStateDictConfig
 }
 
 // NewFsmStateDictService 创建 FsmStateDictService
 func NewFsmStateDictService(
 	store *storemysql.FsmStateDictStore,
 	fsmConfigStore *storemysql.FsmConfigStore,
-	cache *storeredis.FsmStateDictCache,
+	redisCache *storeredis.FsmStateDictCache,
+	dictCache *cache.DictCache,
 	pagCfg *config.PaginationConfig,
 	dictCfg *config.FsmStateDictConfig,
 ) *FsmStateDictService {
 	return &FsmStateDictService{
 		store:          store,
 		fsmConfigStore: fsmConfigStore,
-		cache:          cache,
+		cache:          redisCache,
+		dictCache:      dictCache,
 		pagCfg:         pagCfg,
 		dictCfg:        dictCfg,
 	}
@@ -70,6 +75,11 @@ func (s *FsmStateDictService) List(ctx context.Context, q *model.FsmStateDictLis
 	items, total, err := s.store.List(ctx, q)
 	if err != nil {
 		return nil, err
+	}
+
+	// 翻译分类标签
+	for i := range items {
+		items[i].CategoryLabel = s.dictCache.GetLabel(util.DictGroupFsmStateCategory, items[i].Category)
 	}
 
 	// 写缓存

@@ -62,7 +62,11 @@
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="name" label="状态标识" min-width="160" />
         <el-table-column prop="display_name" label="中文标签" min-width="140" />
-        <el-table-column prop="category" label="状态分类" width="120" />
+        <el-table-column label="状态分类" width="120">
+          <template #default="{ row }">
+            {{ row.category_label || row.category }}
+          </template>
+        </el-table-column>
         <el-table-column label="启用" width="80" align="center">
           <template #default="{ row }">
             <el-switch

@@ -23,6 +23,6 @@ func NewServices(st *Stores, rc *Caches, mc *MemCaches, cfg *config.Config) *Ser
 		EventType:       service.NewEventTypeService(st.EventType, st.SchemaRef, rc.EventType, mc.EventTypeSchema, &cfg.Pagination, &cfg.EventType),
 		EventTypeSchema: service.NewEventTypeSchemaService(st.EventTypeSchema, st.SchemaRef, mc.EventTypeSchema, &cfg.EventTypeSchema),
 		FsmConfig:       service.NewFsmConfigService(st.FsmConfig, rc.FsmConfig, &cfg.Pagination, &cfg.FsmConfig),
-		FsmStateDict:    service.NewFsmStateDictService(st.FsmStateDict, st.FsmConfig, rc.FsmStateDict, &cfg.Pagination, &cfg.FsmStateDict),
+		FsmStateDict:    service.NewFsmStateDictService(st.FsmStateDict, st.FsmConfig, rc.FsmStateDict, mc.Dict, &cfg.Pagination, &cfg.FsmStateDict),
 	}
 }
