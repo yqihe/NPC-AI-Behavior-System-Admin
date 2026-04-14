@@ -107,6 +107,30 @@ const router = createRouter({
       meta: { title: '编辑扩展字段', isCreate: false },
     },
     {
+      path: '/fsm-state-dicts',
+      name: 'fsm-state-dict-list',
+      component: () => import('@/views/FsmStateDictList.vue'),
+      meta: { title: '状态字典' },
+    },
+    {
+      path: '/fsm-state-dicts/create',
+      name: 'fsm-state-dict-create',
+      component: () => import('@/views/FsmStateDictForm.vue'),
+      meta: { title: '新建状态', isCreate: true },
+    },
+    {
+      path: '/fsm-state-dicts/:id/view',
+      name: 'fsm-state-dict-view',
+      component: () => import('@/views/FsmStateDictForm.vue'),
+      meta: { title: '查看状态', isCreate: false, isView: true },
+    },
+    {
+      path: '/fsm-state-dicts/:id/edit',
+      name: 'fsm-state-dict-edit',
+      component: () => import('@/views/FsmStateDictForm.vue'),
+      meta: { title: '编辑状态', isCreate: false },
+    },
+    {
       path: '/:pathMatch(.*)*',
       name: 'not-found',
       component: () => import('@/views/NotFound.vue'),
