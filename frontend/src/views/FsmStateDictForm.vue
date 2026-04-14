@@ -338,15 +338,16 @@ function formatTime(str: string) {
 .form-scroll {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
-  background: #F5F7FA;
+  padding: 24px 32px;
 }
 
 .form-card {
+  max-width: 800px;
+  margin: 0 auto 16px;
   background: #fff;
+  border: 1px solid #E4E7ED;
   border-radius: 8px;
-  padding: 24px;
-  margin-bottom: 16px;
+  padding: 32px;
 }
 
 .card-title {
