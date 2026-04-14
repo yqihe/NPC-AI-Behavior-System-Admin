@@ -61,6 +61,21 @@ ref_type 常量定义在 `util/const.go`。
 
 `Field.HasRefs` / `EventTypeSchema.HasRefs` 是运行时实时查 `xxx_refs` 表的 bool 字段（`db:"-"`），**不进缓存**——引用关系随其他模块操作变化。
 
+### 2.4 前端落地规范
+
+前端对齐引用系统的统一做法：
+
+| 场景 | 权威做法 |
+|---|---|
+| **列表展示** | 不显示"被引用数"列（避免数字频繁查询）。引用信息在删除时才查 |
+| **删除流程** | 已禁用 → 先调 `{entity}Api.references(id)` → 有引用弹详情弹窗阻止 → 无引用 ElMessageBox 确认 → delete API；后端 `REF_DELETE` 错误码做兜底重新拉引用 |
+| **引用详情弹窗** | 按 ref_type 分区展示（模板/字段/FSM 三块），每块 `<el-table>` + 空态 `<p class="ref-empty">暂无 XX 引用</p>` |
+| **表单锁定驱动** | 用后端返回的 `has_refs: boolean` 驱动 UI（不用数字），如 `:disabled="isView \|\| (!isCreate && hasRefs)"` |
+| **reference 子字段过滤** | 新建模式过滤停用子字段（`filterDisabled=true`），编辑/查看保留停用（标灰 + "已停用" tag）。通过父组件 `mode` prop 传 `isCreateMode` 控制 |
+| **存量标灰** | 模板已选字段/事件类型扩展字段中，若后端返回 `enabled=false`，整行 opacity 0.55 + "已禁用" tag + 控件 disabled |
+
+**EnabledGuardDialog 职责**：只展示"已禁用"一个前置条件，不塞业务特有的引用检查（引用检查在调用方的 handleDelete 里做）。
+
 ## 3. 需求处理流程
 
 任何新需求必须先走 `/spec-create` 规划（requirements → design → tasks），不允许直接写代码。协作方请求也要先回复确认再走正式流程。

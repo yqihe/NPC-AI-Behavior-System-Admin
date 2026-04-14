@@ -19,6 +19,11 @@
 4. 禁止取消字段 `expose_bb` 时不检查 FSM BB Key 引用
 5. 禁止用冗余计数器（ref_count）替代关系表（field_refs/schema_refs）做引用追踪——引用关系的权威数据源是关系表
 6. 禁止编辑被引用配置时随意修改类型或收紧约束（类型不可改，约束只能放宽）
+7. 禁止前端列表页显示"被引用数"列（数字展示诱导轮询查询，引用只在删除时才查）
+8. 禁止前端删除流程跳过 references API 预检查直接调 delete（会弹出确认后再被拒绝，体验差）
+9. 禁止前端用 `ref_count` 数字驱动 UI 锁定，必须用后端返回的 `has_refs: boolean`
+10. 禁止 reference 子字段选择器在新建模式展示停用子字段（必须按 mode prop 过滤）
+11. 禁止 `EnabledGuardDialog` 组件中塞业务特有的引用检查（该组件只做"已禁用"一个前置条件，引用检查由调用方的 handleDelete 执行）
 
 ## 3. 禁止绕过 REST API
 
