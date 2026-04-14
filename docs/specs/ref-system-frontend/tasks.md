@@ -114,7 +114,7 @@
 
 ---
 
-## T9: EventTypeSchemaList 删除引用检查 (R18)
+## [x] T9: EventTypeSchemaList 删除引用检查 (R18)
 
 **文件**：
 - `frontend/src/views/EventTypeSchemaList.vue`
@@ -126,7 +126,7 @@
 
 ---
 
-## T10: 构建验证 (R19, R20)
+## [x] T10: 构建验证 (R19, R20)
 
 **文件**：无新文件
 

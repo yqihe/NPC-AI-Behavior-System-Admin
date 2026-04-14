@@ -105,6 +105,31 @@
 
     <!-- 启用守卫弹窗 -->
     <EnabledGuardDialog ref="guardRef" @refresh="fetchList" />
+
+    <!-- 引用详情弹窗 -->
+    <el-dialog
+      v-model="refDialog.visible"
+      :title="`引用详情 — ${refDialog.fieldLabel}`"
+      width="500px"
+      @close="resetRefDialog"
+    >
+      <div v-loading="refDialog.loading">
+        <div class="ref-section">
+          <p class="ref-subtitle">
+            事件类型引用（{{ refDialog.eventTypes.length }} 个事件类型使用了该扩展字段）：
+          </p>
+          <el-table
+            v-if="refDialog.eventTypes.length > 0"
+            :data="refDialog.eventTypes"
+            size="small"
+          >
+            <el-table-column prop="label" label="事件类型名称" />
+            <el-table-column prop="ref_type" label="类型" width="120" />
+          </el-table>
+          <p v-else class="ref-empty">暂无事件类型引用</p>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -115,7 +140,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
 import EnabledGuardDialog from '@/components/EnabledGuardDialog.vue'
 import { eventTypeApi, EXT_SCHEMA_ERR } from '@/api/eventTypes'
-import type { EventTypeSchemaFull, ExtSchemaListQuery } from '@/api/eventTypes'
+import type { EventTypeSchemaFull, ExtSchemaListQuery, SchemaReferenceItem } from '@/api/eventTypes'
 import type { BizError } from '@/api/request'
 
 const router = useRouter()
@@ -130,6 +155,19 @@ const sortMode = ref<SortMode>('id_desc')
 const query = reactive<ExtSchemaListQuery>({
   enabled: undefined,
 })
+
+const refDialog = reactive({
+  visible: false,
+  loading: false,
+  fieldLabel: '',
+  eventTypes: [] as SchemaReferenceItem[],
+})
+
+function resetRefDialog() {
+  refDialog.loading = false
+  refDialog.fieldLabel = ''
+  refDialog.eventTypes = []
+}
 
 // ---------- 数据加载 ----------
 
@@ -235,6 +273,20 @@ async function handleDelete(row: EventTypeSchemaFull) {
     })
     return
   }
+  // 已禁用：先查引用，有引用弹详情阻止，无引用确认删除
+  try {
+    const res = await eventTypeApi.schemaReferences(row.id)
+    const ets = res.data?.event_types || []
+    if (ets.length > 0) {
+      showRefDialog(row, ets)
+      ElMessage.warning(`该扩展字段被 ${ets.length} 个事件类型使用，无法删除。请先移除引用关系。`)
+      return
+    }
+  } catch {
+    // references 失败拦截器已 toast；为安全起见不继续删除
+    return
+  }
+  // 无引用：确认删除
   try {
     await ElMessageBox.confirm(
       `确认删除扩展字段「${row.field_label}」（${row.field_name}）？删除后无法恢复。`,
@@ -246,10 +298,39 @@ async function handleDelete(row: EventTypeSchemaFull) {
     fetchList()
   } catch (err: unknown) {
     if (err === 'cancel') return
-    if ((err as BizError).code === EXT_SCHEMA_ERR.DELETE_NOT_DISABLED) {
+    const code = (err as BizError).code
+    if (code === EXT_SCHEMA_ERR.DELETE_NOT_DISABLED) {
       ElMessage.warning('请先禁用该扩展字段后再删除')
+      return
+    }
+    if (code === EXT_SCHEMA_ERR.REF_DELETE) {
+      // 后端兜底：重新拉引用详情展示
+      await loadAndShowRefs(row)
+      return
     }
     // 其他错误拦截器已 toast
+  }
+}
+
+function showRefDialog(row: EventTypeSchemaFull, eventTypes: SchemaReferenceItem[]) {
+  refDialog.visible = true
+  refDialog.loading = false
+  refDialog.fieldLabel = row.field_label
+  refDialog.eventTypes = eventTypes
+}
+
+async function loadAndShowRefs(row: EventTypeSchemaFull) {
+  refDialog.visible = true
+  refDialog.loading = true
+  refDialog.fieldLabel = row.field_label
+  refDialog.eventTypes = []
+  try {
+    const res = await eventTypeApi.schemaReferences(row.id)
+    refDialog.eventTypes = res.data?.event_types || []
+  } catch {
+    // 拦截器已 toast
+  } finally {
+    refDialog.loading = false
   }
 }
 
@@ -345,5 +426,21 @@ function formatTime(str: string) {
 
 :deep(.row-disabled td:not(:nth-last-child(-n+3))) {
   opacity: 0.5;
+}
+
+.ref-section {
+  margin-bottom: 8px;
+}
+
+.ref-subtitle {
+  font-size: 13px;
+  color: #909399;
+  margin: 0 0 8px 0;
+}
+
+.ref-empty {
+  font-size: 13px;
+  color: #C0C4CC;
+  margin: 4px 0;
 }
 </style>
