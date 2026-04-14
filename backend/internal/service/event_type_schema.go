@@ -86,7 +86,7 @@ func (s *EventTypeSchemaService) Create(ctx context.Context, req *model.CreateEv
 	}
 
 	// constraints 自洽校验
-	if e := util.ValidateConstraintsSelf(req.FieldType, req.Constraints); e != nil {
+	if e := util.ValidateConstraintsSelf(req.FieldType, req.Constraints, errcode.ErrExtSchemaConstraintsInvalid); e != nil {
 		return 0, e
 	}
 
@@ -142,7 +142,7 @@ func (s *EventTypeSchemaService) Update(ctx context.Context, req *model.UpdateEv
 		}
 	}
 
-	if e := util.ValidateConstraintsSelf(ets.FieldType, req.Constraints); e != nil {
+	if e := util.ValidateConstraintsSelf(ets.FieldType, req.Constraints, errcode.ErrExtSchemaConstraintsInvalid); e != nil {
 		return e
 	}
 

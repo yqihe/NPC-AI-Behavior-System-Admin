@@ -55,6 +55,22 @@ func (s *FieldService) checkCategoryExists(category string) *errcode.Error {
 	return s.checkDictExists(util.DictGroupFieldCategory, category, errcode.ErrFieldCategoryNotFound, "标签分类")
 }
 
+// validatePropertiesConstraints 校验字段 properties 中 constraints 的自洽性
+// reference 类型的 refs 校验由 validateReferenceRefs 单独处理，此处跳过
+func (s *FieldService) validatePropertiesConstraints(fieldType string, properties json.RawMessage) *errcode.Error {
+	if fieldType == util.FieldTypeReference {
+		return nil
+	}
+	props, err := parseProperties(properties)
+	if err != nil || props == nil {
+		return nil
+	}
+	if len(props.Constraints) == 0 {
+		return nil
+	}
+	return util.ValidateConstraintsSelf(fieldType, props.Constraints, errcode.ErrBadRequest)
+}
+
 // getFieldOrNotFound 按 ID 查字段 + 判空
 func (s *FieldService) getFieldOrNotFound(ctx context.Context, id int64) (*model.Field, error) {
 	field, err := s.fieldStore.GetByID(ctx, id)
@@ -110,6 +126,11 @@ func (s *FieldService) Create(ctx context.Context, req *model.CreateFieldRequest
 		return 0, err
 	}
 	if err := s.checkCategoryExists(req.Category); err != nil {
+		return 0, err
+	}
+
+	// 业务校验：constraints 自洽（min<=max, precision>0, select options 非空/不重复 等）
+	if err := s.validatePropertiesConstraints(req.Type, req.Properties); err != nil {
 		return 0, err
 	}
 
@@ -222,6 +243,11 @@ func (s *FieldService) Update(ctx context.Context, req *model.UpdateFieldRequest
 		return err
 	}
 	if err := s.checkCategoryExists(req.Category); err != nil {
+		return err
+	}
+
+	// 业务校验：constraints 自洽
+	if err := s.validatePropertiesConstraints(req.Type, req.Properties); err != nil {
 		return err
 	}
 

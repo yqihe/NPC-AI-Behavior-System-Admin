@@ -193,64 +193,94 @@ func validateSelect(cm map[string]json.RawMessage, value json.RawMessage) *errco
 // ValidateConstraintsSelf 校验 constraints 内部是否自洽
 //
 // 例如 int 的 min <= max，select 的 minSelect <= maxSelect。
-// 使用方：Schema 管理页创建/编辑扩展字段定义时调用。
-func ValidateConstraintsSelf(fieldType string, constraints json.RawMessage) *errcode.Error {
+// errCode 由调用方传入（字段模块用 40000，扩展字段模块用 42025）。
+func ValidateConstraintsSelf(fieldType string, constraints json.RawMessage, errCode int) *errcode.Error {
 	cm, err := ParseConstraintsMap(constraints)
 	if err != nil {
-		return errcode.Newf(errcode.ErrExtSchemaConstraintsInvalid, "约束 JSON 解析失败")
+		return errcode.Newf(errCode, "约束 JSON 解析失败")
 	}
 
 	switch fieldType {
 	case "int", "integer":
-		return selfCheckMinMax(cm)
+		return selfCheckMinMax(cm, errCode)
 	case "float":
-		if e := selfCheckMinMax(cm); e != nil {
+		if e := selfCheckMinMax(cm, errCode); e != nil {
 			return e
 		}
-		if prec, ok := GetFloat(cm["precision"]); ok && prec < 0 {
-			return errcode.Newf(errcode.ErrExtSchemaConstraintsInvalid, "precision 不能为负数")
+		if prec, ok := GetFloat(cm["precision"]); ok && prec <= 0 {
+			return errcode.Newf(errCode, "precision 必须大于 0")
 		}
 		return nil
 	case "string":
-		return selfCheckLengthRange(cm)
-	case "bool":
+		return selfCheckLengthRange(cm, errCode)
+	case "bool", "boolean":
 		return nil
 	case "select":
-		return selfCheckSelect(cm)
+		return selfCheckSelect(cm, errCode)
+	case "reference":
+		// reference 字段的约束由专用逻辑校验（refs 非空、目标存在、非嵌套）
+		return nil
 	default:
-		return errcode.Newf(errcode.ErrExtSchemaConstraintsInvalid, "不支持的字段类型: %s", fieldType)
+		return errcode.Newf(errCode, "不支持的字段类型: %s", fieldType)
 	}
 }
 
-func selfCheckMinMax(cm map[string]json.RawMessage) *errcode.Error {
+func selfCheckMinMax(cm map[string]json.RawMessage, errCode int) *errcode.Error {
 	min, hasMin := GetFloat(cm["min"])
 	max, hasMax := GetFloat(cm["max"])
 	if hasMin && hasMax && min > max {
-		return errcode.Newf(errcode.ErrExtSchemaConstraintsInvalid, "min (%v) 不能大于 max (%v)", min, max)
+		return errcode.Newf(errCode, "min (%v) 不能大于 max (%v)", min, max)
 	}
 	return nil
 }
 
-func selfCheckLengthRange(cm map[string]json.RawMessage) *errcode.Error {
+func selfCheckLengthRange(cm map[string]json.RawMessage, errCode int) *errcode.Error {
 	minLen, hasMin := GetFloat(cm["minLength"])
 	maxLen, hasMax := GetFloat(cm["maxLength"])
 	if hasMin && hasMax && minLen > maxLen {
-		return errcode.Newf(errcode.ErrExtSchemaConstraintsInvalid, "minLength (%v) 不能大于 maxLength (%v)", minLen, maxLen)
+		return errcode.Newf(errCode, "minLength (%v) 不能大于 maxLength (%v)", minLen, maxLen)
 	}
 	if hasMin && minLen < 0 {
-		return errcode.Newf(errcode.ErrExtSchemaConstraintsInvalid, "minLength 不能为负数")
+		return errcode.Newf(errCode, "minLength 不能为负数")
+	}
+	if hasMax && maxLen < 0 {
+		return errcode.Newf(errCode, "maxLength 不能为负数")
 	}
 	return nil
 }
 
-func selfCheckSelect(cm map[string]json.RawMessage) *errcode.Error {
+func selfCheckSelect(cm map[string]json.RawMessage, errCode int) *errcode.Error {
+	// 校验 options：必须存在且非空，且 value 不重复
+	if rawOpts, ok := cm["options"]; ok && len(rawOpts) > 0 {
+		var options []struct {
+			Value json.RawMessage `json:"value"`
+		}
+		if err := json.Unmarshal(rawOpts, &options); err != nil {
+			return errcode.Newf(errCode, "options 解析失败")
+		}
+		if len(options) == 0 {
+			return errcode.Newf(errCode, "select 字段 options 不能为空")
+		}
+		seen := make(map[string]bool, len(options))
+		for _, o := range options {
+			key := string(o.Value)
+			if key == "" {
+				return errcode.Newf(errCode, "select option.value 不能为空")
+			}
+			if seen[key] {
+				return errcode.Newf(errCode, "select options 存在重复 value: %s", key)
+			}
+			seen[key] = true
+		}
+	}
+
 	minSel, hasMin := GetFloat(cm["minSelect"])
 	maxSel, hasMax := GetFloat(cm["maxSelect"])
 	if hasMin && hasMax && minSel > maxSel {
-		return errcode.Newf(errcode.ErrExtSchemaConstraintsInvalid, "minSelect (%v) 不能大于 maxSelect (%v)", minSel, maxSel)
+		return errcode.Newf(errCode, "minSelect (%v) 不能大于 maxSelect (%v)", minSel, maxSel)
 	}
 	if hasMin && minSel < 0 {
-		return errcode.Newf(errcode.ErrExtSchemaConstraintsInvalid, "minSelect 不能为负数")
+		return errcode.Newf(errCode, "minSelect 不能为负数")
 	}
 	return nil
 }

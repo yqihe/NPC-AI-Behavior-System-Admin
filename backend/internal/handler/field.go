@@ -167,9 +167,9 @@ func (h *FieldHandler) Delete(ctx context.Context, req *model.IDRequest) (*model
 	return h.fieldService.Delete(ctx, req.ID)
 }
 
-// CheckName 字段标识唯一性校验
+// CheckName 字段标识唯一性校验（先校验格式/长度，再查 DB）
 func (h *FieldHandler) CheckName(ctx context.Context, req *model.CheckNameRequest) (*model.CheckNameResult, error) {
-	if err := util.CheckRequired(req.Name, "字段标识"); err != nil {
+	if err := h.checkName(req.Name); err != nil {
 		return nil, err
 	}
 

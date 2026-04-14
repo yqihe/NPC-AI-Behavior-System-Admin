@@ -10,6 +10,23 @@ import (
 
 // Setup 注册所有路由
 func Setup(r *gin.Engine, h *setup.Handlers) {
+	// 统一 404/405 响应格式为 JSON {code, message, data}
+	r.HandleMethodNotAllowed = true
+	r.NoRoute(func(c *gin.Context) {
+		c.JSON(http.StatusNotFound, gin.H{
+			"code":    40000,
+			"message": "请求的资源不存在",
+			"data":    nil,
+		})
+	})
+	r.NoMethod(func(c *gin.Context) {
+		c.JSON(http.StatusMethodNotAllowed, gin.H{
+			"code":    40000,
+			"message": "不支持的 HTTP 方法",
+			"data":    nil,
+		})
+	})
+
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
