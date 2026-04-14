@@ -11,6 +11,7 @@ export interface ApiResponse<T = unknown> {
 /** 携带 code 的业务错误 */
 export interface BizError extends Error {
   code: number
+  data?: unknown
 }
 
 const request = axios.create({
@@ -26,6 +27,7 @@ request.interceptors.response.use(
       ElMessage.error(message || '操作失败')
       const err = new Error(message) as BizError
       err.code = code
+      err.data = (response.data as ApiResponse).data
       return Promise.reject(err)
     }
     return response.data

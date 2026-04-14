@@ -217,8 +217,8 @@ func seedFsmStateDicts(ctx context.Context, db *sqlx.DB) error {
 	}
 
 	const insertSQL = `
-INSERT IGNORE INTO fsm_state_dicts (name, display_name, category, description, enabled, version, deleted)
-VALUES (?, ?, ?, ?, 1, 1, 0)`
+INSERT IGNORE INTO fsm_state_dicts (name, display_name, category, description, enabled, version, deleted, created_at, updated_at)
+VALUES (?, ?, ?, ?, 1, 1, 0, NOW(), NOW())`
 
 	skipped := 0
 	inserted := 0

@@ -61,10 +61,11 @@ import {
 import { fieldApi, FIELD_ERR } from '@/api/fields'
 import { templateApi, TEMPLATE_ERR } from '@/api/templates'
 import { eventTypeApi, EVENT_TYPE_ERR, EXT_SCHEMA_ERR } from '@/api/eventTypes'
+import { fsmStateDictApi, FSM_STATE_DICT_ERR } from '@/api/fsmStateDicts'
 import type { BizError } from '@/api/request'
 
 type GuardAction = 'edit' | 'delete'
-type EntityType = 'field' | 'template' | 'event-type' | 'event-type-schema'
+type EntityType = 'field' | 'template' | 'event-type' | 'event-type-schema' | 'fsm-state-dict'
 
 interface GuardEntity {
   id: number
@@ -83,6 +84,7 @@ const entityTypeLabel = computed(() => {
   if (entityType.value === 'field') return '字段'
   if (entityType.value === 'event-type') return '事件类型'
   if (entityType.value === 'event-type-schema') return '扩展字段'
+  if (entityType.value === 'fsm-state-dict') return '状态字典'
   return '模板'
 })
 
@@ -154,6 +156,9 @@ async function onActOnce() {
         return
       }
       await eventTypeApi.schemaToggleEnabled(id, false, target.version)
+    } else if (entityType.value === 'fsm-state-dict') {
+      const detail = await fsmStateDictApi.detail(id)
+      await fsmStateDictApi.toggleEnabled(id, false, detail.data.version)
     } else {
       const detail = await templateApi.detail(id)
       await templateApi.toggleEnabled(id, false, detail.data.version)
@@ -169,6 +174,8 @@ async function onActOnce() {
         path = `/event-types/${id}/edit`
       } else if (entityType.value === 'event-type-schema') {
         path = `/event-type-schemas/${id}/edit`
+      } else if (entityType.value === 'fsm-state-dict') {
+        path = `/fsm-state-dicts/${id}/edit`
       } else {
         path = `/templates/${id}/edit`
       }
@@ -187,6 +194,8 @@ async function onActOnce() {
       conflictCode = EVENT_TYPE_ERR.VERSION_CONFLICT
     } else if (entityType.value === 'event-type-schema') {
       conflictCode = EXT_SCHEMA_ERR.VERSION_CONFLICT
+    } else if (entityType.value === 'fsm-state-dict') {
+      conflictCode = FSM_STATE_DICT_ERR.VERSION_CONFLICT
     } else {
       conflictCode = TEMPLATE_ERR.VERSION_CONFLICT
     }

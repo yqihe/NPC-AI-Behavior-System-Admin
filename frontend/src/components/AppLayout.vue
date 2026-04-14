@@ -41,6 +41,16 @@
             <span>扩展字段</span>
           </el-menu-item>
         </el-sub-menu>
+        <el-sub-menu index="group-fsm">
+          <template #title>
+            <el-icon class="group-icon"><Cpu /></el-icon>
+            <span class="group-title">状态机管理</span>
+          </template>
+          <el-menu-item index="/fsm-state-dicts">
+            <el-icon><Collection /></el-icon>
+            <span>状态字典</span>
+          </el-menu-item>
+        </el-sub-menu>
       </el-menu>
     </el-aside>
     <el-main style="padding: 0; background: #F5F7FA; overflow: hidden">
@@ -52,7 +62,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { List, Files, Lightning, Tickets, User } from '@element-plus/icons-vue'
+import { List, Files, Lightning, Tickets, User, Cpu, Collection } from '@element-plus/icons-vue'
 
 const route = useRoute()
 
@@ -63,7 +73,7 @@ const activeMenu = computed(() => {
 })
 
 // 哪些分组默认展开（所有一级分组 index）
-const defaultOpeneds = ['group-npc', 'group-event']
+const defaultOpeneds = ['group-npc', 'group-event', 'group-fsm']
 </script>
 
 <style scoped>
