@@ -34,18 +34,6 @@
           <el-icon><CircleCloseFilled /></el-icon>
           <span>{{ entityTypeLabel }}已禁用</span>
         </div>
-        <div
-          class="guard-cond"
-          :class="refCountPass ? 'guard-cond-pass' : 'guard-cond-fail'"
-        >
-          <el-icon>
-            <CircleCheckFilled v-if="refCountPass" />
-            <CircleCloseFilled v-else />
-          </el-icon>
-          <span>
-            没有{{ refTargetLabel }}在使用该{{ entityTypeLabel }}（当前被引用：{{ entity?.ref_count ?? 0 }}）
-          </span>
-        </div>
       </div>
     </div>
 
@@ -67,7 +55,6 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   WarningFilled,
-  CircleCheckFilled,
   CircleCloseFilled,
   SwitchButton,
 } from '@element-plus/icons-vue'
@@ -83,7 +70,6 @@ interface GuardEntity {
   id: number
   name: string
   label: string
-  ref_count: number
 }
 
 const router = useRouter()
@@ -99,16 +85,6 @@ const entityTypeLabel = computed(() => {
   if (entityType.value === 'event-type-schema') return '扩展字段'
   return '模板'
 })
-
-// 删除前置条件中「没有 X 在使用」这个 X 的文案
-const refTargetLabel = computed(() => {
-  if (entityType.value === 'field') return '模板或字段'
-  if (entityType.value === 'event-type') return 'FSM 或 BT'
-  if (entityType.value === 'event-type-schema') return '事件类型'
-  return 'NPC'
-})
-
-const refCountPass = computed(() => (entity.value?.ref_count ?? 0) === 0)
 
 const title = computed(() =>
   action.value === 'edit'

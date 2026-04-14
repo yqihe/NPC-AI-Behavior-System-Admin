@@ -68,6 +68,7 @@ export interface ReferenceDetail {
   field_label: string
   templates: ReferenceItem[]
   fields: ReferenceItem[]
+  fsms: ReferenceItem[]
 }
 
 export interface CheckNameResult {

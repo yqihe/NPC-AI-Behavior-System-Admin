@@ -13,28 +13,10 @@
       <span v-if="isEdit && template" class="header-sub">
         {{ template.label }}
       </span>
-      <el-tag
-        v-if="isLocked && template"
-        type="warning"
-        effect="dark"
-        style="margin-left: 12px"
-      >
-        被 {{ template.ref_count }} 个 NPC 引用
-      </el-tag>
     </div>
 
     <!-- 主体 -->
     <div class="form-body" v-loading="loading">
-      <el-alert
-        v-if="isLocked"
-        class="locked-alert"
-        type="warning"
-        :closable="false"
-        show-icon
-      >
-        该模板已被 {{ template!.ref_count }} 个 NPC 引用，字段勾选与必填配置不可修改（仅中文标签与描述可改）
-      </el-alert>
-
       <!-- 卡片一：基本信息 -->
       <div class="form-card">
         <div class="card-title">基本信息</div>
@@ -111,9 +93,6 @@
       <div class="form-card">
         <div class="card-title">
           字段选择
-          <el-tag v-if="isLocked" type="warning" size="small" style="margin-left: 8px">
-            🔒 已锁定
-          </el-tag>
           <span class="card-hint">
             点击字段 cell 切换勾选；紫色边框为 reference 字段，点击弹出子字段选择
           </span>
@@ -121,7 +100,7 @@
         <TemplateFieldPicker
           v-model:selectedIds="selectedIds"
           :field-pool="fieldPool"
-          :disabled="isView || isLocked"
+          :disabled="isView"
         />
       </div>
 
@@ -129,14 +108,11 @@
       <div class="form-card">
         <div class="card-title">
           已选字段配置
-          <el-tag v-if="isLocked" type="warning" size="small" style="margin-left: 8px">
-            🔒 已锁定
-          </el-tag>
           <span class="card-hint">共 {{ selectedFieldsView.length }} 个字段</span>
         </div>
         <TemplateSelectedFields
           :selected-fields="selectedFieldsView"
-          :disabled="isView || isLocked"
+          :disabled="isView"
           @update:order="onOrderChange"
           @update:required="onRequiredChange"
         />
@@ -219,10 +195,6 @@ const rules: FormRules = {
 }
 
 // ---------- 派生状态 ----------
-
-const isLocked = computed(
-  () => isEdit.value && (template.value?.ref_count ?? 0) > 0,
-)
 
 /** 编辑模式优先从 template.fields 拿禁用字段元数据；create 模式全从 fieldPool 构造 */
 const selectedFieldsView = computed<TemplateFieldItem[]>(() => {

@@ -103,6 +103,7 @@ export interface EventTypeSchemaFull {
   default_value: unknown
   sort_order: number
   enabled: boolean
+  has_refs: boolean
   version: number
   created_at: string
   updated_at: string
@@ -144,9 +145,25 @@ export const EXT_SCHEMA_ERR = {
   CONSTRAINTS_INVALID: 42025,
   DEFAULT_INVALID:     42026,
   DELETE_NOT_DISABLED: 42027,
+  REF_TIGHTEN:         42028,
+  REF_DELETE:           42029,
   VERSION_CONFLICT:    42030,
   EDIT_NOT_DISABLED:   42031,
 } as const
+
+/** 扩展字段引用详情中的单条引用方 */
+export interface SchemaReferenceItem {
+  ref_type: string
+  ref_id: number
+  label: string
+}
+
+/** 扩展字段引用详情 */
+export interface SchemaReferenceDetail {
+  schema_id: number
+  field_label: string
+  event_types: SchemaReferenceItem[]
+}
 
 // ─── API 函数 ───
 
@@ -195,4 +212,8 @@ export const eventTypeApi = {
   /** 启用/禁用 Schema */
   schemaToggleEnabled: (id: number, enabled: boolean, version: number) =>
     request.post('/event-type-schema/toggle-enabled', { id, enabled, version }) as Promise<ApiResponse<string>>,
+
+  /** Schema 引用详情 */
+  schemaReferences: (id: number) =>
+    request.post('/event-type-schema/references', { id }) as Promise<ApiResponse<SchemaReferenceDetail>>,
 }

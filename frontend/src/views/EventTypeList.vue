@@ -229,7 +229,7 @@ function handleEdit(row: EventTypeListItem) {
     guardRef.value?.open({
       action: 'edit',
       entityType: 'event-type',  // T5 扩展后移除 as cast
-      entity: { id: row.id, name: row.name, label: row.display_name, ref_count: 0 },
+      entity: { id: row.id, name: row.name, label: row.display_name },
     })
     return
   }
@@ -241,7 +241,7 @@ async function handleDelete(row: EventTypeListItem) {
     guardRef.value?.open({
       action: 'delete',
       entityType: 'event-type',  // T5 扩展后移除 as cast
-      entity: { id: row.id, name: row.name, label: row.display_name, ref_count: 0 },
+      entity: { id: row.id, name: row.name, label: row.display_name },
     })
     return
   }

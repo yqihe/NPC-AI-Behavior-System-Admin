@@ -219,7 +219,7 @@ function handleEdit(row: EventTypeSchemaFull) {
     guardRef.value?.open({
       action: 'edit',
       entityType: 'event-type-schema',
-      entity: { id: row.id, name: row.field_name, label: row.field_label, ref_count: 0 },
+      entity: { id: row.id, name: row.field_name, label: row.field_label },
     })
     return
   }
@@ -231,7 +231,7 @@ async function handleDelete(row: EventTypeSchemaFull) {
     guardRef.value?.open({
       action: 'delete',
       entityType: 'event-type-schema',
-      entity: { id: row.id, name: row.field_name, label: row.field_label, ref_count: 0 },
+      entity: { id: row.id, name: row.field_name, label: row.field_label },
     })
     return
   }

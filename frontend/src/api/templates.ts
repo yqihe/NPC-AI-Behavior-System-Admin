@@ -17,7 +17,6 @@ export interface TemplateListItem {
   id: number
   name: string
   label: string
-  ref_count: number
   enabled: boolean
   created_at: string
 }
@@ -44,7 +43,6 @@ export interface TemplateDetail {
   description: string
   enabled: boolean
   version: number
-  ref_count: number
   created_at: string
   updated_at: string
   /** 顺序即 templates.fields JSON 数组顺序 */
