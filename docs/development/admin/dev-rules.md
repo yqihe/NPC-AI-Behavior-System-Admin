@@ -151,6 +151,50 @@ slog.Warn("service.获取锁失败，降级直查MySQL", ...)   // 降级场景
 - **空值**：`[]T` 必须 `make([]T, 0)` → `[]`，`map` 同理
 - **列表**：后端分页，返回 `{items, total, page, page_size}`
 - **响应**：`{code: 0, data, message: "OK"}`，错误码在 code 字段
+- **404/405**：router 注册 `NoRoute/NoMethod` 返回统一 JSON（`code=40000`），不让 Gin 默认纯文本兜底
+
+## 7b. 约束自洽校验（约束写入前的统一前置）
+
+字段/扩展字段的 Create/Update 都必须先做 constraints 自洽校验，**在类型存在性校验之后、在 DB 操作之前**：
+
+```go
+// service 层（字段模块示例）
+if err := s.checkTypeExists(req.Type); err != nil { return err }
+if err := s.checkCategoryExists(req.Category); err != nil { return err }
+if err := s.validatePropertiesConstraints(req.Type, req.Properties); err != nil { return err }
+// ↓ 后续：name 唯一性、reference refs 校验、写 DB...
+```
+
+`util.ValidateConstraintsSelf(fieldType, constraints, errCode)` 是唯一入口。errCode 按模块传：
+
+| 模块 | errCode |
+|---|---|
+| 字段模块 | `errcode.ErrBadRequest`（40000） |
+| 扩展字段模块 | `errcode.ErrExtSchemaConstraintsInvalid`（42025） |
+
+覆盖的校验项（全类型）：
+
+| 类型 | 检查 |
+|---|---|
+| int/integer | min ≤ max |
+| float | min ≤ max, precision > 0 |
+| string | minLength ≤ maxLength, 非负 |
+| bool/boolean | 无约束 |
+| select | options 非空, value 不重复, minSelect ≤ maxSelect, minSelect ≥ 0 |
+| reference | 不走此函数，走 `validateReferenceRefs`（refs 非空/目标启用/非嵌套/无循环） |
+
+## 7c. check-name 接口前置校验模式
+
+所有 check-name 接口必须先跑 handler 内部 `checkName()`（空/正则/长度），再查 DB：
+
+```go
+func (h *XxxHandler) CheckName(ctx, req) (*CheckNameResult, error) {
+    if err := h.checkName(req.Name); err != nil { return nil, err }  // 格式校验
+    return h.xxxService.CheckName(ctx, req.Name)                      // 查存在性
+}
+```
+
+**禁止**只做 `util.CheckRequired(req.Name)` 就进 service——会让 `BAD_FORMAT` 这类非法 name 返回"可用"假结果。
 
 ## 8. 测试脚本（Windows 环境）
 

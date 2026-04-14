@@ -137,8 +137,21 @@ CREATE TABLE IF NOT EXISTS field_refs (
 | create | name 非空 + `IdentPattern` 正则 + 长度上限；label 非空 + 长度上限；type 非空；category 非空；properties 必须是 JSON 对象 |
 | update | id > 0；label 非空 + 长度上限；type 非空；category 非空；properties 必须是 JSON 对象；version > 0 |
 | delete / detail / references | id > 0 |
-| check-name | name 非空 |
+| check-name | **走 `h.checkName()`：非空 + `IdentPattern` 正则 + 长度上限**（与 create 同规则，避免非法 name 被误判为"可用"） |
 | toggle-enabled | id > 0；version > 0 |
+
+**service 层统一前置校验**（在类型/分类存在性校验之后、任何 DB 写入之前）：
+
+```go
+// Create 和 Update 都走相同的 5 步校验链
+1. s.checkTypeExists(req.Type)            // 字典校验 → 40003
+2. s.checkCategoryExists(req.Category)    // 字典校验 → 40004
+3. s.validatePropertiesConstraints(...)   // constraints 自洽 → 40000
+4. reference 类型的 refs 校验            // 40013/40014/40016/40017/40009
+5. (Update 独有) 被引用时的类型/收紧保护  // 40006/40007
+```
+
+`validatePropertiesConstraints` 是 `util.ValidateConstraintsSelf` 的本模块包装，errCode 固定为 `errcode.ErrBadRequest`（40000）。
 
 ---
 

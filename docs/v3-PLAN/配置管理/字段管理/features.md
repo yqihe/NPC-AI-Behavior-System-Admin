@@ -1,6 +1,6 @@
 # 字段管理 — 功能清单
 
-> 权威参考文档，与代码一一对齐。最后同步：2026-04-13
+> 权威参考文档，与代码一一对齐。最后同步：2026-04-14
 
 ---
 
@@ -69,12 +69,17 @@
 ### 3.3 约束配置
 
 9. **按类型约束**：
-   - `integer` / `float`：`min` / `max`（float 额外支持 `precision`）
+   - `integer` / `float`：`min` / `max`（float 额外支持 `precision > 0`）
    - `string`：`minLength` / `maxLength` / `pattern`
    - `select`：`options`（选项数组） / `minSelect` / `maxSelect`
    - `reference`：`refs`（子字段 ID 列表）
-   - `bool`：无约束
-10. **约束自洽校验**：`util.ValidateConstraintsSelf` 检查约束内部一致性（如 min <= max）。
+   - `bool` / `boolean`：无约束
+10. **约束自洽校验**：Create 和 Update 均在写 DB **之前**调 `util.ValidateConstraintsSelf(type, constraints, errcode.ErrBadRequest)`，任一项违反即返回 40000。reference 类型的 refs 由 `validateReferenceRefs` 单独处理，不走此函数。覆盖的规则：
+    - `integer` / `float`：`min <= max`
+    - `float`：`precision > 0`（0 和负数都拒绝）
+    - `string`：`minLength <= maxLength`，`minLength >= 0`，`maxLength >= 0`
+    - `select`：`options` 非空，所有 `option.value` 不重复且非空字符串，`minSelect <= maxSelect`，`minSelect >= 0`
+    - `bool` / `boolean`：无任何约束
 
 ### 3.4 引用追踪与保护
 
@@ -235,7 +240,7 @@
 
 ### 5.6 POST /fields/check-name
 
-标识唯一性校验（含软删除记录）。
+标识唯一性校验（含软删除记录）。**先在 handler 层 `checkName()` 做格式/长度校验，再到 service 层查 DB**，确保非法 name（大写、空格、`BAD_FORMAT` 之类）直接返回 40002，不会被误判为"可用"。
 
 **请求**：`{ "name": "hp" }`
 
@@ -243,6 +248,8 @@
 ```json
 { "code": 0, "data": { "available": true, "message": "该标识可用" } }
 ```
+
+**错误码**：40002 标识格式不合法（空字符串、大写字母、超 64 字符、含特殊字符都命中）
 
 ### 5.7 POST /fields/toggle-enabled
 

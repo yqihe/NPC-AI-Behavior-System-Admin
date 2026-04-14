@@ -63,7 +63,7 @@
 - `default_value`：JSON 值，必须符合 constraints
 - `sort_order`：表单展示顺序
 
-校验流程：field_name 唯一性 → field_type 枚举校验 → 约束自洽校验（`util.ValidateConstraintsSelf`） → 默认值校验（`util.ValidateValue`） → 数量上限检查 → 写 MySQL → Reload 内存缓存。
+校验流程：field_name 唯一性 → field_type 枚举校验 → 约束自洽校验（`util.ValidateConstraintsSelf(type, constraints, errcode.ErrExtSchemaConstraintsInvalid)`，覆盖 min≤max / precision>0 / minLength 非负 / select options 非空且不重复 等；不自洽返回 42025） → 默认值校验（`util.ValidateValue`，默认值必须落在约束内，否则 42026） → 数量上限检查 → 写 MySQL → Reload 内存缓存。
 
 ### 4.3 编辑
 

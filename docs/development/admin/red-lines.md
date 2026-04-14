@@ -41,6 +41,15 @@
 7. 字典组名（`"field_type"`）→ `util.DictGroupXxx` 常量
 8. handler 校验用错误码：name 校验用 `ErrXxxNameInvalid`，其他用 `ErrBadRequest`，不混用
 
+## 4b. 禁止跳过 constraints 自洽校验
+
+1. 字段/扩展字段 Create/Update 必须调用 `util.ValidateConstraintsSelf(fieldType, constraints, errCode)`，禁止写入未校验的 constraints（曾漏拦 `min=100, max=10`、`precision<=0`、select 空 options、select 重复 value 等非法配置）
+2. 字段模块 errCode 用 `errcode.ErrBadRequest`（40000），扩展字段模块用 `errcode.ErrExtSchemaConstraintsInvalid`（42025），不混用
+3. `ValidateConstraintsSelf` 必须覆盖：int/float `min<=max`、float `precision>0`、string `minLength<=maxLength` 且非负、select `options` 非空 + value 不重复、select `minSelect<=maxSelect` 且非负
+4. reference 类型的 `refs` 校验走 `validateReferenceRefs`，不走 `ValidateConstraintsSelf`
+5. `check-name` 接口必须先走 handler 内部的 `checkName()`（格式+长度校验）再查 DB，禁止跳过格式校验直接查存在性（曾导致传 `BAD_FORMAT` 被误判为"可用"）
+6. 所有可接收外部输入的 name 字段（字段/模板/事件类型/Schema/FSM）的 check-name 接口都必须走同一前置校验模式
+
 ## 5. 禁止 ADMIN 过度设计
 
 禁止实现：用户认证/权限系统、配置版本回滚、实时协作编辑、工作流审批。
@@ -101,3 +110,17 @@
 
 1. 表单提交 `.catch` 必须逐一处理 API 定义的每个错误码，不能只写通用兜底
 2. 新增后端错误码必须在同一 PR 更新前端 catch 块
+
+## 14. 禁止 HTTP 层响应格式不一致
+
+1. Gin Engine 必须设置 `HandleMethodNotAllowed = true`，并注册 `NoRoute` 和 `NoMethod` 返回统一 JSON `{code, message, data}`，禁止让 Gin 默认返回纯文本 `"404 page not found"`
+2. 所有 4xx/5xx 响应必须是 JSON 对象（含 `code` 字段），前端/测试脚本只需解析一种格式
+3. 未知路由 / 错误方法返回 `code=40000, message="请求的资源不存在"/"不支持的 HTTP 方法"`，HTTP 状态码分别 404/405
+4. 新增路由时禁止绕过 v1 Group，必须保证 NoRoute/NoMethod 对所有 `/api/v1/*` 路径生效
+
+## 15. 禁止 has_refs / ref_count 语义混用
+
+1. 后端字段/Schema 详情响应字段名统一用 **`has_refs: boolean`**，禁止返回 `ref_count: int`（引用关系的权威数据源是 `field_refs`/`schema_refs` 关系表，不做冗余计数器）
+2. 前端 UI 锁定逻辑必须读 `has_refs` 布尔值，禁止根据 `ref_count > 0` 判断
+3. 测试脚本的断言也必须对齐 `has_refs`，禁止断言 `.data.ref_count == N`（曾因此产生 70+ 假阴性测试失败）
+4. 引用详情（模板/字段/FSM 哪些在引用）通过专用 `/references` 接口获取，不在 detail 响应中返回
