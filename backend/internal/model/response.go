@@ -7,9 +7,6 @@ type Response struct {
 	Message string `json:"message"`
 }
 
-// Empty 空响应体（写操作无需返回数据时使用）
-type Empty struct{}
-
 // ListData 列表数据
 type ListData struct {
 	Items    any   `json:"items"`

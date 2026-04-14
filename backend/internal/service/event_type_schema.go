@@ -54,6 +54,11 @@ func (s *EventTypeSchemaService) getOrNotFound(ctx context.Context, id int64) (*
 
 // ---- CRUD ----
 
+// GetByID 按主键查询（供 handler 层获取删除结果用）
+func (s *EventTypeSchemaService) GetByID(ctx context.Context, id int64) (*model.EventTypeSchema, error) {
+	return s.store.GetByID(ctx, id)
+}
+
 // List 列表查询（量小直查 MySQL，不走 Redis）
 func (s *EventTypeSchemaService) List(ctx context.Context, q *model.EventTypeSchemaListQuery) ([]model.EventTypeSchema, error) {
 	return s.store.List(ctx, q)
