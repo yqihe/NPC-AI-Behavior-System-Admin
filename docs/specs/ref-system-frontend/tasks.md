@@ -97,7 +97,7 @@
 
 ---
 
-## T8: TemplateRefPopover 过滤停用子字段 (R12, R13)
+## [x] T8: TemplateRefPopover 过滤停用子字段 (R12, R13)
 
 **文件**：
 - `frontend/src/components/TemplateRefPopover.vue`

@@ -36,16 +36,17 @@
             v-for="f in subFields"
             :key="f.id"
             class="pop-item"
-            :class="{ readonly }"
+            :class="{ readonly, disabled: !f.enabled }"
           >
             <el-checkbox
               :model-value="tempSelected.includes(f.id)"
-              :disabled="readonly"
+              :disabled="readonly || !f.enabled"
               @change="(v: string | number | boolean) => toggle(f.id, Boolean(v))"
             />
             <span class="pop-label">{{ f.label }}</span>
             <span class="pop-name">{{ f.name }}</span>
             <el-tag size="small" type="info">{{ f.type_label || f.type }}</el-tag>
+            <el-tag v-if="!f.enabled" size="small" type="warning">已停用</el-tag>
           </label>
         </div>
       </template>
@@ -76,10 +77,13 @@ interface RefFieldItem {
   label: string
   type: string
   type_label?: string
+  enabled: boolean
 }
 
 defineProps<{
   readonly?: boolean
+  /** 新建模式下过滤停用子字段；编辑/查看模式下保留停用子字段并标灰 */
+  filterDisabled?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -99,7 +103,7 @@ const dialogTitle = computed(() =>
     : '选择子字段',
 )
 
-async function open(refField: FieldListItem, currentSelectedIds: number[]) {
+async function open(refField: FieldListItem, currentSelectedIds: number[], filterDisabled = false) {
   visible.value = true
   loading.value = true
   subFields.value = []
@@ -131,19 +135,24 @@ async function open(refField: FieldListItem, currentSelectedIds: number[]) {
     for (let i = 0; i < refIds.length; i++) {
       const d = details[i]
       if (d) {
+        // 新建模式（filterDisabled=true）跳过停用子字段
+        if (filterDisabled && !d.enabled) continue
         items.push({
           id: d.id,
           name: d.name,
           label: d.label,
           type: d.type,
+          enabled: d.enabled,
         })
       } else {
-        // 罕见：子字段被硬删除，保留占位以便视觉呈现
+        // 罕见：子字段被硬删除，保留占位以便视觉呈现（新建模式下也跳过）
+        if (filterDisabled) continue
         items.push({
           id: refIds[i],
           name: `field_${refIds[i]}`,
           label: `字段 ${refIds[i]}`,
           type: 'unknown',
+          enabled: false,
         })
       }
     }
@@ -268,6 +277,11 @@ defineExpose({ open })
 
 .pop-item.readonly {
   cursor: default;
+}
+
+.pop-item.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .pop-label {

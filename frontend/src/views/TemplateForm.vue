@@ -101,6 +101,7 @@
           v-model:selectedIds="selectedIds"
           :field-pool="fieldPool"
           :disabled="isView"
+          :mode="mode"
         />
       </div>
 
