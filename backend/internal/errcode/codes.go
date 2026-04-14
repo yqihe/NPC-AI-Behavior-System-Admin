@@ -102,6 +102,19 @@ const (
 	ErrFsmConfigRefDelete         = 43012 // 被 NPC 引用，无法删除（占位，本期 ref_count 恒 0）
 )
 
+// --- 状态字典管理 430[13-24] ---
+
+const (
+	ErrFsmStateDictNameExists        = 43013 // 标识已存在（含软删除）
+	ErrFsmStateDictNameInvalid       = 43014 // 标识格式不合法
+	ErrFsmStateDictNotFound          = 43015 // 条目不存在
+	ErrFsmStateDictDeleteNotDisabled = 43016 // 删除前必须先停用
+	ErrFsmStateDictVersionConflict   = 43017 // 版本冲突（乐观锁）
+	// 43018-43019 预留
+	ErrFsmStateDictInUse = 43020 // 被 FSM 引用，无法删除（携带 referenced_by）
+	// 43021-43024 预留
+)
+
 // --- 错误消息 ---
 
 var messages = map[int]string{
@@ -178,6 +191,13 @@ var messages = map[int]string{
 	ErrFsmConfigEditNotDisabled:   "请先停用该状态机再编辑",
 	ErrFsmConfigVersionConflict:   "该状态机已被其他人修改，请刷新后重试",
 	ErrFsmConfigRefDelete:         "当前状态机仍被引用，不能删除",
+
+	ErrFsmStateDictNameExists:        "状态标识已存在",
+	ErrFsmStateDictNameInvalid:       "状态标识格式不合法，需小写字母开头，仅允许 a-z、0-9、下划线",
+	ErrFsmStateDictNotFound:          "状态字典条目不存在",
+	ErrFsmStateDictDeleteNotDisabled: "请先停用该状态条目再删除",
+	ErrFsmStateDictVersionConflict:   "该状态条目已被其他人修改，请刷新后重试",
+	ErrFsmStateDictInUse:             "状态字典条目被 FSM 引用，无法删除",
 }
 
 // Msg 获取错误码对应的默认消息

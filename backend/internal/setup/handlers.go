@@ -13,6 +13,7 @@ type Handlers struct {
 	EventType       *handler.EventTypeHandler
 	EventTypeSchema *handler.EventTypeSchemaHandler
 	FsmConfig       *handler.FsmConfigHandler
+	FsmStateDict    *handler.FsmStateDictHandler
 	Export          *handler.ExportHandler
 }
 
@@ -25,6 +26,7 @@ func NewHandlers(st *Stores, svc *Services, mc *MemCaches, cfg *config.Config) *
 		EventType:       handler.NewEventTypeHandler(svc.EventType, svc.EventTypeSchema, &cfg.EventType),
 		EventTypeSchema: handler.NewEventTypeSchemaHandler(svc.EventTypeSchema, svc.EventType, &cfg.EventTypeSchema),
 		FsmConfig:       handler.NewFsmConfigHandler(st.DB, svc.FsmConfig, svc.Field, &cfg.FsmConfig),
+		FsmStateDict:    handler.NewFsmStateDictHandler(svc.FsmStateDict, &cfg.FsmStateDict),
 		Export:          handler.NewExportHandler(svc.EventType, svc.FsmConfig),
 	}
 }

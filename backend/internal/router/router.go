@@ -97,6 +97,19 @@ func Setup(r *gin.Engine, h *setup.Handlers) {
 		fsmConfigs.POST("/toggle-enabled", handler.WrapCtx(h.FsmConfig.ToggleEnabled))
 	}
 
+	// 状态字典管理（8 个接口）
+	fsmStateDicts := v1.Group("/fsm-state-dicts")
+	{
+		fsmStateDicts.POST("/list", handler.WrapCtx(h.FsmStateDict.List))
+		fsmStateDicts.POST("/create", handler.WrapCtx(h.FsmStateDict.Create))
+		fsmStateDicts.POST("/detail", handler.WrapCtx(h.FsmStateDict.Get))
+		fsmStateDicts.POST("/update", handler.WrapCtx(h.FsmStateDict.Update))
+		fsmStateDicts.POST("/delete", handler.WrapCtx(h.FsmStateDict.Delete))
+		fsmStateDicts.POST("/check-name", handler.WrapCtx(h.FsmStateDict.CheckName))
+		fsmStateDicts.POST("/toggle-enabled", handler.WrapCtx(h.FsmStateDict.ToggleEnabled))
+		fsmStateDicts.POST("/list-categories", handler.WrapCtx(h.FsmStateDict.ListCategories))
+	}
+
 	// 配置导出 API
 	configs := r.Group("/api/configs")
 	{

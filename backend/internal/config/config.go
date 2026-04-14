@@ -20,6 +20,7 @@ type Config struct {
 	EventType       EventTypeConfig       `yaml:"event_type"`
 	EventTypeSchema EventTypeSchemaConfig `yaml:"event_type_schema"`
 	FsmConfig       FsmConfigConfig       `yaml:"fsm_config"`
+	FsmStateDict    FsmStateDictConfig    `yaml:"fsm_state_dict"`
 }
 
 // ServerConfig HTTP 服务配置
@@ -125,6 +126,14 @@ type FsmConfigConfig struct {
 	CacheDetailTTL       time.Duration `yaml:"cache_detail_ttl"`
 	CacheListTTL         time.Duration `yaml:"cache_list_ttl"`
 	CacheLockTTL         time.Duration `yaml:"cache_lock_ttl"`
+}
+
+// FsmStateDictConfig 状态字典管理配置
+type FsmStateDictConfig struct {
+	NameMaxLength        int `yaml:"name_max_length"`
+	DisplayNameMaxLength int `yaml:"display_name_max_length"`
+	CategoryMaxLength    int `yaml:"category_max_length"`
+	DescriptionMaxLength int `yaml:"description_max_length"`
 }
 
 // Load 从文件加载配置
