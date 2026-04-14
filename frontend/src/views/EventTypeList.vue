@@ -256,6 +256,11 @@ async function handleDelete(row: EventTypeListItem) {
     fetchList()
   } catch (err: unknown) {
     if (err === 'cancel') return
+    if ((err as BizError).code === EVENT_TYPE_ERR.VERSION_CONFLICT) {
+      ElMessage.warning('数据已更新，请重新操作')
+      fetchList()
+      return
+    }
     // 其他错误拦截器已 toast
   }
 }

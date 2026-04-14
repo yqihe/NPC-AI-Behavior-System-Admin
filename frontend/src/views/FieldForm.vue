@@ -338,7 +338,7 @@ async function loadFieldDetail() {
     version.value = data.version
     hasRefs.value = data.has_refs || false
   } catch (err: unknown) {
-    if ((err as BizError).code === 40011) {
+    if ((err as BizError).code === FIELD_ERR.NOT_FOUND) {
       router.push('/fields')
     }
   }
