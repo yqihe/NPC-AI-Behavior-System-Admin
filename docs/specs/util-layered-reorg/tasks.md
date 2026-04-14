@@ -93,7 +93,7 @@
 
 ---
 
-## T5：field + template handler 改用 util.CheckName / CheckLabel (R3)
+## T5：field + template handler 改用 util.CheckName / CheckLabel (R3) [x]
 
 **文件**（2）：
 - `backend/internal/handler/field.go`
