@@ -69,7 +69,7 @@
 
 ---
 
-## T6: FieldList 删除流程重构 + 引用详情扩展 FSM (R4, R5, R8)
+## [x] T6: FieldList 删除流程重构 + 引用详情扩展 FSM (R4, R5, R8)
 
 **文件**：
 - `frontend/src/views/FieldList.vue`
@@ -83,7 +83,7 @@
 
 ---
 
-## T7: FieldForm has_refs 驱动 (R6, R7)
+## [x] T7: FieldForm has_refs 驱动 (R6, R7)
 
 **文件**：
 - `frontend/src/views/FieldForm.vue`
