@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	shared "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql/shared"
 	"context"
 	"database/sql"
 	"fmt"
@@ -10,7 +11,6 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
-	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // TemplateStore templates 表操作
@@ -43,6 +43,9 @@ func (s *TemplateStore) CreateTx(ctx context.Context, tx *sqlx.Tx, req *model.Cr
 		req.Name, req.Label, req.Description, fieldsJSON, now, now,
 	)
 	if err != nil {
+		if shared.Is1062(err) {
+			return 0, errcode.ErrDuplicate
+		}
 		return 0, fmt.Errorf("insert template: %w", err)
 	}
 	id, err := result.LastInsertId()
@@ -90,7 +93,7 @@ func (s *TemplateStore) List(ctx context.Context, q *model.TemplateListQuery) ([
 
 	if q.Label != "" {
 		where = append(where, "label LIKE ?")
-		args = append(args, "%"+util.EscapeLike(q.Label)+"%")
+		args = append(args, "%"+shared.EscapeLike(q.Label)+"%")
 	}
 	if q.Enabled != nil {
 		where = append(where, "enabled = ?")

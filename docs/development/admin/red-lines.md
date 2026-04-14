@@ -37,17 +37,17 @@
 3. DB 连接串/端口/连接池 → `config.yaml`（环境变量可覆盖）
 4. Redis key 拼接 → `store/redis/config/` 子包生成
 5. 分页默认值/字段长度限制 → `config.yaml`
-6. 引用类型字符串（`"template"`/`"field"`/`"fsm"`/`"event_type"`）→ `util.RefTypeXxx` 常量
-7. 字典组名（`"field_type"`）→ `util.DictGroupXxx` 常量
+6. 引用类型字符串（`"template"`/`"field"`/`"fsm"`/`"event_type"`）→ `util.RefTypeXxx` 常量（`util/const.go`）
+7. 字典组名（`"field_type"`）→ `util.DictGroupXxx` 常量（`util/const.go`）
 8. handler 校验用错误码：name 校验用 `ErrXxxNameInvalid`，其他用 `ErrBadRequest`，不混用
 
 ## 4b. 禁止跳过 constraints 自洽校验
 
-1. 字段/扩展字段 Create/Update 必须调用 `util.ValidateConstraintsSelf(fieldType, constraints, errCode)`，禁止写入未校验的 constraints（曾漏拦 `min=100, max=10`、`precision<=0`、select 空 options、select 重复 value 等非法配置）
+1. 字段/扩展字段 Create/Update 必须调用 `ValidateConstraintsSelf(fieldType, constraints, errCode)`（`service/validate.go` 同包调用），禁止写入未校验的 constraints（曾漏拦 `min=100, max=10`、`precision<=0`、select 空 options、select 重复 value 等非法配置）
 2. 字段模块 errCode 用 `errcode.ErrBadRequest`（40000），扩展字段模块用 `errcode.ErrExtSchemaConstraintsInvalid`（42025），不混用
 3. `ValidateConstraintsSelf` 必须覆盖：int/float `min<=max`、float `precision>0`、string `minLength<=maxLength` 且非负、select `options` 非空 + value 不重复、select `minSelect<=maxSelect` 且非负
 4. reference 类型的 `refs` 校验走 `validateReferenceRefs`，不走 `ValidateConstraintsSelf`
-5. `check-name` 接口必须先走 `util.CheckName()`（格式+长度校验）再查 DB，禁止跳过格式校验直接查存在性（曾导致传 `BAD_FORMAT` 被误判为"可用"）
+5. `check-name` 接口必须先走 `CheckName()`（`handler/validate.go` 同包调用，格式+长度校验）再查 DB，禁止跳过格式校验直接查存在性（曾导致传 `BAD_FORMAT` 被误判为"可用"）
 6. 所有可接收外部输入的 name 字段（字段/模板/事件类型/Schema/FSM）的 check-name 接口都必须走同一前置校验模式
 
 ## 5. 禁止 ADMIN 过度设计
@@ -88,21 +88,22 @@
 3. service：缓存读取 `err == nil && hit`，禁止 `_, hit, _` 丢弃 error
 4. service：store 错误必须 `slog.Error + fmt.Errorf("xxx: %w", err)`，禁止 raw return
 5. store：Create/Update 用 `*model.XxxRequest` 结构体，禁止展开位置参数
-6. handler：`util.CheckID/CheckVersion/CheckRequired` 校验，slog Debug 在校验后
+6. handler：`CheckID`/`CheckVersion`/`CheckRequired`（`handler/validate.go` 同包调用）校验，slog Debug 在校验后
 7. 前端 API：`ListData<T>` / `CheckNameResult` 从 `fields.ts` 导入
 8. 前端表单：用独立 `ref()` 存 version/refCount，禁止 `detail.value!.xxx` 非空断言
 
 ## 11. 禁止文件职责混放
 
-1. 共享常量/工具函数 → `util/`，初始化聚合 → `setup/`，错误定义 → `errcode/`
-2. 跨 store 共享工具（如 `EscapeLike`）→ `util/`，禁止在 store 文件内定义
-3. Redis key/TTL/前缀 → `store/redis/config/` 子包
-4. db 字段统一 `*sqlx.DB`，禁止 interface
-5. Redis cache 文件命名 `{module}_cache.go`
-6. **每层文件夹下不允许子文件夹**（`store/redis/config/` 例外）
-7. **`util/` 必须按架构层分文件**：`handler.go` / `service.go` / `store.go` / `const.go`，禁止按功能点分（如 `validation.go` / `pagination.go`）。每文件内用分节注释（`// ========== 分节 ==========`）组织。每层下不再放 util 子包，所有通用工具集中在 `backend/internal/util/`
-8. **业务规则不进 `util/`**：只有无业务语义的纯工具函数（如 `EscapeLike` / `NormalizePagination` / `ParseConstraintsMap`）才能放 util。跨模块共享的业务规则（如"被引用字段约束只能放宽"）放 `service/` 根目录的专用文件（如 `service/constraint_check.go`）
-9. **`service/` 根目录文件纪律**：只允许两类文件——(a) 各业务模块的聚合文件（`field.go` / `event_type.go` 等）；(b) 被 2 个及以上 service 模块调用的**业务规则共享文件**，文件名**必须带业务语义**（如 `constraint_check.go`），禁止 `helpers.go` / `common.go` / `utils.go` 这类泛化名
+1. **跨层共享常量** → `util/const.go`（按功能点加分节注释）；初始化聚合 → `setup/`；错误定义 → `errcode/`
+2. **层特有工具函数放回各自层目录**（同包文件，无需 import）：handler 校验辅助 → `handler/validate.go`；service 校验/JSON 工具 → `service/validate.go` / `service/jsonutil.go`；SQL 辅助 → `store/mysql/sqlutil.go`
+3. Redis key/TTL/前缀 → `store/redis/config/` 子包（import alias `rcfg`）
+4. **层内工具文件按功能点命名**（`validate.go` / `jsonutil.go` / `sqlutil.go`），不用泛化名（`helpers.go` / `utils.go`）；每文件内用分节注释（`// ========== 分节 ==========`）组织
+5. **`util/` 只放跨层常量**：判断标准——该符号是否被 2 个以上不同架构层（handler/service/store）引用。纯工具函数只有一个层用时必须放回那个层，禁止塞入 util 增加耦合
+6. **业务规则禁止进 `util/`**：跨模块共享业务规则放 `service/` 根目录的专用文件（`constraint_check.go`），文件名带业务语义
+7. db 字段统一 `*sqlx.DB`，禁止 interface
+8. Redis cache 文件命名 `{module}_cache.go`
+9. **每层文件夹下不允许子文件夹**（`store/redis/config/` 例外）；未来需要跨包共享常量的新子包命名用 `shared` 而非 `config`（`config` 语义歧义）
+10. **`service/` 根目录文件纪律**：只允许两类文件——(a) 各业务模块的聚合文件（`field.go` / `event_type.go` 等）；(b) 被 2 个及以上 service 模块调用的**业务规则共享文件**或**功能性工具文件**，文件名**必须带语义**（如 `constraint_check.go` / `validate.go` / `jsonutil.go`），禁止 `helpers.go` / `common.go` / `utils.go` 这类泛化名
 
 ## 12. 禁止 Element Plus 表单 disabled 被子组件覆盖
 
@@ -127,3 +128,22 @@
 2. 前端 UI 锁定逻辑必须读 `has_refs` 布尔值，禁止根据 `ref_count > 0` 判断
 3. 测试脚本的断言也必须对齐 `has_refs`，禁止断言 `.data.ref_count == N`（曾因此产生 70+ 假阴性测试失败）
 4. 引用详情（模板/字段/FSM 哪些在引用）通过专用 `/references` 接口获取，不在 detail 响应中返回
+
+
+## 16. 禁止 Commit 后清缓存
+
+1. 有事务的写路径（service 或 handler），`DelDetail`/`InvalidateList`/`InvalidateDetail` **必须在 `tx.Commit()` 调用前**完成
+2. 违反此顺序会产生脏读窗口：Commit 成功但缓存尚未清除，其他请求读到旧值
+3. Commit 失败时缓存已清无害（下次读走 DB 重建），因此提前清是安全的
+
+## 17. 禁止 Unlock 不传 lockID
+
+1. 分布式锁解锁**必须**携带 `lockID`，使用 `LuaUnlock` Lua 脚本原子判断后再删
+2. 禁止直接 `DEL` 锁 key（等价于旧版 `rdb.Del(ctx, key)`）
+3. 未携带 lockID 的 Unlock 在锁 TTL 超时场景下会误删他人锁，导致多个 goroutine 同时认为自己持有锁
+
+## 18. 禁止事务内绕过事务查询
+
+1. 已开启事务的路径中，**所有** DB 查询必须走 `tx.QueryContext`/`tx.GetContext`/`tx.ExecContext`
+2. 禁止在事务路径中调 `store.DB().QueryContext`（读事务外快照，破坏隔离性）
+3. 典型错误：`syncSchemaRefs` 内用 `s.store.DB().QueryContext` 而非传入的 `tx.QueryContext`

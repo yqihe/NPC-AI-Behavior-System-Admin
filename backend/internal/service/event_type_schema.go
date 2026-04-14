@@ -1,6 +1,7 @@
 package service
 
 import (
+	shared "github.com/yqihe/npc-ai-admin/backend/internal/service/shared"
 	"context"
 	"errors"
 	"fmt"
@@ -86,12 +87,12 @@ func (s *EventTypeSchemaService) Create(ctx context.Context, req *model.CreateEv
 	}
 
 	// constraints 自洽校验
-	if e := util.ValidateConstraintsSelf(req.FieldType, req.Constraints, errcode.ErrExtSchemaConstraintsInvalid); e != nil {
+	if e := shared.ValidateConstraintsSelf(req.FieldType, req.Constraints, errcode.ErrExtSchemaConstraintsInvalid); e != nil {
 		return 0, e
 	}
 
 	// default_value 必须符合 constraints
-	if e := util.ValidateValue(req.FieldType, req.Constraints, req.DefaultValue); e != nil {
+	if e := shared.ValidateValue(req.FieldType, req.Constraints, req.DefaultValue); e != nil {
 		return 0, errcode.Newf(errcode.ErrExtSchemaDefaultInvalid, "默认值不符合约束: %s", e.Error())
 	}
 
@@ -109,6 +110,9 @@ func (s *EventTypeSchemaService) Create(ctx context.Context, req *model.CreateEv
 	// 写 MySQL
 	id, err := s.store.Create(ctx, req)
 	if err != nil {
+		if errors.Is(err, errcode.ErrDuplicate) {
+			return 0, errcode.Newf(errcode.ErrExtSchemaNameExists, "扩展字段标识 '%s' 已存在", req.FieldName)
+		}
 		return 0, err
 	}
 
@@ -142,12 +146,12 @@ func (s *EventTypeSchemaService) Update(ctx context.Context, req *model.UpdateEv
 		}
 	}
 
-	if e := util.ValidateConstraintsSelf(ets.FieldType, req.Constraints, errcode.ErrExtSchemaConstraintsInvalid); e != nil {
+	if e := shared.ValidateConstraintsSelf(ets.FieldType, req.Constraints, errcode.ErrExtSchemaConstraintsInvalid); e != nil {
 		return e
 	}
 
 	// default_value 符合新 constraints
-	if e := util.ValidateValue(ets.FieldType, req.Constraints, req.DefaultValue); e != nil {
+	if e := shared.ValidateValue(ets.FieldType, req.Constraints, req.DefaultValue); e != nil {
 		return errcode.Newf(errcode.ErrExtSchemaDefaultInvalid, "默认值不符合约束: %s", e.Error())
 	}
 

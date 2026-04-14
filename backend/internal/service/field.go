@@ -1,7 +1,9 @@
 package service
 
 import (
+	shared "github.com/yqihe/npc-ai-admin/backend/internal/service/shared"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -68,7 +70,7 @@ func (s *FieldService) validatePropertiesConstraints(fieldType string, propertie
 	if len(props.Constraints) == 0 {
 		return nil
 	}
-	return util.ValidateConstraintsSelf(fieldType, props.Constraints, errcode.ErrBadRequest)
+	return shared.ValidateConstraintsSelf(fieldType, props.Constraints, errcode.ErrBadRequest)
 }
 
 // getFieldOrNotFound 按 ID 查字段 + 判空
@@ -87,7 +89,7 @@ func (s *FieldService) getFieldOrNotFound(ctx context.Context, id int64) (*model
 
 // List 字段列表（Cache-Aside：Redis → MySQL → 写 Redis）
 func (s *FieldService) List(ctx context.Context, q *model.FieldListQuery) (*model.ListData, error) {
-	util.NormalizePagination(&q.Page, &q.PageSize, s.pagCfg.DefaultPage, s.pagCfg.DefaultPageSize, s.pagCfg.MaxPageSize)
+	shared.NormalizePagination(&q.Page, &q.PageSize, s.pagCfg.DefaultPage, s.pagCfg.DefaultPageSize, s.pagCfg.MaxPageSize)
 
 	// 1. 查 Redis 缓存（Redis 挂了跳过，降级直查 MySQL）
 	if cached, hit, err := s.fieldCache.GetList(ctx, q); err == nil && hit {
@@ -160,6 +162,9 @@ func (s *FieldService) Create(ctx context.Context, req *model.CreateFieldRequest
 	// 写入
 	id, err := s.fieldStore.Create(ctx, req)
 	if err != nil {
+		if errors.Is(err, errcode.ErrDuplicate) {
+			return 0, errcode.Newf(errcode.ErrFieldNameExists, "字段标识 '%s' 已存在", req.Name)
+		}
 		slog.Error("service.创建字段失败", "error", err, "name", req.Name)
 		return 0, fmt.Errorf("create field: %w", err)
 	}
@@ -194,16 +199,16 @@ func (s *FieldService) GetByID(ctx context.Context, id int64) (*model.Field, err
 	}
 
 	// 2. 分布式锁防缓存击穿
-	locked, lockErr := s.fieldCache.TryLock(ctx, id, 3*time.Second)
+	lockID, lockErr := s.fieldCache.TryLock(ctx, id, 3*time.Second)
 	if lockErr != nil {
 		slog.Warn("service.获取锁失败，降级直查MySQL", "error", lockErr, "id", id)
 	}
-	if locked {
-		defer s.fieldCache.Unlock(ctx, id)
+	if lockID != "" {
+		defer s.fieldCache.Unlock(ctx, id, lockID)
 	}
 
 	// 获得锁后再查一次缓存（double-check）
-	if locked {
+	if lockID != "" {
 		if cached, hit, err := s.fieldCache.GetDetail(ctx, id); err == nil && hit {
 			if cached == nil {
 				return nil, errcode.Newf(errcode.ErrFieldNotFound, "字段 ID=%d 不存在", id)
@@ -396,7 +401,11 @@ func (s *FieldService) Delete(ctx context.Context, id int64) (*model.DeleteResul
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			slog.Warn("service.字段删除事务回滚失败", "error", rbErr)
+		}
+	}()
 
 	hasRefs, err := s.fieldRefStore.HasRefsTx(ctx, tx, id)
 	if err != nil {
@@ -422,16 +431,16 @@ func (s *FieldService) Delete(ctx context.Context, id int64) (*model.DeleteResul
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit: %w", err)
-	}
-
-	// 清缓存
+	// 先清缓存再 Commit（消除 Commit 后清缓存窗口期的脏读风险）
 	s.fieldCache.DelDetail(ctx, id)
 	for _, affectedID := range affectedIDs {
 		s.fieldCache.DelDetail(ctx, affectedID)
 	}
 	s.fieldCache.InvalidateList(ctx)
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
 
 	slog.Info("service.删除字段成功", "id", id, "name", field.Name)
 	return &model.DeleteResult{ID: id, Name: field.Name, Label: field.Label}, nil
@@ -833,7 +842,11 @@ func (s *FieldService) syncFieldRefs(ctx context.Context, sourceFieldID int64, o
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			slog.Warn("service.字段引用同步事务回滚失败", "error", rbErr)
+		}
+	}()
 
 	for _, targetID := range toAdd {
 		if err := s.fieldRefStore.Add(ctx, tx, targetID, util.RefTypeField, sourceFieldID); err != nil {

@@ -8,7 +8,7 @@
 **当前状态**：V3 重写中（V2 代码已归档到 `v2-archive` 分支）
 **项目性质**：毕业设计配套工具，但**对标企业级工程标准**
 
-**定位**：为策划/运营人员提供可视化配置管理界面，无需接触代码或 JSON 即可创建和管理 NPC 字段、模板、事件类型、状态机、行为树、区域等游戏配置。所有配置写入 MongoDB，游戏服务端启动时通过 HTTP 导出 API 一次性拉取。
+**定位**：为策划/运营人员提供可视化配置管理界面，无需接触代码或 JSON 即可创建和管理 NPC 字段、模板、事件类型、状态机、行为树、区域等游戏配置。所有配置写入 MySQL，游戏服务端启动时通过 HTTP 导出 API 一次性拉取。
 
 **姐妹项目**：
 - 游戏服务端：`../NPC-AI-Behavior-System-Server/`（Go）
@@ -17,9 +17,8 @@
 ## 技术栈
 
 **后端**（Go）：
-- 数据库：MongoDB（配置数据源，游戏服务端通过导出 API 获取）+ MySQL（搜索索引、元数据、审计日志）
+- 数据库：MySQL（配置数据源、搜索索引、元数据、审计日志）
 - 缓存：Redis（分页/单条/distinct 缓存 + 分布式锁）
-- 消息队列：RabbitMQ（MongoDB→MySQL 异步同步）
 - API：RESTful HTTP
 - 日志：Go 标准库 `log/slog`
 
@@ -29,7 +28,7 @@
 - 通信：Axios → REST API
 - 表单渲染：自研 SchemaForm（不使用第三方 JSON Schema 表单库）
 
-**容器化**：Docker Compose（admin-backend + admin-frontend + MongoDB + MySQL + Redis + RabbitMQ）
+**容器化**：Docker Compose（admin-backend + admin-frontend + MySQL + Redis）
 
 ## 企业级标准
 
@@ -39,7 +38,7 @@
 - 所有列表后端分页，不做前端全量过滤
 - 所有下拉选项从数据库动态获取，不硬编码
 - 组合搜索（多字段筛选 + 后端 MySQL 查询）
-- 数据同步三层保障（同步写入 + MQ 重试 + 抽样校验）
+- 数据同步双层保障（同步写入 + 抽样校验）
 - 乐观锁防并发冲突
 - 审计日志（谁改了什么）
 
@@ -54,22 +53,26 @@ backend/
     seed/                  #   字典种子脚本
   internal/
     handler/               #   HTTP handler（纯业务 + wrap.go 泛型包装）
+      shared/              #     层内工具（package shared，import alias shared）
+        validate.go        #       请求校验辅助（CheckID/CheckName/CheckLabel/SuccessMsg）
     service/               #   业务逻辑（纯业务）
+      shared/              #     层内工具（package shared，import alias shared）
+        validate.go        #       值/约束校验（ValidateValue/ValidateConstraintsSelf/NormalizePagination）
+        jsonutil.go        #       JSON 提取辅助（ParseConstraintsMap/GetFloat/GetString/...）
     store/
       mysql/               #   MySQL 操作（纯业务 CRUD）
+        shared/            #     层内工具（package shared，import alias shared）
+          sqlutil.go       #       SQL 辅助（EscapeLike/Is1062）
       redis/               #   Redis 缓存操作（纯业务 *_cache.go）
-        config/            #   Redis 专属常量 + key 管理
+        shared/            #   Redis 专属常量 + key 管理（package shared，import alias rcfg）
     cache/                 #   内存缓存（字典/Schema 启动加载）
     config/                #   配置加载
     errcode/               #   错误码（业务码 + store 哨兵错误）
     model/                 #   数据模型
     router/                #   路由注册
     setup/                 #   统一聚合初始化（连接 + 分层注册）
-    util/                  #   跨模块通用工具（按架构层分文件）
-      handler.go           #     handler 层：ID/版本/必填/名称/标签格式校验、响应辅助
-      service.go           #     service 层：分页规范化、约束 JSON 解析、值/自洽校验
-      store.go             #     store 层：SQL LIKE 转义
-      const.go             #     跨层共享常量（枚举、ref_type、字典组名）
+    util/                  #   跨层共享常量（每层都可能引用）
+      const.go             #     枚举/ref_type/字典组名（PerceptionMode/FieldType/RefType/DictGroup）
   migrations/              #   SQL DDL 脚本
 frontend/
   src/
@@ -108,10 +111,6 @@ docker-compose.yml
 - **行为树（BT）**：NPC 在每个状态下的行为逻辑
 - **区域**：游戏场景配置
 
-### MongoDB 数据格式
-
-所有配置文档统一 `{name, config}` 格式。详见 `docs/architecture/api-contract.md`。
-
 ### BB Key 同步
 
 ADMIN 和游戏服务端各存各的 BB Key，不走 API 互拉。ADMIN 的 Key 来自字段标识（标记暴露的）+ 运行时 Key 表。
@@ -121,10 +120,8 @@ ADMIN 和游戏服务端各存各的 BB Key，不走 API 互拉。ADMIN 的 Key 
 ### 开发环境（Docker Compose）
 - **后端端口**：9821
 - **前端端口**：3000
-- **MongoDB**：localhost:27017，数据库 `npc_ai`
 - **MySQL**：localhost:3306，数据库 `npc_ai_admin`
 - **Redis**：localhost:6379
-- **RabbitMQ**：localhost:5672（AMQP），15672（Management UI）
 
 ### 与游戏服务端联调
 - 游戏服务端设置 `NPC_ADMIN_API=http://<admin地址>:9821`

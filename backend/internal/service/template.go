@@ -1,6 +1,7 @@
 package service
 
 import (
+	shared "github.com/yqihe/npc-ai-admin/backend/internal/service/shared"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,7 +15,6 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
 	storeredis "github.com/yqihe/npc-ai-admin/backend/internal/store/redis"
-	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // TemplateService 模板管理业务逻辑
@@ -101,7 +101,7 @@ func (s *TemplateService) ParseFieldEntries(raw json.RawMessage) ([]model.Templa
 
 // List 模板列表（Cache-Aside：Redis → MySQL → 写 Redis）
 func (s *TemplateService) List(ctx context.Context, q *model.TemplateListQuery) (*model.ListData, error) {
-	util.NormalizePagination(&q.Page, &q.PageSize, s.pagCfg.DefaultPage, s.pagCfg.DefaultPageSize, s.pagCfg.MaxPageSize)
+	shared.NormalizePagination(&q.Page, &q.PageSize, s.pagCfg.DefaultPage, s.pagCfg.DefaultPageSize, s.pagCfg.MaxPageSize)
 
 	// 1. 查 Redis 缓存
 	if cached, hit, err := s.cache.GetList(ctx, q); err == nil && hit {
@@ -142,16 +142,16 @@ func (s *TemplateService) GetByID(ctx context.Context, id int64) (*model.Templat
 	}
 
 	// 2. 分布式锁防缓存击穿
-	locked, lockErr := s.cache.TryLock(ctx, id, 3*time.Second)
+	lockID, lockErr := s.cache.TryLock(ctx, id, 3*time.Second)
 	if lockErr != nil {
 		slog.Warn("service.获取模板锁失败，降级直查MySQL", "error", lockErr, "id", id)
 	}
-	if locked {
-		defer s.cache.Unlock(ctx, id)
+	if lockID != "" {
+		defer s.cache.Unlock(ctx, id, lockID)
 	}
 
 	// 获得锁后 double-check 缓存
-	if locked {
+	if lockID != "" {
 		if cached, hit, err := s.cache.GetDetail(ctx, id); err == nil && hit {
 			if cached == nil {
 				return nil, errcode.Newf(errcode.ErrTemplateNotFound, "模板 ID=%d 不存在", id)
@@ -252,6 +252,9 @@ func (s *TemplateService) CreateTx(ctx context.Context, tx *sqlx.Tx, req *model.
 
 	id, err := s.store.CreateTx(ctx, tx, req, fieldsJSON)
 	if err != nil {
+		if errors.Is(err, errcode.ErrDuplicate) {
+			return 0, errcode.Newf(errcode.ErrTemplateNameExists, "模板标识 '%s' 已存在", req.Name)
+		}
 		slog.Error("service.创建模板失败", "error", err, "name", req.Name)
 		return 0, fmt.Errorf("create template: %w", err)
 	}

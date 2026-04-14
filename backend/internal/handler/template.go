@@ -1,7 +1,10 @@
 package handler
 
 import (
+	shared "github.com/yqihe/npc-ai-admin/backend/internal/handler/shared"
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"unicode/utf8"
@@ -11,7 +14,6 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	"github.com/yqihe/npc-ai-admin/backend/internal/service"
-	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // TemplateHandler 模板管理 HTTP handler
@@ -88,7 +90,7 @@ func (h *TemplateHandler) List(ctx context.Context, q *model.TemplateListQuery) 
 
 // CheckName 模板标识唯一性校验
 func (h *TemplateHandler) CheckName(ctx context.Context, req *model.CheckNameRequest) (*model.CheckNameResult, error) {
-	if err := util.CheckName(req.Name, h.valCfg.TemplateNameMaxLength, errcode.ErrTemplateNameInvalid, "模板标识"); err != nil {
+	if err := shared.CheckName(req.Name, h.valCfg.TemplateNameMaxLength, errcode.ErrTemplateNameInvalid, "模板标识"); err != nil {
 		return nil, err
 	}
 	slog.Debug("handler.校验模板名", "name", req.Name)
@@ -97,22 +99,22 @@ func (h *TemplateHandler) CheckName(ctx context.Context, req *model.CheckNameReq
 
 // ToggleEnabled 切换启用/停用
 func (h *TemplateHandler) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) (*string, error) {
-	if err := util.CheckID(req.ID); err != nil {
+	if err := shared.CheckID(req.ID); err != nil {
 		return nil, err
 	}
-	if err := util.CheckVersion(req.Version); err != nil {
+	if err := shared.CheckVersion(req.Version); err != nil {
 		return nil, err
 	}
 	slog.Debug("handler.切换模板启用", "id", req.ID, "enabled", req.Enabled)
 	if err := h.templateService.ToggleEnabled(ctx, req); err != nil {
 		return nil, err
 	}
-	return util.SuccessMsg("操作成功"), nil
+	return shared.SuccessMsg("操作成功"), nil
 }
 
 // GetReferences 引用详情（NPC 模块未上线前返回空数组占位）
 func (h *TemplateHandler) GetReferences(ctx context.Context, req *model.IDRequest) (*model.TemplateReferenceDetail, error) {
-	if err := util.CheckID(req.ID); err != nil {
+	if err := shared.CheckID(req.ID); err != nil {
 		return nil, err
 	}
 	slog.Debug("handler.模板引用详情", "id", req.ID)
@@ -141,10 +143,10 @@ func (h *TemplateHandler) GetReferences(ctx context.Context, req *model.IDReques
 //  5. 清两个模块的缓存
 func (h *TemplateHandler) Create(ctx context.Context, req *model.CreateTemplateRequest) (*model.CreateTemplateResponse, error) {
 	// 1. 格式校验
-	if err := util.CheckName(req.Name, h.valCfg.TemplateNameMaxLength, errcode.ErrTemplateNameInvalid, "模板标识"); err != nil {
+	if err := shared.CheckName(req.Name, h.valCfg.TemplateNameMaxLength, errcode.ErrTemplateNameInvalid, "模板标识"); err != nil {
 		return nil, err
 	}
-	if err := util.CheckLabel(req.Label, h.valCfg.FieldLabelMaxLength, "中文标签"); err != nil {
+	if err := shared.CheckLabel(req.Label, h.valCfg.FieldLabelMaxLength, "中文标签"); err != nil {
 		return nil, err
 	}
 	if err := h.checkDescription(req.Description); err != nil {
@@ -178,7 +180,11 @@ func (h *TemplateHandler) Create(ctx context.Context, req *model.CreateTemplateR
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			slog.Warn("handler.模板创建事务回滚失败", "error", rbErr)
+		}
+	}()
 
 	templateID, err := h.templateService.CreateTx(ctx, tx, req)
 	if err != nil {
@@ -190,13 +196,13 @@ func (h *TemplateHandler) Create(ctx context.Context, req *model.CreateTemplateR
 		return nil, err
 	}
 
+	// 5. 先清缓存再 Commit（消除 Commit 后清缓存窗口期的脏读风险）
+	h.templateService.InvalidateList(ctx)
+	h.fieldService.InvalidateDetails(ctx, affected)
+
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit: %w", err)
 	}
-
-	// 5. 清缓存（commit 后，service 各管自己）
-	h.templateService.InvalidateList(ctx)
-	h.fieldService.InvalidateDetails(ctx, affected)
 
 	slog.Info("handler.创建模板成功", "id", templateID, "name", req.Name)
 	return &model.CreateTemplateResponse{ID: templateID, Name: req.Name}, nil
@@ -210,7 +216,7 @@ func (h *TemplateHandler) Create(ctx context.Context, req *model.CreateTemplateR
 //  3. fieldService.GetByIDsLite 跨模块拿字段精简列表（走字段方 cache）
 //  4. handler 拼装 TemplateDetail（按 entries 顺序对齐 + Required + Enabled）
 func (h *TemplateHandler) Get(ctx context.Context, req *model.IDRequest) (*model.TemplateDetail, error) {
-	if err := util.CheckID(req.ID); err != nil {
+	if err := shared.CheckID(req.ID); err != nil {
 		return nil, err
 	}
 	slog.Debug("handler.模板详情", "id", req.ID)
@@ -281,10 +287,10 @@ func (h *TemplateHandler) Get(ctx context.Context, req *model.IDRequest) (*model
 //  5. Commit → 清两个模块缓存
 func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateRequest) (*string, error) {
 	// 1. 格式校验
-	if err := util.CheckID(req.ID); err != nil {
+	if err := shared.CheckID(req.ID); err != nil {
 		return nil, err
 	}
-	if err := util.CheckLabel(req.Label, h.valCfg.FieldLabelMaxLength, "中文标签"); err != nil {
+	if err := shared.CheckLabel(req.Label, h.valCfg.FieldLabelMaxLength, "中文标签"); err != nil {
 		return nil, err
 	}
 	if err := h.checkDescription(req.Description); err != nil {
@@ -293,7 +299,7 @@ func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateR
 	if err := checkTemplateFields(req.Fields); err != nil {
 		return nil, err
 	}
-	if err := util.CheckVersion(req.Version); err != nil {
+	if err := shared.CheckVersion(req.Version); err != nil {
 		return nil, err
 	}
 
@@ -324,7 +330,11 @@ func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateR
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			slog.Warn("handler.模板编辑事务回滚失败", "error", rbErr)
+		}
+	}()
 
 	fieldsChanged, toAdd, toRemove, err := h.templateService.UpdateTx(ctx, tx, req, old, oldEntries)
 	if err != nil {
@@ -349,11 +359,7 @@ func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateR
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit: %w", err)
-	}
-
-	// 5. 清缓存
+	// 5. 先清缓存再 Commit（消除 Commit 后清缓存窗口期的脏读风险）
 	h.templateService.InvalidateDetail(ctx, req.ID)
 	h.templateService.InvalidateList(ctx)
 	if len(detachAffected) > 0 {
@@ -363,8 +369,12 @@ func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateR
 		h.fieldService.InvalidateDetails(ctx, attachAffected)
 	}
 
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+
 	slog.Info("handler.编辑模板成功", "id", req.ID, "fields_changed", fieldsChanged)
-	return util.SuccessMsg("保存成功"), nil
+	return shared.SuccessMsg("保存成功"), nil
 }
 
 // Delete 删除模板
@@ -376,7 +386,7 @@ func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateR
 //  4. tx → SoftDeleteTx + DetachFromTemplateTx → Commit
 //  5. 清两个模块缓存
 func (h *TemplateHandler) Delete(ctx context.Context, req *model.IDRequest) (*model.DeleteResult, error) {
-	if err := util.CheckID(req.ID); err != nil {
+	if err := shared.CheckID(req.ID); err != nil {
 		return nil, err
 	}
 	slog.Debug("handler.删除模板", "id", req.ID)
@@ -407,7 +417,11 @@ func (h *TemplateHandler) Delete(ctx context.Context, req *model.IDRequest) (*mo
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			slog.Warn("handler.模板删除事务回滚失败", "error", rbErr)
+		}
+	}()
 
 	if err := h.templateService.SoftDeleteTx(ctx, tx, req.ID); err != nil {
 		return nil, err
@@ -418,14 +432,14 @@ func (h *TemplateHandler) Delete(ctx context.Context, req *model.IDRequest) (*mo
 		return nil, err
 	}
 
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit: %w", err)
-	}
-
-	// 清缓存
+	// 先清缓存再 Commit（消除 Commit 后清缓存窗口期的脏读风险）
 	h.templateService.InvalidateDetail(ctx, req.ID)
 	h.templateService.InvalidateList(ctx)
 	h.fieldService.InvalidateDetails(ctx, affected)
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
 
 	slog.Info("handler.删除模板成功", "id", req.ID, "name", tpl.Name)
 	return &model.DeleteResult{ID: tpl.ID, Name: tpl.Name, Label: tpl.Label}, nil

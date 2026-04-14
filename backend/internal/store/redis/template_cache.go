@@ -9,7 +9,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
-	rcfg "github.com/yqihe/npc-ai-admin/backend/internal/store/redis/config"
+	rcfg "github.com/yqihe/npc-ai-admin/backend/internal/store/redis/shared"
 )
 
 // TemplateCache Redis 模板缓存
@@ -147,20 +147,27 @@ func (c *TemplateCache) InvalidateList(ctx context.Context) {
 
 // ---- 分布式锁 ----
 
-// TryLock 尝试获取分布式锁（防缓存击穿）
-func (c *TemplateCache) TryLock(ctx context.Context, id int64, expire time.Duration) (bool, error) {
+// TryLock 尝试获取分布式锁（防缓存击穿）。
+//
+// 返回非空 lockID 表示获锁成功，空串表示未获锁（SetNX 失败）。
+// lockID 须原样传给 Unlock，确保只删自己的锁。
+func (c *TemplateCache) TryLock(ctx context.Context, id int64, expire time.Duration) (string, error) {
 	key := rcfg.TemplateLockKey(id)
-	ok, err := c.rdb.SetNX(ctx, key, "1", expire).Result()
+	lockID := fmt.Sprintf("%d-%d", id, time.Now().UnixNano())
+	ok, err := c.rdb.SetNX(ctx, key, lockID, expire).Result()
 	if err != nil {
-		return false, fmt.Errorf("template try lock: %w", err)
+		return "", fmt.Errorf("template try lock: %w", err)
 	}
-	return ok, nil
+	if !ok {
+		return "", nil
+	}
+	return lockID, nil
 }
 
-// Unlock 释放分布式锁
-func (c *TemplateCache) Unlock(ctx context.Context, id int64) {
+// Unlock 释放分布式锁（Lua 原子解锁，只删 lockID 匹配的 key）
+func (c *TemplateCache) Unlock(ctx context.Context, id int64, lockID string) {
 	key := rcfg.TemplateLockKey(id)
-	if err := c.rdb.Del(ctx, key).Err(); err != nil {
+	if err := c.rdb.Eval(ctx, rcfg.LuaUnlock, []string{key}, lockID).Err(); err != nil {
 		slog.Error("cache.模板释放锁失败", "error", err, "key", key)
 	}
 }

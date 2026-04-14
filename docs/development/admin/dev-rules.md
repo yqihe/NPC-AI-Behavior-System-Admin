@@ -13,8 +13,32 @@
 **模块边界**：每个模块拥有自己的表。字段模块拥有 fields + field_refs，模板模块拥有 templates，事件类型模块拥有 event_types，扩展字段模块拥有 event_type_schema + schema_refs，FSM 模块拥有 fsm_configs。
 
 **跨模块事务处理**：
-- handler 调 `db.BeginTxx` → 传 `*sqlx.Tx` 给多个 service 的 Tx 版方法 → handler 统一 Commit/Rollback → commit 后清两个模块缓存
+- handler 调 `db.BeginTxx` → 传 `*sqlx.Tx` 给多个 service 的 Tx 版方法 → handler 统一 Commit/Rollback → **Commit 前**清两个模块缓存
 - ADMIN 是 HTTP 单体，跨模块事务就是普通 MySQL `BEGIN...COMMIT`，不需要分布式事务
+
+**缓存清除顺序**（有事务的写路径）：
+- `DelDetail`/`InvalidateList` **必须在 `tx.Commit()` 之前**调用
+- Commit 失败时缓存已清无害（下次读重建）；Commit 成功后不清则有脏读窗口
+- 示例：先 `cache.DelDetail(ctx, id)`，再 `tx.Commit()`
+
+**分布式锁使用规范**：
+- `TryLock` 返回 `(lockID string, error)`；空串表示未获锁，非空串表示获锁成功
+- `Unlock` 必须传入同一 `lockID`，Lua 脚本原子判断后再删，防止 TTL 超时后误删他人锁
+- 禁止直接 `DEL` 锁 key，必须走 `LuaUnlock` 脚本
+
+**事务内查询纪律**：
+- 在已开启的事务路径中，所有 DB 查询必须走 `tx.QueryContext`/`tx.GetContext`/`tx.ExecContext`
+- 禁止调 `store.DB().QueryContext`（绕过事务隔离，读到事务外的快照）
+
+**`defer tx.Rollback()` 规范**：
+- 必须用 error-aware 模式，过滤 `sql.ErrTxDone`（Commit 后 Rollback 返回此错误，属正常）：
+  ```go
+  defer func() {
+      if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+          slog.Warn("xxx事务回滚失败", "error", rbErr)
+      }
+  }()
+  ```
 
 **典型编排场景**：
 
@@ -27,9 +51,11 @@
 
 **例外**：`DictCache`、`EventTypeSchemaCache` 是只读基础设施，可被任意 service 直接调用。
 
-**层内文件夹**：每层文件夹下不允许子文件夹。通用函数放 `util/` 包（`store/redis/config/` 例外，是红线规定的 key 管理子包）。
+**层内辅助文件**：层特有的辅助函数放在该层的 `shared/` 子目录（`package shared`），与业务代码目录区分。调用方加 `import alias shared`，调用时写 `shared.CheckID(...)` 等。按功能点命名文件（`validate.go` / `jsonutil.go` / `sqlutil.go`）。`store/redis/config/` 沿用旧命名（import alias `rcfg`），未来新增跨包子包统一命名 `shared`。
 
-**util/ 分层**（红线 §11.7-§11.8）：`util/` 按架构层分 4 个文件——`handler.go`（ID/版本/必填/名称/标签校验、响应辅助）、`service.go`（分页、约束解析/校验）、`store.go`（SQL LIKE 转义）、`const.go`（跨层常量）。**业务规则禁止进 util/**，跨模块业务规则放 `service/` 根目录的 `*_check.go`（如 `service/constraint_check.go` 承载"约束只能放宽"规则）。
+**层内工具与业务规则的界限**：纯工具（校验、JSON 解析、SQL 转义等无业务语义的函数）放 `shared/`；跨模块业务规则（如约束收紧检查）放 `service/` 根目录的专用文件（如 `service/constraint_check.go`），并按需 `import shared ".../service/shared"` 使用工具函数。
+
+**util/ 职责**（红线 §11.7-§11.8）：`util/` 只放**每层都可能用到的跨层常量**，按功能点分文件——`const.go`（枚举、ref_type、字典组名等跨层常量）。层特有工具放各自层的 `shared/`：`handler/shared/validate.go`（ID/版本/必填/名称/标签校验、响应辅助）、`service/shared/validate.go`（值/约束校验、NormalizePagination）、`service/shared/jsonutil.go`（JSON 提取辅助）、`store/mysql/shared/sqlutil.go`（SQL LIKE 转义、Is1062）。**业务规则禁止进 util/ 或 shared/**。
 
 ## 2. 引用系统通用模式
 
@@ -101,20 +127,20 @@ slog.Warn("service.获取锁失败，降级直查MySQL", ...)   // 降级场景
 
 | 维度 | 权威模式 |
 |---|---|
-| ID/Version/Required 校验 | `util.CheckID()` / `util.CheckVersion()` / `util.CheckRequired()` |
-| 名称格式校验 | `util.CheckName(name, maxLen, errCode, subject)` — subject 如"字段标识"/"模板标识" |
-| 标签格式校验 | `util.CheckLabel(label, maxLen, subject)` — 统一 `ErrBadRequest`，支持 UTF-8 字符数 |
-| 标识符正则 | `util.IdentPattern`（通常不直接用，走 `util.CheckName`） |
+| ID/Version/Required 校验 | `CheckID()` / `CheckVersion()` / `CheckRequired()`（同包 `handler/validate.go`） |
+| 名称格式校验 | `CheckName(name, maxLen, errCode, subject)` — subject 如"字段标识"/"模板标识" |
+| 标签格式校验 | `CheckLabel(label, maxLen, subject)` — 统一 `ErrBadRequest`，支持 UTF-8 字符数 |
+| 标识符正则 | `IdentPattern`（通常不直接用，走 `CheckName`） |
 | slog Debug | 校验通过**之后**打印 |
-| Update 返回 | `*string` → `util.SuccessMsg("保存成功")` |
+| Update 返回 | `*string` → `SuccessMsg("保存成功")` |
 | Delete 返回 | `*model.DeleteResult{ID, Name, Label}` |
-| ToggleEnabled 返回 | `*string` → `util.SuccessMsg("操作成功")` |
+| ToggleEnabled 返回 | `*string` → `SuccessMsg("操作成功")` |
 
 ### Service 层
 
 | 维度 | 权威模式 |
 |---|---|
-| 分页 | `util.NormalizePagination(...)` |
+| 分页 | `NormalizePagination(...)`（同包 `service/validate.go`） |
 | 缓存读取 | `if cached, hit, err := cache.GetXxx(...); err == nil && hit` |
 | Store 错误 | `slog.Error + fmt.Errorf("xxx: %w", err)`，禁止 raw `return err` |
 | ToggleEnabled | `(ctx, *model.ToggleEnabledRequest) error` |
@@ -127,11 +153,12 @@ slog.Warn("service.获取锁失败，降级直查MySQL", ...)   // 降级场景
 | db 字段 | 统一 `*sqlx.DB` |
 | Create/Update | `*model.CreateXxxRequest` 结构体，禁止位置参数 |
 | 哨兵错误 | `errcode.ErrVersionConflict` / `errcode.ErrNotFound` |
-| LIKE | `util.EscapeLike()` |
+| LIKE | `EscapeLike()`（shared. 调用，位于 `store/mysql/shared/sqlutil.go`） |
+| 1062 检测 | `Is1062(err)`（shared. 调用，位于 `store/mysql/shared/sqlutil.go`） |
 
 ### Redis Cache 层
 
-文件命名 `{module}_cache.go` → 常量从 `store/redis/config` 导入 → 方法集：GetDetail/SetDetail/DelDetail/GetList/SetList/InvalidateList/TryLock/Unlock
+文件命名 `{module}_cache.go` → 常量从 `store/redis/shared` 导入 → 方法集：GetDetail/SetDetail/DelDetail/GetList/SetList/InvalidateList/TryLock/Unlock
 
 ### 前端一致性
 
@@ -169,7 +196,7 @@ if err := s.validatePropertiesConstraints(req.Type, req.Properties); err != nil 
 // ↓ 后续：name 唯一性、reference refs 校验、写 DB...
 ```
 
-`util.ValidateConstraintsSelf(fieldType, constraints, errCode)` 是唯一入口。errCode 按模块传：
+`ValidateConstraintsSelf(fieldType, constraints, errCode)`（`service/validate.go`）是唯一入口。errCode 按模块传：
 
 | 模块 | errCode |
 |---|---|
@@ -189,11 +216,11 @@ if err := s.validatePropertiesConstraints(req.Type, req.Properties); err != nil 
 
 ## 7c. check-name 接口前置校验模式
 
-所有 check-name 接口必须先跑 `util.CheckName()`（空/正则/长度），再查 DB：
+所有 check-name 接口必须先跑 `CheckName()`（空/正则/长度，`handler/validate.go` 同包调用），再查 DB：
 
 ```go
 func (h *XxxHandler) CheckName(ctx, req) (*CheckNameResult, error) {
-    if err := util.CheckName(req.Name, h.cfg.NameMaxLength,
+    if err := CheckName(req.Name, h.cfg.NameMaxLength,
         errcode.ErrXxxNameInvalid, "XX标识"); err != nil {
         return nil, err                             // 格式校验
     }
@@ -201,7 +228,7 @@ func (h *XxxHandler) CheckName(ctx, req) (*CheckNameResult, error) {
 }
 ```
 
-**禁止**只做 `util.CheckRequired(req.Name)` 就进 service——会让 `BAD_FORMAT` 这类非法 name 返回"可用"假结果。
+**禁止**只做 `CheckRequired(req.Name)` 就进 service——会让 `BAD_FORMAT` 这类非法 name 返回"可用"假结果。
 
 ## 8. 测试脚本（Windows 环境）
 

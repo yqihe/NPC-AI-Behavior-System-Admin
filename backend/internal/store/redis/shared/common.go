@@ -1,4 +1,4 @@
-package config
+package shared
 
 import (
 	"context"
@@ -18,6 +18,9 @@ const (
 	ListTTLJitter   = 10 * time.Second
 	LockExpire      = 3 * time.Second
 	PingTimeout     = 500 * time.Millisecond
+
+	// LuaUnlock 原子解锁脚本：只删除 value 与 lockID 匹配的 key，防止误删他人的锁
+	LuaUnlock = `if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end`
 )
 
 // TTL 带随机抖动的过期时间，防缓存雪崩
