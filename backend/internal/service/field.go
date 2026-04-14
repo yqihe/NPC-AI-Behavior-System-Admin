@@ -69,7 +69,7 @@ func (s *FieldService) validatePropertiesConstraints(fieldType string, propertie
 	if len(props.Constraints) == 0 {
 		return nil
 	}
-	return util.ValidateConstraintsSelf(fieldType, props.Constraints, errcode.ErrBadRequest)
+	return ValidateConstraintsSelf(fieldType, props.Constraints, errcode.ErrBadRequest)
 }
 
 // getFieldOrNotFound 按 ID 查字段 + 判空
@@ -88,7 +88,7 @@ func (s *FieldService) getFieldOrNotFound(ctx context.Context, id int64) (*model
 
 // List 字段列表（Cache-Aside：Redis → MySQL → 写 Redis）
 func (s *FieldService) List(ctx context.Context, q *model.FieldListQuery) (*model.ListData, error) {
-	util.NormalizePagination(&q.Page, &q.PageSize, s.pagCfg.DefaultPage, s.pagCfg.DefaultPageSize, s.pagCfg.MaxPageSize)
+	NormalizePagination(&q.Page, &q.PageSize, s.pagCfg.DefaultPage, s.pagCfg.DefaultPageSize, s.pagCfg.MaxPageSize)
 
 	// 1. 查 Redis 缓存（Redis 挂了跳过，降级直查 MySQL）
 	if cached, hit, err := s.fieldCache.GetList(ctx, q); err == nil && hit {

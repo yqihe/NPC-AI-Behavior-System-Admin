@@ -1,6 +1,8 @@
-package util
+package mysql
 
-// store 层通用工具：SQL LIKE 转义、MySQL 错误识别等。
+// sqlutil.go — store/mysql 层 SQL 辅助
+//
+// 只放 MySQL 层通用的工具函数，无业务语义。
 
 import (
 	"errors"

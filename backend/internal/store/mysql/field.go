@@ -10,7 +10,6 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
-	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // FieldStore fields 表操作
@@ -37,7 +36,7 @@ func (s *FieldStore) Create(ctx context.Context, req *model.CreateFieldRequest) 
 		req.Name, req.Label, req.Type, req.Category, string(req.Properties), now, now,
 	)
 	if err != nil {
-		if util.Is1062(err) {
+		if Is1062(err) {
 			return 0, errcode.ErrDuplicate
 		}
 		return 0, fmt.Errorf("insert field: %w", err)
@@ -97,7 +96,7 @@ func (s *FieldStore) List(ctx context.Context, q *model.FieldListQuery) ([]model
 
 	if q.Label != "" {
 		where = append(where, "label LIKE ?")
-		args = append(args, "%"+util.EscapeLike(q.Label)+"%")
+		args = append(args, "%"+EscapeLike(q.Label)+"%")
 	}
 	if q.Type != "" {
 		where = append(where, "type = ?")

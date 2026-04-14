@@ -1,8 +1,9 @@
-package util
+package handler
 
-// handler 层通用工具：ID/Version/必填校验、标识符正则、名称/标签格式校验、响应辅助。
+// validate.go — handler 层请求校验辅助
 //
-// 所有配置模块的 handler 共用此文件，避免各 handler 重复手写 checkName/checkLabel 样板。
+// 只放 handler 层通用的校验和响应函数。
+// 业务校验（如"启用中禁止编辑"）留在各 handler 方法中，不放这里。
 
 import (
 	"regexp"
@@ -76,7 +77,7 @@ func CheckName(name string, maxLen int, errCode int, subject string) *errcode.Er
 // CheckLabel 校验中文标签/展示名（非空 + UTF-8 字符数上限）
 //
 // 所有配置类型的 label / display_name 共用。subject 是字段描述（"中文标签"/"中文名称"/"扩展字段中文名"）。
-// 统一返回 ErrBadRequest（所有模块当前都用此码，符合 admin red-lines §4.8）。
+// 统一返回 ErrBadRequest（所有模块当前都用此码）。
 func CheckLabel(label string, maxLen int, subject string) *errcode.Error {
 	if label == "" {
 		return errcode.Newf(errcode.ErrBadRequest, "%s不能为空", subject)

@@ -14,7 +14,6 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
 	storeredis "github.com/yqihe/npc-ai-admin/backend/internal/store/redis"
-	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // 条件操作符白名单（对齐游戏服务端 rule.validOps）
@@ -204,7 +203,7 @@ func (s *FsmConfigService) validateCondition(cond *model.FsmCondition, depth, ma
 // List 分页列表
 func (s *FsmConfigService) List(ctx context.Context, q *model.FsmConfigListQuery) (*model.ListData, error) {
 	// 分页校正
-	util.NormalizePagination(&q.Page, &q.PageSize, s.pagCfg.DefaultPage, s.pagCfg.DefaultPageSize, s.pagCfg.MaxPageSize)
+	NormalizePagination(&q.Page, &q.PageSize, s.pagCfg.DefaultPage, s.pagCfg.DefaultPageSize, s.pagCfg.MaxPageSize)
 
 	// 查缓存（Redis 挂了跳过，降级直查 MySQL）
 	if cached, hit, err := s.cache.GetList(ctx, q); err == nil && hit {

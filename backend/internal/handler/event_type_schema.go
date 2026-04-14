@@ -75,10 +75,10 @@ func (h *EventTypeSchemaHandler) List(ctx context.Context, req *model.EventTypeS
 func (h *EventTypeSchemaHandler) Create(ctx context.Context, req *model.CreateEventTypeSchemaRequest) (*model.CreateEventTypeSchemaResponse, error) {
 	slog.Debug("handler.event_type_schema.create", "field_name", req.FieldName)
 
-	if e := util.CheckName(req.FieldName, h.etsCfg.FieldNameMaxLength, errcode.ErrExtSchemaNameInvalid, "扩展字段标识"); e != nil {
+	if e := CheckName(req.FieldName, h.etsCfg.FieldNameMaxLength, errcode.ErrExtSchemaNameInvalid, "扩展字段标识"); e != nil {
 		return nil, e
 	}
-	if e := util.CheckLabel(req.FieldLabel, h.etsCfg.FieldLabelMaxLength, "扩展字段中文名"); e != nil {
+	if e := CheckLabel(req.FieldLabel, h.etsCfg.FieldLabelMaxLength, "扩展字段中文名"); e != nil {
 		return nil, e
 	}
 	if e := checkFieldType(req.FieldType); e != nil {
@@ -109,7 +109,7 @@ func (h *EventTypeSchemaHandler) Update(ctx context.Context, req *model.UpdateEv
 	if req.Version <= 0 {
 		return nil, errcode.Newf(errcode.ErrBadRequest, "version 必须 > 0")
 	}
-	if e := util.CheckLabel(req.FieldLabel, h.etsCfg.FieldLabelMaxLength, "扩展字段中文名"); e != nil {
+	if e := CheckLabel(req.FieldLabel, h.etsCfg.FieldLabelMaxLength, "扩展字段中文名"); e != nil {
 		return nil, e
 	}
 	if e := checkJSONObjectShape(req.Constraints, "约束"); e != nil {

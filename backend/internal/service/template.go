@@ -14,7 +14,6 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
 	storeredis "github.com/yqihe/npc-ai-admin/backend/internal/store/redis"
-	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // TemplateService 模板管理业务逻辑
@@ -101,7 +100,7 @@ func (s *TemplateService) ParseFieldEntries(raw json.RawMessage) ([]model.Templa
 
 // List 模板列表（Cache-Aside：Redis → MySQL → 写 Redis）
 func (s *TemplateService) List(ctx context.Context, q *model.TemplateListQuery) (*model.ListData, error) {
-	util.NormalizePagination(&q.Page, &q.PageSize, s.pagCfg.DefaultPage, s.pagCfg.DefaultPageSize, s.pagCfg.MaxPageSize)
+	NormalizePagination(&q.Page, &q.PageSize, s.pagCfg.DefaultPage, s.pagCfg.DefaultPageSize, s.pagCfg.MaxPageSize)
 
 	// 1. 查 Redis 缓存
 	if cached, hit, err := s.cache.GetList(ctx, q); err == nil && hit {

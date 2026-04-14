@@ -107,7 +107,7 @@ func (s *EventTypeService) validateExtensions(extensions map[string]interface{})
 		if err != nil {
 			return errcode.Newf(errcode.ErrEventTypeExtValueInvalid, "扩展字段 '%s' 值序列化失败", key)
 		}
-		if e := util.ValidateValue(schema.FieldType, schema.Constraints, valJSON); e != nil {
+		if e := ValidateValue(schema.FieldType, schema.Constraints, valJSON); e != nil {
 			return errcode.Newf(errcode.ErrEventTypeExtValueInvalid, "扩展字段 '%s': %s", key, e.Error())
 		}
 	}
@@ -119,7 +119,7 @@ func (s *EventTypeService) validateExtensions(extensions map[string]interface{})
 // List 分页列表
 func (s *EventTypeService) List(ctx context.Context, q *model.EventTypeListQuery) (*model.ListData, error) {
 	// 分页校正
-	util.NormalizePagination(&q.Page, &q.PageSize, s.pagCfg.DefaultPage, s.pagCfg.DefaultPageSize, s.pagCfg.MaxPageSize)
+	NormalizePagination(&q.Page, &q.PageSize, s.pagCfg.DefaultPage, s.pagCfg.DefaultPageSize, s.pagCfg.MaxPageSize)
 
 	// 查缓存（Redis 挂了跳过，降级直查 MySQL）
 	if cached, hit, err := s.cache.GetList(ctx, q); err == nil && hit {

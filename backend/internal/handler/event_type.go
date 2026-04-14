@@ -84,10 +84,10 @@ func (h *EventTypeHandler) List(ctx context.Context, req *model.EventTypeListQue
 // Create 创建事件类型
 func (h *EventTypeHandler) Create(ctx context.Context, req *model.CreateEventTypeRequest) (*model.CreateEventTypeResponse, error) {
 	// Handler 格式校验
-	if e := util.CheckName(req.Name, h.etCfg.NameMaxLength, errcode.ErrEventTypeNameInvalid, "事件标识"); e != nil {
+	if e := CheckName(req.Name, h.etCfg.NameMaxLength, errcode.ErrEventTypeNameInvalid, "事件标识"); e != nil {
 		return nil, e
 	}
-	if e := util.CheckLabel(req.DisplayName, h.etCfg.DisplayNameMaxLength, "中文名称"); e != nil {
+	if e := CheckLabel(req.DisplayName, h.etCfg.DisplayNameMaxLength, "中文名称"); e != nil {
 		return nil, e
 	}
 	if e := checkPerceptionMode(req.PerceptionMode); e != nil {
@@ -122,7 +122,7 @@ func (h *EventTypeHandler) Create(ctx context.Context, req *model.CreateEventTyp
 
 // Get 事件类型详情（跨模块拼装：事件类型 + 扩展字段 schema）
 func (h *EventTypeHandler) Get(ctx context.Context, req *model.IDRequest) (*model.EventTypeDetail, error) {
-	if err := util.CheckID(req.ID); err != nil {
+	if err := CheckID(req.ID); err != nil {
 		return nil, err
 	}
 
@@ -201,13 +201,13 @@ func (h *EventTypeHandler) Get(ctx context.Context, req *model.IDRequest) (*mode
 
 // Update 编辑事件类型
 func (h *EventTypeHandler) Update(ctx context.Context, req *model.UpdateEventTypeRequest) (*string, error) {
-	if err := util.CheckID(req.ID); err != nil {
+	if err := CheckID(req.ID); err != nil {
 		return nil, err
 	}
-	if err := util.CheckVersion(req.Version); err != nil {
+	if err := CheckVersion(req.Version); err != nil {
 		return nil, err
 	}
-	if e := util.CheckLabel(req.DisplayName, h.etCfg.DisplayNameMaxLength, "中文名称"); e != nil {
+	if e := CheckLabel(req.DisplayName, h.etCfg.DisplayNameMaxLength, "中文名称"); e != nil {
 		return nil, e
 	}
 	if e := checkPerceptionMode(req.PerceptionMode); e != nil {
@@ -234,12 +234,12 @@ func (h *EventTypeHandler) Update(ctx context.Context, req *model.UpdateEventTyp
 	if err := h.eventTypeService.Update(ctx, req); err != nil {
 		return nil, err
 	}
-	return util.SuccessMsg("保存成功"), nil
+	return SuccessMsg("保存成功"), nil
 }
 
 // Delete 删除事件类型
 func (h *EventTypeHandler) Delete(ctx context.Context, req *model.IDRequest) (*model.DeleteResult, error) {
-	if err := util.CheckID(req.ID); err != nil {
+	if err := CheckID(req.ID); err != nil {
 		return nil, err
 	}
 
@@ -250,7 +250,7 @@ func (h *EventTypeHandler) Delete(ctx context.Context, req *model.IDRequest) (*m
 
 // CheckName 事件标识唯一性校验
 func (h *EventTypeHandler) CheckName(ctx context.Context, req *model.CheckNameRequest) (*model.CheckNameResult, error) {
-	if err := util.CheckName(req.Name, h.etCfg.NameMaxLength, errcode.ErrEventTypeNameInvalid, "事件标识"); err != nil {
+	if err := CheckName(req.Name, h.etCfg.NameMaxLength, errcode.ErrEventTypeNameInvalid, "事件标识"); err != nil {
 		return nil, err
 	}
 
@@ -261,10 +261,10 @@ func (h *EventTypeHandler) CheckName(ctx context.Context, req *model.CheckNameRe
 
 // ToggleEnabled 启用/停用切换
 func (h *EventTypeHandler) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) (*string, error) {
-	if err := util.CheckID(req.ID); err != nil {
+	if err := CheckID(req.ID); err != nil {
 		return nil, err
 	}
-	if err := util.CheckVersion(req.Version); err != nil {
+	if err := CheckVersion(req.Version); err != nil {
 		return nil, err
 	}
 
@@ -273,6 +273,6 @@ func (h *EventTypeHandler) ToggleEnabled(ctx context.Context, req *model.ToggleE
 	if err := h.eventTypeService.ToggleEnabled(ctx, req); err != nil {
 		return nil, err
 	}
-	return util.SuccessMsg("操作成功"), nil
+	return SuccessMsg("操作成功"), nil
 }
 

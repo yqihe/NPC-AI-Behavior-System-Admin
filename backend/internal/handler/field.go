@@ -11,7 +11,6 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	"github.com/yqihe/npc-ai-admin/backend/internal/service"
-	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // FieldHandler 字段管理业务处理
@@ -64,16 +63,16 @@ func (h *FieldHandler) List(ctx context.Context, req *model.FieldListQuery) (*mo
 
 // Create 创建字段
 func (h *FieldHandler) Create(ctx context.Context, req *model.CreateFieldRequest) (*model.CreateFieldResponse, error) {
-	if err := util.CheckName(req.Name, h.valCfg.FieldNameMaxLength, errcode.ErrFieldNameInvalid, "字段标识"); err != nil {
+	if err := CheckName(req.Name, h.valCfg.FieldNameMaxLength, errcode.ErrFieldNameInvalid, "字段标识"); err != nil {
 		return nil, err
 	}
-	if err := util.CheckLabel(req.Label, h.valCfg.FieldLabelMaxLength, "中文标签"); err != nil {
+	if err := CheckLabel(req.Label, h.valCfg.FieldLabelMaxLength, "中文标签"); err != nil {
 		return nil, err
 	}
-	if err := util.CheckRequired(req.Type, "字段类型"); err != nil {
+	if err := CheckRequired(req.Type, "字段类型"); err != nil {
 		return nil, err
 	}
-	if err := util.CheckRequired(req.Category, "标签分类"); err != nil {
+	if err := CheckRequired(req.Category, "标签分类"); err != nil {
 		return nil, err
 	}
 	if err := checkPropertiesShape(req.Properties); err != nil {
@@ -92,7 +91,7 @@ func (h *FieldHandler) Create(ctx context.Context, req *model.CreateFieldRequest
 
 // Get 字段详情（按 ID）
 func (h *FieldHandler) Get(ctx context.Context, req *model.IDRequest) (*model.Field, error) {
-	if err := util.CheckID(req.ID); err != nil {
+	if err := CheckID(req.ID); err != nil {
 		return nil, err
 	}
 
@@ -103,22 +102,22 @@ func (h *FieldHandler) Get(ctx context.Context, req *model.IDRequest) (*model.Fi
 
 // Update 编辑字段（按 ID）
 func (h *FieldHandler) Update(ctx context.Context, req *model.UpdateFieldRequest) (*string, error) {
-	if err := util.CheckID(req.ID); err != nil {
+	if err := CheckID(req.ID); err != nil {
 		return nil, err
 	}
-	if err := util.CheckLabel(req.Label, h.valCfg.FieldLabelMaxLength, "中文标签"); err != nil {
+	if err := CheckLabel(req.Label, h.valCfg.FieldLabelMaxLength, "中文标签"); err != nil {
 		return nil, err
 	}
-	if err := util.CheckRequired(req.Type, "字段类型"); err != nil {
+	if err := CheckRequired(req.Type, "字段类型"); err != nil {
 		return nil, err
 	}
-	if err := util.CheckRequired(req.Category, "标签分类"); err != nil {
+	if err := CheckRequired(req.Category, "标签分类"); err != nil {
 		return nil, err
 	}
 	if err := checkPropertiesShape(req.Properties); err != nil {
 		return nil, err
 	}
-	if err := util.CheckVersion(req.Version); err != nil {
+	if err := CheckVersion(req.Version); err != nil {
 		return nil, err
 	}
 
@@ -129,12 +128,12 @@ func (h *FieldHandler) Update(ctx context.Context, req *model.UpdateFieldRequest
 		return nil, err
 	}
 
-	return util.SuccessMsg("保存成功"), nil
+	return SuccessMsg("保存成功"), nil
 }
 
 // Delete 软删除字段（按 ID）
 func (h *FieldHandler) Delete(ctx context.Context, req *model.IDRequest) (*model.DeleteResult, error) {
-	if err := util.CheckID(req.ID); err != nil {
+	if err := CheckID(req.ID); err != nil {
 		return nil, err
 	}
 
@@ -145,7 +144,7 @@ func (h *FieldHandler) Delete(ctx context.Context, req *model.IDRequest) (*model
 
 // CheckName 字段标识唯一性校验（先校验格式/长度，再查 DB）
 func (h *FieldHandler) CheckName(ctx context.Context, req *model.CheckNameRequest) (*model.CheckNameResult, error) {
-	if err := util.CheckName(req.Name, h.valCfg.FieldNameMaxLength, errcode.ErrFieldNameInvalid, "字段标识"); err != nil {
+	if err := CheckName(req.Name, h.valCfg.FieldNameMaxLength, errcode.ErrFieldNameInvalid, "字段标识"); err != nil {
 		return nil, err
 	}
 
@@ -159,7 +158,7 @@ func (h *FieldHandler) CheckName(ctx context.Context, req *model.CheckNameReques
 // 跨模块编排：FieldService 只返回字段模块内的数据（templates 数组只有 RefID 不带 Label），
 // handler 调 templateService.GetByIDsLite 跨模块补齐 template label。
 func (h *FieldHandler) GetReferences(ctx context.Context, req *model.IDRequest) (*model.ReferenceDetail, error) {
-	if err := util.CheckID(req.ID); err != nil {
+	if err := CheckID(req.ID); err != nil {
 		return nil, err
 	}
 
@@ -215,10 +214,10 @@ func (h *FieldHandler) GetReferences(ctx context.Context, req *model.IDRequest) 
 
 // ToggleEnabled 切换启用/停用（按 ID）
 func (h *FieldHandler) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) (*string, error) {
-	if err := util.CheckID(req.ID); err != nil {
+	if err := CheckID(req.ID); err != nil {
 		return nil, err
 	}
-	if err := util.CheckVersion(req.Version); err != nil {
+	if err := CheckVersion(req.Version); err != nil {
 		return nil, err
 	}
 
@@ -229,5 +228,5 @@ func (h *FieldHandler) ToggleEnabled(ctx context.Context, req *model.ToggleEnabl
 		return nil, err
 	}
 
-	return util.SuccessMsg("操作成功"), nil
+	return SuccessMsg("操作成功"), nil
 }

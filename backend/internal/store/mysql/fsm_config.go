@@ -11,7 +11,6 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
-	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // FsmConfigStore fsm_configs 表操作
@@ -40,7 +39,7 @@ func (s *FsmConfigStore) Create(ctx context.Context, req *model.CreateFsmConfigR
 		req.Name, req.DisplayName, configJSON, now, now,
 	)
 	if err != nil {
-		if util.Is1062(err) {
+		if Is1062(err) {
 			return 0, errcode.ErrDuplicate
 		}
 		return 0, fmt.Errorf("insert fsm_config: %w", err)
@@ -90,7 +89,7 @@ func (s *FsmConfigStore) List(ctx context.Context, q *model.FsmConfigListQuery) 
 
 	if q.Label != "" {
 		where = append(where, "display_name LIKE ?")
-		args = append(args, "%"+util.EscapeLike(q.Label)+"%")
+		args = append(args, "%"+EscapeLike(q.Label)+"%")
 	}
 	if q.Enabled != nil {
 		where = append(where, "enabled = ?")
@@ -201,7 +200,7 @@ func (s *FsmConfigStore) CreateTx(ctx context.Context, tx *sqlx.Tx, req *model.C
 		req.Name, req.DisplayName, configJSON, now, now,
 	)
 	if err != nil {
-		if util.Is1062(err) {
+		if Is1062(err) {
 			return 0, errcode.ErrDuplicate
 		}
 		return 0, fmt.Errorf("insert fsm_config tx: %w", err)

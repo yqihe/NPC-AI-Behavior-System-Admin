@@ -51,9 +51,9 @@
 
 **例外**：`DictCache`、`EventTypeSchemaCache` 是只读基础设施，可被任意 service 直接调用。
 
-**层内文件夹**：每层文件夹下不允许子文件夹。通用函数放 `util/` 包（`store/redis/config/` 例外，是红线规定的 key 管理子包）。
+**层内辅助文件**：层特有的辅助函数直接放在该层目录内，作为同包文件，不需要子包。命名按功能点（如 `validate.go` / `jsonutil.go` / `sqlutil.go`）。`store/redis/config/` 是例外——redis 的 key 生成函数和常量需要被 service 层或跨 cache 文件共享，因此放子包（import alias `rcfg`）；未来若需要类似跨包共享的内部常量，子包命名用 `shared` 而非 `config`（`config` 语义歧义）。
 
-**util/ 分层**（红线 §11.7-§11.8）：`util/` 按架构层分 4 个文件——`handler.go`（ID/版本/必填/名称/标签校验、响应辅助）、`service.go`（分页、约束解析/校验）、`store.go`（SQL LIKE 转义）、`const.go`（跨层常量）。**业务规则禁止进 util/**，跨模块业务规则放 `service/` 根目录的 `*_check.go`（如 `service/constraint_check.go` 承载"约束只能放宽"规则）。
+**util/ 职责**（红线 §11.7-§11.8）：`util/` 只放**每层都可能用到的跨层常量**，按功能点分文件——`const.go`（枚举、ref_type、字典组名等跨层常量）。层特有的工具函数放回各自层：`handler/validate.go`（ID/版本/必填/名称/标签校验、响应辅助）、`service/validate.go`（值/约束校验、NormalizePagination）、`service/jsonutil.go`（JSON 提取辅助）、`store/mysql/sqlutil.go`（SQL LIKE 转义、Is1062）。**业务规则禁止进 util/**，跨模块业务规则放 `service/` 根目录的专用文件（如 `service/constraint_check.go`）。
 
 ## 2. 引用系统通用模式
 
@@ -125,20 +125,20 @@ slog.Warn("service.获取锁失败，降级直查MySQL", ...)   // 降级场景
 
 | 维度 | 权威模式 |
 |---|---|
-| ID/Version/Required 校验 | `util.CheckID()` / `util.CheckVersion()` / `util.CheckRequired()` |
-| 名称格式校验 | `util.CheckName(name, maxLen, errCode, subject)` — subject 如"字段标识"/"模板标识" |
-| 标签格式校验 | `util.CheckLabel(label, maxLen, subject)` — 统一 `ErrBadRequest`，支持 UTF-8 字符数 |
-| 标识符正则 | `util.IdentPattern`（通常不直接用，走 `util.CheckName`） |
+| ID/Version/Required 校验 | `CheckID()` / `CheckVersion()` / `CheckRequired()`（同包 `handler/validate.go`） |
+| 名称格式校验 | `CheckName(name, maxLen, errCode, subject)` — subject 如"字段标识"/"模板标识" |
+| 标签格式校验 | `CheckLabel(label, maxLen, subject)` — 统一 `ErrBadRequest`，支持 UTF-8 字符数 |
+| 标识符正则 | `IdentPattern`（通常不直接用，走 `CheckName`） |
 | slog Debug | 校验通过**之后**打印 |
-| Update 返回 | `*string` → `util.SuccessMsg("保存成功")` |
+| Update 返回 | `*string` → `SuccessMsg("保存成功")` |
 | Delete 返回 | `*model.DeleteResult{ID, Name, Label}` |
-| ToggleEnabled 返回 | `*string` → `util.SuccessMsg("操作成功")` |
+| ToggleEnabled 返回 | `*string` → `SuccessMsg("操作成功")` |
 
 ### Service 层
 
 | 维度 | 权威模式 |
 |---|---|
-| 分页 | `util.NormalizePagination(...)` |
+| 分页 | `NormalizePagination(...)`（同包 `service/validate.go`） |
 | 缓存读取 | `if cached, hit, err := cache.GetXxx(...); err == nil && hit` |
 | Store 错误 | `slog.Error + fmt.Errorf("xxx: %w", err)`，禁止 raw `return err` |
 | ToggleEnabled | `(ctx, *model.ToggleEnabledRequest) error` |
@@ -151,7 +151,8 @@ slog.Warn("service.获取锁失败，降级直查MySQL", ...)   // 降级场景
 | db 字段 | 统一 `*sqlx.DB` |
 | Create/Update | `*model.CreateXxxRequest` 结构体，禁止位置参数 |
 | 哨兵错误 | `errcode.ErrVersionConflict` / `errcode.ErrNotFound` |
-| LIKE | `util.EscapeLike()` |
+| LIKE | `EscapeLike()`（同包 `store/mysql/sqlutil.go`） |
+| 1062 检测 | `Is1062(err)`（同包 `store/mysql/sqlutil.go`） |
 
 ### Redis Cache 层
 
@@ -193,7 +194,7 @@ if err := s.validatePropertiesConstraints(req.Type, req.Properties); err != nil 
 // ↓ 后续：name 唯一性、reference refs 校验、写 DB...
 ```
 
-`util.ValidateConstraintsSelf(fieldType, constraints, errCode)` 是唯一入口。errCode 按模块传：
+`ValidateConstraintsSelf(fieldType, constraints, errCode)`（`service/validate.go`）是唯一入口。errCode 按模块传：
 
 | 模块 | errCode |
 |---|---|
@@ -213,11 +214,11 @@ if err := s.validatePropertiesConstraints(req.Type, req.Properties); err != nil 
 
 ## 7c. check-name 接口前置校验模式
 
-所有 check-name 接口必须先跑 `util.CheckName()`（空/正则/长度），再查 DB：
+所有 check-name 接口必须先跑 `CheckName()`（空/正则/长度，`handler/validate.go` 同包调用），再查 DB：
 
 ```go
 func (h *XxxHandler) CheckName(ctx, req) (*CheckNameResult, error) {
-    if err := util.CheckName(req.Name, h.cfg.NameMaxLength,
+    if err := CheckName(req.Name, h.cfg.NameMaxLength,
         errcode.ErrXxxNameInvalid, "XX标识"); err != nil {
         return nil, err                             // 格式校验
     }
@@ -225,7 +226,7 @@ func (h *XxxHandler) CheckName(ctx, req) (*CheckNameResult, error) {
 }
 ```
 
-**禁止**只做 `util.CheckRequired(req.Name)` 就进 service——会让 `BAD_FORMAT` 这类非法 name 返回"可用"假结果。
+**禁止**只做 `CheckRequired(req.Name)` 就进 service——会让 `BAD_FORMAT` 这类非法 name 返回"可用"假结果。
 
 ## 8. 测试脚本（Windows 环境）
 

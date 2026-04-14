@@ -53,22 +53,23 @@ backend/
     seed/                  #   字典种子脚本
   internal/
     handler/               #   HTTP handler（纯业务 + wrap.go 泛型包装）
+      validate.go          #     请求校验辅助（CheckID/CheckName/CheckLabel/SuccessMsg）
     service/               #   业务逻辑（纯业务）
+      validate.go          #     值/约束校验（ValidateValue/ValidateConstraintsSelf/NormalizePagination）
+      jsonutil.go          #     JSON 提取辅助（ParseConstraintsMap/GetFloat/GetString/...）
     store/
       mysql/               #   MySQL 操作（纯业务 CRUD）
+        sqlutil.go         #     SQL 辅助（EscapeLike/Is1062）
       redis/               #   Redis 缓存操作（纯业务 *_cache.go）
-        config/            #   Redis 专属常量 + key 管理
+        config/            #   Redis 专属常量 + key 管理（shared 子包，import alias rcfg）
     cache/                 #   内存缓存（字典/Schema 启动加载）
     config/                #   配置加载
     errcode/               #   错误码（业务码 + store 哨兵错误）
     model/                 #   数据模型
     router/                #   路由注册
     setup/                 #   统一聚合初始化（连接 + 分层注册）
-    util/                  #   跨模块通用工具（按架构层分文件）
-      handler.go           #     handler 层：ID/版本/必填/名称/标签格式校验、响应辅助
-      service.go           #     service 层：分页规范化、约束 JSON 解析、值/自洽校验
-      store.go             #     store 层：SQL LIKE 转义
-      const.go             #     跨层共享常量（枚举、ref_type、字典组名）
+    util/                  #   跨层共享常量（每层都可能引用）
+      const.go             #     枚举/ref_type/字典组名（PerceptionMode/FieldType/RefType/DictGroup）
   migrations/              #   SQL DDL 脚本
 frontend/
   src/

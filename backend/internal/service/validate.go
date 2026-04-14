@@ -1,13 +1,12 @@
-package util
+package service
 
-// service 层通用工具：分页规范化、约束 JSON 解析、值校验、约束自洽校验。
+// validate.go — service 层校验辅助
 //
-// 此文件无状态，不持有任何 store/cache。
-// 注意：业务规则（如"约束只能放宽"）不放这里，参见 service/constraint_check.go。
+// 分页规范化、字段值校验、约束自洽校验。
+// 业务规则（如"约束只能放宽"）不放这里，见 constraint_check.go。
 
 import (
 	"encoding/json"
-	"fmt"
 	"unicode/utf8"
 
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
@@ -28,70 +27,6 @@ func NormalizePagination(page, pageSize *int, defaultPage, defaultPageSize, maxP
 	if *pageSize > maxPageSize {
 		*pageSize = maxPageSize
 	}
-}
-
-// ============================================================
-// 约束 JSON 解析辅助
-// ============================================================
-
-// ParseConstraintsMap 解析 constraints JSON 为 key→RawMessage map
-func ParseConstraintsMap(raw json.RawMessage) (map[string]json.RawMessage, error) {
-	if len(raw) == 0 {
-		return make(map[string]json.RawMessage), nil
-	}
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &m); err != nil {
-		return nil, fmt.Errorf("unmarshal constraints: %w", err)
-	}
-	return m, nil
-}
-
-// GetFloat 从 json.RawMessage 提取 float64
-func GetFloat(raw json.RawMessage) (float64, bool) {
-	var v float64
-	if err := json.Unmarshal(raw, &v); err != nil {
-		return 0, false
-	}
-	return v, true
-}
-
-// GetString 从 json.RawMessage 提取字符串，失败返回空串
-func GetString(raw json.RawMessage) string {
-	if len(raw) == 0 {
-		return ""
-	}
-	var s string
-	if err := json.Unmarshal(raw, &s); err != nil {
-		return ""
-	}
-	return s
-}
-
-// GetBool 从 json.RawMessage 提取 bool
-func GetBool(raw json.RawMessage) (bool, bool) {
-	var v bool
-	if err := json.Unmarshal(raw, &v); err != nil {
-		return false, false
-	}
-	return v, true
-}
-
-// ParseSelectOptions 解析 select 类型的 options 数组，返回 value 列表
-func ParseSelectOptions(raw json.RawMessage) []string {
-	if len(raw) == 0 {
-		return nil
-	}
-	var options []struct {
-		Value string `json:"value"`
-	}
-	if err := json.Unmarshal(raw, &options); err != nil {
-		return nil
-	}
-	values := make([]string, 0, len(options))
-	for _, o := range options {
-		values = append(values, o.Value)
-	}
-	return values
 }
 
 // ============================================================

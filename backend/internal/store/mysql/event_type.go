@@ -11,7 +11,6 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
-	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // EventTypeStore event_types 表操作
@@ -41,7 +40,7 @@ func (s *EventTypeStore) Create(ctx context.Context, req *model.CreateEventTypeR
 		req.Name, req.DisplayName, req.PerceptionMode, configJSON, now, now,
 	)
 	if err != nil {
-		if util.Is1062(err) {
+		if Is1062(err) {
 			return 0, errcode.ErrDuplicate
 		}
 		return 0, fmt.Errorf("insert event_type: %w", err)
@@ -91,7 +90,7 @@ func (s *EventTypeStore) List(ctx context.Context, q *model.EventTypeListQuery) 
 
 	if q.Label != "" {
 		where = append(where, "display_name LIKE ?")
-		args = append(args, "%"+util.EscapeLike(q.Label)+"%")
+		args = append(args, "%"+EscapeLike(q.Label)+"%")
 	}
 	if q.PerceptionMode != "" {
 		where = append(where, "perception_mode = ?")
@@ -206,7 +205,7 @@ func (s *EventTypeStore) CreateTx(ctx context.Context, tx *sqlx.Tx, req *model.C
 		req.Name, req.DisplayName, req.PerceptionMode, configJSON, now, now,
 	)
 	if err != nil {
-		if util.Is1062(err) {
+		if Is1062(err) {
 			return 0, errcode.ErrDuplicate
 		}
 		return 0, fmt.Errorf("insert event_type tx: %w", err)
