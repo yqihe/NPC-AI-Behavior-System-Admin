@@ -23,7 +23,7 @@
 
 ---
 
-## T2：util/handler.go 建立 + validation.go/strings.go 剥离 (R1, R2)
+## T2：util/handler.go 建立 + validation.go/strings.go 剥离 (R1, R2) [x]
 
 **文件**（3）：
 - `backend/internal/util/handler.go`（新建）
