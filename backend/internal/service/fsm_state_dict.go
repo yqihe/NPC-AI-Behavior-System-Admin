@@ -250,28 +250,26 @@ func (s *FsmStateDictService) CheckName(ctx context.Context, name string) (*mode
 }
 
 // ToggleEnabled 切换启用/停用
-func (s *FsmStateDictService) ToggleEnabled(ctx context.Context, id int64, version int) error {
-	slog.Debug("service.切换状态字典启用", "id", id)
+func (s *FsmStateDictService) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) error {
+	slog.Debug("service.切换状态字典启用", "id", req.ID)
 
-	d, err := s.getOrNotFound(ctx, id)
-	if err != nil {
+	if _, err := s.getOrNotFound(ctx, req.ID); err != nil {
 		return err
 	}
 
-	newEnabled := !d.Enabled
-	if err := s.store.ToggleEnabled(ctx, id, newEnabled, version); err != nil {
+	if err := s.store.ToggleEnabled(ctx, req.ID, req.Enabled, req.Version); err != nil {
 		if errors.Is(err, errcode.ErrVersionConflict) {
 			return errcode.New(errcode.ErrFsmStateDictVersionConflict)
 		}
-		slog.Error("service.切换状态字典启用失败", "error", err, "id", id)
+		slog.Error("service.切换状态字典启用失败", "error", err, "id", req.ID)
 		return fmt.Errorf("toggle enabled: %w", err)
 	}
 
 	// 清缓存
-	s.cache.DelDetail(ctx, id)
+	s.cache.DelDetail(ctx, req.ID)
 	s.cache.InvalidateList(ctx)
 
-	slog.Info("service.切换状态字典启用成功", "id", id, "enabled", newEnabled)
+	slog.Info("service.切换状态字典启用成功", "id", req.ID, "enabled", req.Enabled)
 	return nil
 }
 

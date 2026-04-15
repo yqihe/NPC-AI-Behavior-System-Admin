@@ -8,9 +8,10 @@
       <span class="header-title">{{ isView ? '查看字段' : isCreate ? '新建字段' : '编辑字段' }}</span>
     </div>
 
-    <!-- 表单卡片 -->
-    <div class="form-card">
-      <div class="card-inner">
+    <!-- 表单滚动区 -->
+    <div class="form-scroll">
+      <div class="form-body">
+        <div class="form-card">
         <el-form
           ref="formRef"
           :model="form"
@@ -131,7 +132,7 @@
               v-model="form.properties.default_value"
               :controls="false"
               placeholder="选填"
-              style="width: 100%"
+              style="width: 200px"
             />
             <el-input-number
               v-else-if="form.type === 'float'"
@@ -139,7 +140,7 @@
               :controls="false"
               :step="0.1"
               placeholder="选填"
-              style="width: 100%"
+              style="width: 200px"
             />
             <el-input
               v-else-if="form.type === 'string'"
@@ -190,19 +191,25 @@
             />
           </el-form-item>
 
-          <!-- 提交按钮（查看模式隐藏） -->
-          <div v-if="!isView" class="form-actions">
-            <el-button @click="$router.push('/fields')">取消</el-button>
-            <el-button
-              type="primary"
-              :loading="submitting"
-              @click="handleSubmit"
-            >
-              保存
-            </el-button>
-          </div>
+          <!-- 查看模式下展示时间戳 -->
+          <template v-if="isView">
+            <el-form-item label="创建时间">
+              <el-input :model-value="formatTime(createdAt)" :disabled="true" style="width: 200px" />
+            </el-form-item>
+            <el-form-item label="更新时间">
+              <el-input :model-value="formatTime(updatedAt)" :disabled="true" style="width: 200px" />
+            </el-form-item>
+          </template>
+
         </el-form>
+        </div>
       </div>
+    </div>
+
+    <!-- 底部操作栏（查看模式隐藏） -->
+    <div v-if="!isView" class="form-footer">
+      <el-button @click="$router.push('/fields')">取消</el-button>
+      <el-button type="primary" :loading="submitting" @click="handleSubmit">保存</el-button>
     </div>
   </div>
 </template>
@@ -215,6 +222,7 @@ import type { FormInstance } from 'element-plus'
 import { ArrowLeft, Lock, WarningFilled, Loading, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { fieldApi, FIELD_ERR } from '@/api/fields'
 import type { BizError } from '@/api/request'
+import { formatTime } from '@/utils/format'
 import { dictApi } from '@/api/dictionaries'
 import type { DictionaryItem } from '@/api/dictionaries'
 import FieldConstraintInteger from '@/components/FieldConstraintInteger.vue'
@@ -236,6 +244,8 @@ const typeOptions = ref<DictionaryItem[]>([])
 const categoryOptions = ref<DictionaryItem[]>([])
 const version = ref(0)
 const hasRefs = ref(false)
+const createdAt = ref('')
+const updatedAt = ref('')
 
 interface FormState {
   name: string
@@ -337,6 +347,8 @@ async function loadFieldDetail() {
     }
     version.value = data.version
     hasRefs.value = data.has_refs || false
+    createdAt.value = data.created_at || ''
+    updatedAt.value = data.updated_at || ''
   } catch (err: unknown) {
     if ((err as BizError).code === FIELD_ERR.NOT_FOUND) {
       router.push('/fields')
@@ -487,54 +499,6 @@ async function handleSubmit() {
   overflow: hidden;
 }
 
-.form-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 16px 24px;
-  background: #fff;
-  border-bottom: 1px solid #E4E7ED;
-}
-
-.back-icon {
-  color: #409EFF;
-  font-size: 18px;
-  cursor: pointer;
-}
-
-.back-text {
-  color: #409EFF;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.header-sep {
-  width: 1px;
-  height: 16px;
-  background: #DCDFE6;
-}
-
-.header-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
-}
-
-.form-card {
-  flex: 1;
-  padding: 24px 32px;
-  overflow-y: auto;
-}
-
-.card-inner {
-  max-width: 800px;
-  margin: 0 auto;
-  background: #fff;
-  border: 1px solid #E4E7ED;
-  border-radius: 8px;
-  padding: 32px;
-}
-
 .field-hint {
   display: flex;
   align-items: center;
@@ -576,10 +540,4 @@ async function handleSubmit() {
   color: #909399;
 }
 
-.form-actions {
-  display: flex;
-  justify-content: flex-end;
-  padding-top: 16px;
-  gap: 12px;
-}
 </style>

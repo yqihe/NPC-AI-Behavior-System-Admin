@@ -104,15 +104,9 @@
         </el-table-column>
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
-            <el-link type="primary" :underline="false" @click="$router.push(`/fields/${row.id}/view`)">
-              查看
-            </el-link>
-            <el-link type="primary" :underline="false" @click="handleEdit(row)" style="margin-left: 12px">
-              编辑
-            </el-link>
-            <el-link type="danger" :underline="false" @click="handleDelete(row)" style="margin-left: 12px">
-              删除
-            </el-link>
+            <el-link type="primary" :underline="false" @click="router.push(`/fields/${row.id}/view`)">查看</el-link>
+            <el-link type="primary" :underline="false" style="margin-left: 12px" @click="handleEdit(row)">编辑</el-link>
+            <el-link type="danger" :underline="false" style="margin-left: 12px" @click="handleDelete(row)">删除</el-link>
           </template>
         </el-table-column>
         <template #empty>
@@ -211,6 +205,7 @@ import type { FieldListItem, FieldListQuery, ReferenceItem } from '@/api/fields'
 import type { BizError } from '@/api/request'
 import { dictApi } from '@/api/dictionaries'
 import type { DictionaryItem } from '@/api/dictionaries'
+import { formatTime } from '@/utils/format'
 
 const router = useRouter()
 
@@ -439,12 +434,6 @@ function typeBadgeType(type: string) {
   return map[type] || 'info'
 }
 
-function formatTime(str: string) {
-  if (!str) return ''
-  const d = new Date(str)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-}
 </script>
 
 <style scoped>
@@ -453,61 +442,6 @@ function formatTime(str: string) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 24px;
-  background: #fff;
-  border-bottom: 1px solid #E4E7ED;
-}
-
-.page-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
-  margin: 0;
-}
-
-.filter-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 24px;
-  background: #fff;
-  flex-wrap: wrap;
-}
-
-.filter-item {
-  flex: 1;
-  min-width: 0;
-}
-
-.filter-item-wide {
-  flex: 1.5;
-}
-
-.table-wrap {
-  flex: 1;
-  padding: 0 24px;
-  background: #fff;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.pagination-wrap {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 0;
-}
-
-.total-text {
-  font-size: 13px;
-  color: #909399;
 }
 
 .ref-zero {

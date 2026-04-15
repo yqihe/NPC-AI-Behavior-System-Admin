@@ -106,6 +106,9 @@ func (h *FieldHandler) Update(ctx context.Context, req *model.UpdateFieldRequest
 	if err := shared.CheckID(req.ID); err != nil {
 		return nil, err
 	}
+	if err := shared.CheckVersion(req.Version); err != nil {
+		return nil, err
+	}
 	if err := shared.CheckLabel(req.Label, h.valCfg.FieldLabelMaxLength, "中文标签"); err != nil {
 		return nil, err
 	}
@@ -116,9 +119,6 @@ func (h *FieldHandler) Update(ctx context.Context, req *model.UpdateFieldRequest
 		return nil, err
 	}
 	if err := checkPropertiesShape(req.Properties); err != nil {
-		return nil, err
-	}
-	if err := shared.CheckVersion(req.Version); err != nil {
 		return nil, err
 	}
 

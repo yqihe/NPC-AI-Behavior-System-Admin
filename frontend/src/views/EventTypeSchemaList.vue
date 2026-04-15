@@ -142,6 +142,7 @@ import EnabledGuardDialog from '@/components/EnabledGuardDialog.vue'
 import { eventTypeApi, EXT_SCHEMA_ERR } from '@/api/eventTypes'
 import type { EventTypeSchemaFull, ExtSchemaListQuery, SchemaReferenceItem } from '@/api/eventTypes'
 import type { BizError } from '@/api/request'
+import { formatTime } from '@/utils/format'
 
 const router = useRouter()
 
@@ -362,12 +363,6 @@ function typeLabel(type: string) {
   return map[type] || type
 }
 
-function formatTime(str: string) {
-  if (!str) return ''
-  const d = new Date(str)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-}
 </script>
 
 <style scoped>

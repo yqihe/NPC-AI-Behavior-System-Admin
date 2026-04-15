@@ -15,8 +15,9 @@
       </span>
     </div>
 
-    <!-- 主体 -->
-    <div class="form-body" v-loading="loading">
+    <!-- 表单滚动区 -->
+    <div class="form-scroll" v-loading="loading">
+      <div class="form-body-wide">
       <!-- 卡片一：基本信息 -->
       <div class="form-card">
         <div class="card-title">基本信息</div>
@@ -119,13 +120,13 @@
         />
       </div>
 
-      <!-- 操作栏（查看模式隐藏） -->
-      <div v-if="!isView" class="form-actions">
-        <el-button @click="$router.push('/templates')">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="onSubmit">
-          保存
-        </el-button>
-      </div>
+      </div><!-- /form-body-wide -->
+    </div>
+
+    <!-- 底部操作栏（查看模式隐藏） -->
+    <div v-if="!isView" class="form-footer">
+      <el-button @click="$router.push('/templates')">取消</el-button>
+      <el-button type="primary" :loading="submitting" @click="onSubmit">保存</el-button>
     </div>
   </div>
 </template>
@@ -405,70 +406,19 @@ async function reloadFieldPool() {
   overflow: hidden;
 }
 
-.form-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 16px 24px;
-  background: #fff;
-  border-bottom: 1px solid #E4E7ED;
-}
-
-.back-icon,
-.back-text {
-  color: #409EFF;
-  cursor: pointer;
-}
-
-.back-icon {
-  font-size: 18px;
-}
-
-.back-text {
-  font-size: 14px;
-}
-
-.header-sep {
-  width: 1px;
-  height: 16px;
-  background: #DCDFE6;
-}
-
-.header-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
-}
-
+/* 模板标题栏额外显示副标题 */
 .header-sub {
   font-size: 13px;
   color: #909399;
   margin-left: 8px;
 }
 
-.form-body {
-  flex: 1;
-  padding: 24px 32px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  max-width: 1200px;
-  margin: 0 auto;
-  width: 100%;
-}
-
-.locked-alert {
-  margin-bottom: 0;
-}
-
+/* 模板页 form-card 使用紧凑内边距 */
 .form-card {
-  background: #fff;
-  border: 1px solid #E4E7ED;
-  border-radius: 8px;
   padding: 20px 24px;
 }
 
+/* 模板 card-title 有分割线（区别于其他 form 的彩色竖条样式） */
 .card-title {
   display: flex;
   align-items: center;
@@ -487,6 +437,10 @@ async function reloadFieldPool() {
   font-weight: 400;
 }
 
+.locked-alert {
+  margin-bottom: 0;
+}
+
 .field-hint {
   display: flex;
   align-items: center;
@@ -496,13 +450,8 @@ async function reloadFieldPool() {
   color: #909399;
 }
 
-.field-hint-success {
-  color: #67C23A;
-}
-
-.field-hint-error {
-  color: #F56C6C;
-}
+.field-hint-success { color: #67C23A; }
+.field-hint-error   { color: #F56C6C; }
 
 .field-warn {
   display: flex;
@@ -511,12 +460,5 @@ async function reloadFieldPool() {
   margin-top: 4px;
   font-size: 12px;
   color: #E6A23C;
-}
-
-.form-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding-top: 16px;
 }
 </style>

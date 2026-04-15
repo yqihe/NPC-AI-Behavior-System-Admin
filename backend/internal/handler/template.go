@@ -290,6 +290,9 @@ func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateR
 	if err := shared.CheckID(req.ID); err != nil {
 		return nil, err
 	}
+	if err := shared.CheckVersion(req.Version); err != nil {
+		return nil, err
+	}
 	if err := shared.CheckLabel(req.Label, h.valCfg.FieldLabelMaxLength, "中文标签"); err != nil {
 		return nil, err
 	}
@@ -297,9 +300,6 @@ func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateR
 		return nil, err
 	}
 	if err := checkTemplateFields(req.Fields); err != nil {
-		return nil, err
-	}
-	if err := shared.CheckVersion(req.Version); err != nil {
 		return nil, err
 	}
 

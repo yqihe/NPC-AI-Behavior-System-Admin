@@ -42,7 +42,7 @@
         class="filter-item"
       >
         <el-option label="已启用" :value="true" />
-        <el-option label="已停用" :value="false" />
+        <el-option label="已禁用" :value="false" />
       </el-select>
       <el-button type="primary" @click="handleSearch">
         <el-icon><Search /></el-icon>
@@ -62,9 +62,11 @@
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="name" label="状态标识" min-width="160" />
         <el-table-column prop="display_name" label="中文标签" min-width="140" />
-        <el-table-column label="状态分类" width="120">
+        <el-table-column label="分类" width="120">
           <template #default="{ row }">
-            {{ row.category_label || row.category }}
+            <el-tag size="small" type="info">
+              {{ row.category_label || row.category }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="启用" width="80" align="center">
@@ -82,15 +84,9 @@
         </el-table-column>
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
-            <el-link type="primary" :underline="false" @click="$router.push(`/fsm-state-dicts/${row.id}/view`)">
-              查看
-            </el-link>
-            <el-link type="primary" :underline="false" @click="$router.push(`/fsm-state-dicts/${row.id}/edit`)" style="margin-left: 12px">
-              编辑
-            </el-link>
-            <el-link type="danger" :underline="false" @click="handleDelete(row)" style="margin-left: 12px">
-              删除
-            </el-link>
+            <el-link type="primary" :underline="false" @click="router.push(`/fsm-state-dicts/${row.id}/view`)">查看</el-link>
+            <el-link type="primary" :underline="false" style="margin-left: 12px" @click="handleEdit(row)">编辑</el-link>
+            <el-link type="danger" :underline="false" style="margin-left: 12px" @click="handleDelete(row)">删除</el-link>
           </template>
         </el-table-column>
         <template #empty>
@@ -147,6 +143,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
 import EnabledGuardDialog from '@/components/EnabledGuardDialog.vue'
@@ -159,6 +156,9 @@ import type {
 import type { BizError } from '@/api/request'
 import { dictApi } from '@/api/dictionaries'
 import type { DictionaryItem } from '@/api/dictionaries'
+import { formatTime } from '@/utils/format'
+
+const router = useRouter()
 
 const loading = ref(false)
 const tableData = ref<FsmStateDictListItem[]>([])
@@ -233,10 +233,10 @@ function handleReset() {
 // ---------- 行操作 ----------
 
 async function handleToggle(row: FsmStateDictListItem, val: boolean) {
-  const action = val ? '启用' : '停用'
+  const action = val ? '启用' : '禁用'
   const msg = val
     ? `确认启用状态「${row.display_name}」（${row.name}）？`
-    : `确认停用状态「${row.display_name}」（${row.name}）？停用后仍可被已有 FSM 配置引用，但新引用需重新启用。`
+    : `确认禁用状态「${row.display_name}」（${row.name}）？禁用后仍可被已有 FSM 配置引用，但新引用需重新启用。`
   try {
     await ElMessageBox.confirm(msg, `${action}确认`, {
       confirmButtonText: `确认${action}`,
@@ -248,7 +248,7 @@ async function handleToggle(row: FsmStateDictListItem, val: boolean) {
     ElMessage.success(`已${action}`)
     fetchList()
   } catch (err) {
-    if (err === 'cancel') { fetchList(); return }
+    if (err === 'cancel') return
     if ((err as BizError).code === FSM_STATE_DICT_ERR.VERSION_CONFLICT) {
       ElMessageBox.alert('数据已被其他用户修改，请刷新页面后重试。', '版本冲突', { type: 'warning' })
       fetchList()
@@ -256,6 +256,18 @@ async function handleToggle(row: FsmStateDictListItem, val: boolean) {
     }
     // 其他错误拦截器已 toast
   }
+}
+
+function handleEdit(row: FsmStateDictListItem) {
+  if (row.enabled) {
+    guardRef.value?.open({
+      action: 'edit',
+      entityType: 'fsm-state-dict',
+      entity: { id: row.id, name: row.name, label: row.display_name },
+    })
+    return
+  }
+  router.push(`/fsm-state-dicts/${row.id}/edit`)
 }
 
 async function handleDelete(row: FsmStateDictListItem) {
@@ -294,12 +306,6 @@ function rowClassName({ row }: { row: FsmStateDictListItem }) {
   return row.enabled ? '' : 'row-disabled'
 }
 
-function formatTime(str: string) {
-  if (!str) return ''
-  const d = new Date(str)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-}
 </script>
 
 <style scoped>
@@ -308,61 +314,6 @@ function formatTime(str: string) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 24px;
-  background: #fff;
-  border-bottom: 1px solid #E4E7ED;
-}
-
-.page-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
-  margin: 0;
-}
-
-.filter-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 24px;
-  background: #fff;
-  flex-wrap: wrap;
-}
-
-.filter-item {
-  flex: 1;
-  min-width: 0;
-}
-
-.filter-item-wide {
-  flex: 1.5;
-}
-
-.table-wrap {
-  flex: 1;
-  padding: 0 24px;
-  background: #fff;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.pagination-wrap {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 0;
-}
-
-.total-text {
-  font-size: 13px;
-  color: #909399;
 }
 
 .ref-delete-lead {

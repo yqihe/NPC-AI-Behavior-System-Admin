@@ -85,30 +85,30 @@ func (h *EventTypeHandler) List(ctx context.Context, req *model.EventTypeListQue
 // Create 创建事件类型
 func (h *EventTypeHandler) Create(ctx context.Context, req *model.CreateEventTypeRequest) (*model.CreateEventTypeResponse, error) {
 	// Handler 格式校验
-	if e := shared.CheckName(req.Name, h.etCfg.NameMaxLength, errcode.ErrEventTypeNameInvalid, "事件标识"); e != nil {
-		return nil, e
+	if err := shared.CheckName(req.Name, h.etCfg.NameMaxLength, errcode.ErrEventTypeNameInvalid, "事件标识"); err != nil {
+		return nil, err
 	}
-	if e := shared.CheckLabel(req.DisplayName, h.etCfg.DisplayNameMaxLength, "中文名称"); e != nil {
-		return nil, e
+	if err := shared.CheckLabel(req.DisplayName, h.etCfg.DisplayNameMaxLength, "中文名称"); err != nil {
+		return nil, err
 	}
-	if e := checkPerceptionMode(req.PerceptionMode); e != nil {
-		return nil, e
+	if err := checkPerceptionMode(req.PerceptionMode); err != nil {
+		return nil, err
 	}
-	if e := checkSeverity(req.DefaultSeverity); e != nil {
-		return nil, e
+	if err := checkSeverity(req.DefaultSeverity); err != nil {
+		return nil, err
 	}
-	if e := checkTTL(req.DefaultTTL); e != nil {
-		return nil, e
+	if err := checkTTL(req.DefaultTTL); err != nil {
+		return nil, err
 	}
-	if e := checkRange(req.Range); e != nil {
-		return nil, e
+	if err := checkRange(req.Range); err != nil {
+		return nil, err
 	}
 	// global 模式后端兜底
 	if req.PerceptionMode == util.PerceptionModeGlobal {
 		req.Range = 0
 	}
-	if e := checkExtensionsShape(req.Extensions); e != nil {
-		return nil, e
+	if err := checkExtensionsShape(req.Extensions); err != nil {
+		return nil, err
 	}
 
 	slog.Debug("handler.创建事件类型", "name", req.Name, "mode", req.PerceptionMode)
@@ -208,26 +208,26 @@ func (h *EventTypeHandler) Update(ctx context.Context, req *model.UpdateEventTyp
 	if err := shared.CheckVersion(req.Version); err != nil {
 		return nil, err
 	}
-	if e := shared.CheckLabel(req.DisplayName, h.etCfg.DisplayNameMaxLength, "中文名称"); e != nil {
-		return nil, e
+	if err := shared.CheckLabel(req.DisplayName, h.etCfg.DisplayNameMaxLength, "中文名称"); err != nil {
+		return nil, err
 	}
-	if e := checkPerceptionMode(req.PerceptionMode); e != nil {
-		return nil, e
+	if err := checkPerceptionMode(req.PerceptionMode); err != nil {
+		return nil, err
 	}
-	if e := checkSeverity(req.DefaultSeverity); e != nil {
-		return nil, e
+	if err := checkSeverity(req.DefaultSeverity); err != nil {
+		return nil, err
 	}
-	if e := checkTTL(req.DefaultTTL); e != nil {
-		return nil, e
+	if err := checkTTL(req.DefaultTTL); err != nil {
+		return nil, err
 	}
-	if e := checkRange(req.Range); e != nil {
-		return nil, e
+	if err := checkRange(req.Range); err != nil {
+		return nil, err
 	}
 	if req.PerceptionMode == util.PerceptionModeGlobal {
 		req.Range = 0
 	}
-	if e := checkExtensionsShape(req.Extensions); e != nil {
-		return nil, e
+	if err := checkExtensionsShape(req.Extensions); err != nil {
+		return nil, err
 	}
 
 	slog.Debug("handler.编辑事件类型", "id", req.ID, "version", req.Version)
