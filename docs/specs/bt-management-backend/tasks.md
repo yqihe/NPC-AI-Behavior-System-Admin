@@ -18,7 +18,7 @@
 
 ---
 
-## T2: 错误码 440xx (R3, R12) [ ]
+## T2: 错误码 440xx (R3, R12) [x]
 
 **涉及文件**：
 - `backend/internal/errcode/codes.go`（改动）

@@ -115,6 +115,38 @@ const (
 	// 43021-43024 预留
 )
 
+// --- 行为树管理 440xx ---
+
+const (
+	ErrBtTreeNameExists        = 44001 // 行为树标识已存在（含软删除）
+	ErrBtTreeNameInvalid       = 44002 // 行为树标识格式不合法
+	ErrBtTreeNotFound          = 44003 // 行为树不存在
+	ErrBtTreeConfigInvalid     = 44004 // 树结构不合法
+	ErrBtTreeNodeTypeNotFound  = 44005 // 节点类型不存在或已禁用
+	ErrBtTreeNodeDepthExceeded = 44006 // 节点嵌套深度超过 20 层
+	// 44007-44008 预留
+	ErrBtTreeDeleteNotDisabled = 44009 // 删除前必须先停用
+	ErrBtTreeEditNotDisabled   = 44010 // 编辑前必须先停用
+	ErrBtTreeVersionConflict   = 44011 // 版本冲突（乐观锁）
+	ErrBtTreeRefDelete         = 44012 // 被 NPC 引用，无法删除（占位，NPC 管理完成后激活）
+	// 44013-44015 预留
+)
+
+// --- 节点类型管理 44016-44025 ---
+
+const (
+	ErrBtNodeTypeNameExists         = 44016 // 节点类型标识已存在（含软删除）
+	ErrBtNodeTypeNameInvalid        = 44017 // 节点类型标识格式不合法
+	ErrBtNodeTypeNotFound           = 44018 // 节点类型不存在
+	ErrBtNodeTypeCategoryInvalid    = 44019 // category 枚举非法
+	ErrBtNodeTypeDeleteNotDisabled  = 44020 // 删除前必须先停用
+	ErrBtNodeTypeEditNotDisabled    = 44021 // 编辑前必须先停用
+	ErrBtNodeTypeRefDelete          = 44022 // 被行为树引用，无法删除（携带引用树名列表）
+	ErrBtNodeTypeBuiltinDelete      = 44023 // 内置类型不可删除
+	ErrBtNodeTypeBuiltinEdit        = 44024 // 内置类型不可编辑
+	ErrBtNodeTypeParamSchemaInvalid = 44025 // param_schema 不合法
+)
+
 // --- 错误消息 ---
 
 var messages = map[int]string{
@@ -198,6 +230,28 @@ var messages = map[int]string{
 	ErrFsmStateDictDeleteNotDisabled: "请先停用该状态条目再删除",
 	ErrFsmStateDictVersionConflict:   "该状态条目已被其他人修改，请刷新后重试",
 	ErrFsmStateDictInUse:             "状态字典条目被 FSM 引用，无法删除",
+
+	ErrBtTreeNameExists:        "行为树标识已存在",
+	ErrBtTreeNameInvalid:       "行为树标识格式不合法，需小写字母开头，仅允许 a-z、0-9、下划线、斜杠",
+	ErrBtTreeNotFound:          "行为树不存在",
+	ErrBtTreeConfigInvalid:     "行为树结构不合法",
+	ErrBtTreeNodeTypeNotFound:  "节点类型不存在或已禁用",
+	ErrBtTreeNodeDepthExceeded: "节点嵌套深度超过 20 层",
+	ErrBtTreeDeleteNotDisabled: "请先停用该行为树再删除",
+	ErrBtTreeEditNotDisabled:   "请先停用该行为树再编辑",
+	ErrBtTreeVersionConflict:   "该行为树已被其他人修改，请刷新后重试",
+	ErrBtTreeRefDelete:         "当前行为树仍被 NPC 引用，不能删除",
+
+	ErrBtNodeTypeNameExists:         "节点类型标识已存在",
+	ErrBtNodeTypeNameInvalid:        "节点类型标识格式不合法，需小写字母开头，仅允许 a-z、0-9、下划线",
+	ErrBtNodeTypeNotFound:           "节点类型不存在",
+	ErrBtNodeTypeCategoryInvalid:    "节点分类必须是 composite / decorator / leaf 之一",
+	ErrBtNodeTypeDeleteNotDisabled:  "请先停用该节点类型再删除",
+	ErrBtNodeTypeEditNotDisabled:    "请先停用该节点类型再编辑",
+	ErrBtNodeTypeRefDelete:          "该节点类型正被行为树引用，无法删除",
+	ErrBtNodeTypeBuiltinDelete:      "内置节点类型不可删除",
+	ErrBtNodeTypeBuiltinEdit:        "内置节点类型不可编辑",
+	ErrBtNodeTypeParamSchemaInvalid: "param_schema 格式不合法",
 }
 
 // Msg 获取错误码对应的默认消息
