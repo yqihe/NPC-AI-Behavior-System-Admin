@@ -7,6 +7,7 @@
 | [overview.md](architecture/overview.md) | 架构分层 + 各层职责 + 技术栈 + 中间件 + 企业级保障 | 了解后端架构时 |
 | [api-contract.md](architecture/api-contract.md) | 与游戏服务端的导出 API 契约（5 个接口 + JSON 格式 + 责任划分） | 开发导出接口 / 联调时 |
 | [frontend-conventions.md](architecture/frontend-conventions.md) | 前端项目级约定：目录结构、布局 CSS、API 层、列表页/表单页代码模式、路由 | 新建前端模块时 |
+| [backend-conventions.md](architecture/backend-conventions.md) | 后端项目级约定：分层职责、Handler/Service/Store 代码模式、错误码、乐观锁、软删除、分页 | 新建后端模块时 |
 
 ## development/ — 开发规范
 
