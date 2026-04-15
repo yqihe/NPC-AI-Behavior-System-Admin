@@ -251,7 +251,7 @@
 
 ---
 
-## T17: Router 注册 BT 路由 (R1, R11) [ ]
+## T17: Router 注册 BT 路由 (R1, R11) [x]
 
 **涉及文件**：
 - `backend/internal/router/router.go`（改动）
