@@ -10,6 +10,7 @@
 
     <!-- 表单滚动区 -->
     <div class="form-scroll">
+      <div class="form-body">
       <!-- 基本信息卡片 -->
       <div class="form-card">
         <div class="card-title">
@@ -126,6 +127,16 @@
               </div>
             </div>
           </el-form-item>
+
+          <!-- 查看模式下展示时间戳 -->
+          <template v-if="isView">
+            <el-form-item label="创建时间">
+              <el-input :model-value="formatTime(createdAt)" :disabled="true" style="width: 200px" />
+            </el-form-item>
+            <el-form-item label="更新时间">
+              <el-input :model-value="formatTime(updatedAt)" :disabled="true" style="width: 200px" />
+            </el-form-item>
+          </template>
         </el-form>
       </div>
 
@@ -213,13 +224,13 @@
         </el-form>
       </div>
 
-      <!-- 表单操作（查看模式隐藏） -->
-      <div v-if="!isView" class="form-card form-actions">
-        <el-button @click="$router.push('/event-types')">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="handleSubmit">
-          保存
-        </el-button>
-      </div>
+      </div><!-- /form-body -->
+    </div>
+
+    <!-- 底部操作栏（查看模式隐藏） -->
+    <div v-if="!isView" class="form-footer">
+      <el-button @click="$router.push('/event-types')">取消</el-button>
+      <el-button type="primary" :loading="submitting" @click="handleSubmit">保存</el-button>
     </div>
   </div>
 </template>
@@ -236,6 +247,7 @@ import {
 import { eventTypeApi, EVENT_TYPE_ERR } from '@/api/eventTypes'
 import type { ExtensionSchemaItem } from '@/api/eventTypes'
 import type { BizError } from '@/api/request'
+import { formatTime } from '@/utils/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -247,6 +259,8 @@ const submitting = ref(false)
 const nameStatus = ref<'' | 'checking' | 'available' | 'taken'>('')
 const nameMessage = ref('')
 const version = ref(0)
+const createdAt = ref('')
+const updatedAt = ref('')
 
 // 扩展字段
 const extensionSchema = ref<ExtensionSchemaItem[]>([])
@@ -335,6 +349,8 @@ async function loadDetail() {
     form.name = data.name
     form.display_name = data.display_name
     version.value = data.version
+    createdAt.value = data.created_at || ''
+    updatedAt.value = data.updated_at || ''
 
     // 从 config 中提取系统字段
     const cfg = data.config || {}
@@ -527,82 +543,6 @@ async function handleSubmit() {
   overflow: hidden;
 }
 
-.form-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 16px 24px;
-  background: #fff;
-  border-bottom: 1px solid #E4E7ED;
-}
-
-.back-icon {
-  color: #409EFF;
-  font-size: 18px;
-  cursor: pointer;
-}
-
-.back-text {
-  color: #409EFF;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.header-sep {
-  width: 1px;
-  height: 16px;
-  background: #DCDFE6;
-}
-
-.header-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
-}
-
-.form-scroll {
-  flex: 1;
-  padding: 24px 32px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.form-card {
-  background: #fff;
-  border: 1px solid #E4E7ED;
-  border-radius: 8px;
-  padding: 32px;
-}
-
-.card-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 20px;
-}
-
-.title-bar {
-  width: 3px;
-  height: 14px;
-  border-radius: 2px;
-}
-
-.title-bar-blue {
-  background: #409EFF;
-}
-
-.title-bar-orange {
-  background: #E6A23C;
-}
-
-.title-text {
-  font-size: 15px;
-  font-weight: 600;
-  color: #303133;
-}
-
 .field-hint {
   display: flex;
   align-items: center;
@@ -665,10 +605,4 @@ async function handleSubmit() {
   margin-bottom: 4px;
 }
 
-.form-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding-top: 16px;
-}
 </style>

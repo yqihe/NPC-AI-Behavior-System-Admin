@@ -249,16 +249,14 @@ func (s *EventTypeSchemaService) Delete(ctx context.Context, id int64) error {
 }
 
 // ToggleEnabled 切换启用/停用
-func (s *EventTypeSchemaService) ToggleEnabled(ctx context.Context, id int64, version int) error {
-	slog.Debug("service.切换扩展字段启用", "id", id)
+func (s *EventTypeSchemaService) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) error {
+	slog.Debug("service.切换扩展字段启用", "id", req.ID)
 
-	ets, err := s.getOrNotFound(ctx, id)
-	if err != nil {
+	if _, err := s.getOrNotFound(ctx, req.ID); err != nil {
 		return err
 	}
 
-	newEnabled := !ets.Enabled
-	if err := s.store.ToggleEnabled(ctx, id, newEnabled, version); err != nil {
+	if err := s.store.ToggleEnabled(ctx, req.ID, req.Enabled, req.Version); err != nil {
 		if errors.Is(err, errcode.ErrVersionConflict) {
 			return errcode.New(errcode.ErrExtSchemaVersionConflict)
 		}
@@ -270,7 +268,7 @@ func (s *EventTypeSchemaService) ToggleEnabled(ctx context.Context, id int64, ve
 		slog.Error("service.切换扩展字段启用-重载缓存失败", "error", err)
 	}
 
-	slog.Info("service.切换扩展字段启用成功", "id", id, "enabled", newEnabled)
+	slog.Info("service.切换扩展字段启用成功", "id", req.ID, "enabled", req.Enabled)
 	return nil
 }
 

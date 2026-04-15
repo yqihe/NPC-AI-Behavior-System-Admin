@@ -33,23 +33,23 @@ func NewFsmStateDictHandler(
 
 // List 状态字典列表
 func (h *FsmStateDictHandler) List(ctx context.Context, req *model.FsmStateDictListQuery) (*model.ListData, error) {
-	slog.Debug("handler.状态字典列表", "name", req.Name, "category", req.Category)
+	slog.Debug("handler.状态字典列表", "display_name", req.DisplayName, "category", req.Category)
 	return h.dictService.List(ctx, req)
 }
 
 // Create 创建状态字典条目
 func (h *FsmStateDictHandler) Create(ctx context.Context, req *model.CreateFsmStateDictRequest) (*model.CreateFsmStateDictResponse, error) {
-	if e := shared.CheckName(req.Name, h.dictCfg.NameMaxLength, errcode.ErrFsmStateDictNameInvalid, "状态标识"); e != nil {
-		return nil, e
+	if err := shared.CheckName(req.Name, h.dictCfg.NameMaxLength, errcode.ErrFsmStateDictNameInvalid, "状态标识"); err != nil {
+		return nil, err
 	}
-	if e := shared.CheckLabel(req.DisplayName, h.dictCfg.DisplayNameMaxLength, "状态中文名"); e != nil {
-		return nil, e
+	if err := shared.CheckLabel(req.DisplayName, h.dictCfg.DisplayNameMaxLength, "状态中文名"); err != nil {
+		return nil, err
 	}
-	if e := checkCategory(req.Category, h.dictCfg.CategoryMaxLength); e != nil {
-		return nil, e
+	if err := checkCategory(req.Category, h.dictCfg.CategoryMaxLength); err != nil {
+		return nil, err
 	}
-	if e := checkDescription(req.Description, h.dictCfg.DescriptionMaxLength); e != nil {
-		return nil, e
+	if err := checkDescription(req.Description, h.dictCfg.DescriptionMaxLength); err != nil {
+		return nil, err
 	}
 
 	slog.Debug("handler.创建状态字典", "name", req.Name)
@@ -78,14 +78,14 @@ func (h *FsmStateDictHandler) Update(ctx context.Context, req *model.UpdateFsmSt
 	if err := shared.CheckVersion(req.Version); err != nil {
 		return nil, err
 	}
-	if e := shared.CheckLabel(req.DisplayName, h.dictCfg.DisplayNameMaxLength, "状态中文名"); e != nil {
-		return nil, e
+	if err := shared.CheckLabel(req.DisplayName, h.dictCfg.DisplayNameMaxLength, "状态中文名"); err != nil {
+		return nil, err
 	}
-	if e := checkCategory(req.Category, h.dictCfg.CategoryMaxLength); e != nil {
-		return nil, e
+	if err := checkCategory(req.Category, h.dictCfg.CategoryMaxLength); err != nil {
+		return nil, err
 	}
-	if e := checkDescription(req.Description, h.dictCfg.DescriptionMaxLength); e != nil {
-		return nil, e
+	if err := checkDescription(req.Description, h.dictCfg.DescriptionMaxLength); err != nil {
+		return nil, err
 	}
 
 	slog.Debug("handler.编辑状态字典", "id", req.ID)
@@ -107,8 +107,8 @@ func (h *FsmStateDictHandler) Delete(ctx context.Context, req *model.IDRequest) 
 
 // CheckName 标识唯一性校验
 func (h *FsmStateDictHandler) CheckName(ctx context.Context, req *model.CheckNameRequest) (*model.CheckNameResult, error) {
-	if e := shared.CheckName(req.Name, h.dictCfg.NameMaxLength, errcode.ErrFsmStateDictNameInvalid, "状态标识"); e != nil {
-		return nil, e
+	if err := shared.CheckName(req.Name, h.dictCfg.NameMaxLength, errcode.ErrFsmStateDictNameInvalid, "状态标识"); err != nil {
+		return nil, err
 	}
 	slog.Debug("handler.校验状态标识", "name", req.Name)
 	return h.dictService.CheckName(ctx, req.Name)
@@ -123,20 +123,10 @@ func (h *FsmStateDictHandler) ToggleEnabled(ctx context.Context, req *model.Togg
 		return nil, err
 	}
 	slog.Debug("handler.切换状态字典启用", "id", req.ID)
-	if err := h.dictService.ToggleEnabled(ctx, req.ID, req.Version); err != nil {
+	if err := h.dictService.ToggleEnabled(ctx, req); err != nil {
 		return nil, err
 	}
 	return shared.SuccessMsg("操作成功"), nil
-}
-
-// ListCategories 返回所有分类列表
-func (h *FsmStateDictHandler) ListCategories(ctx context.Context, _ *struct{}) (*[]string, error) {
-	slog.Debug("handler.状态字典分类列表")
-	categories, err := h.dictService.ListCategories(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return &categories, nil
 }
 
 // ---- 前置校验辅助 ----

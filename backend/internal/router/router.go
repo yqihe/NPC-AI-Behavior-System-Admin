@@ -107,7 +107,6 @@ func Setup(r *gin.Engine, h *setup.Handlers) {
 		fsmStateDicts.POST("/delete", handler.WrapCtx(h.FsmStateDict.Delete))
 		fsmStateDicts.POST("/check-name", handler.WrapCtx(h.FsmStateDict.CheckName))
 		fsmStateDicts.POST("/toggle-enabled", handler.WrapCtx(h.FsmStateDict.ToggleEnabled))
-		fsmStateDicts.POST("/list-categories", handler.WrapCtx(h.FsmStateDict.ListCategories))
 	}
 
 	// 配置导出 API

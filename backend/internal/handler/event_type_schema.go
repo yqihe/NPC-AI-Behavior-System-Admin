@@ -150,16 +150,16 @@ func (h *EventTypeSchemaHandler) Delete(ctx context.Context, req *model.IDReques
 
 // ToggleEnabled 启用/停用切换
 func (h *EventTypeSchemaHandler) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) (*string, error) {
+	if err := shared.CheckID(req.ID); err != nil {
+		return nil, err
+	}
+	if err := shared.CheckVersion(req.Version); err != nil {
+		return nil, err
+	}
+
 	slog.Debug("handler.event_type_schema.toggle_enabled", "id", req.ID)
 
-	if req.ID <= 0 {
-		return nil, errcode.Newf(errcode.ErrBadRequest, "ID 必须 > 0")
-	}
-	if req.Version <= 0 {
-		return nil, errcode.Newf(errcode.ErrBadRequest, "version 必须 > 0")
-	}
-
-	if err := h.schemaService.ToggleEnabled(ctx, req.ID, req.Version); err != nil {
+	if err := h.schemaService.ToggleEnabled(ctx, req); err != nil {
 		return nil, err
 	}
 	return shared.SuccessMsg("操作成功"), nil

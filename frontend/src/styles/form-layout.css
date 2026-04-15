@@ -1,0 +1,118 @@
+/* 表单页公共布局样式，供各模块 Form 页（新建/编辑/查看）共用 */
+
+/* ── 顶部导航栏 ── */
+.form-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: #fff;
+  border-bottom: 1px solid #E4E7ED;
+  flex-shrink: 0;
+}
+
+.form-header .back-icon {
+  cursor: pointer;
+  font-size: 16px;
+  color: #606266;
+}
+
+.form-header .back-icon:hover {
+  color: #409EFF;
+}
+
+.form-header .back-text {
+  font-size: 14px;
+  color: #606266;
+  cursor: pointer;
+}
+
+.form-header .back-text:hover {
+  color: #409EFF;
+}
+
+.form-header .header-sep {
+  color: #DCDFE6;
+  margin: 0 4px;
+}
+
+.form-header .header-sep::before {
+  content: '/';
+}
+
+.form-header .header-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+
+/* ── 滚动容器 ── */
+.form-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 32px;
+  background: #F5F7FA;
+}
+
+/* ── 居中内容区（max-width 限宽 + 自动居中）── */
+.form-body {
+  max-width: 800px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 模板管理等需要更宽布局时使用 */
+.form-body-wide {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ── 白色卡片 ── */
+.form-card {
+  background: #fff;
+  border: 1px solid #E4E7ED;
+  border-radius: 8px;
+  padding: 32px;
+}
+
+/* ── 卡片标题（可选） ── */
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.title-bar {
+  width: 4px;
+  height: 16px;
+  border-radius: 2px;
+}
+
+.title-bar-blue   { background: #409EFF; }
+.title-bar-orange { background: #E6A23C; }
+.title-bar-green  { background: #67C23A; }
+.title-bar-red    { background: #F56C6C; }
+
+.title-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+
+/* ── 底部操作栏（查看模式隐藏）── */
+.form-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 32px;
+  background: #fff;
+  border-top: 1px solid #E4E7ED;
+  flex-shrink: 0;
+}

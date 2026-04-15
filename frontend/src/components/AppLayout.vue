@@ -34,21 +34,21 @@
           </template>
           <el-menu-item index="/event-types">
             <el-icon><Lightning /></el-icon>
-            <span>事件类型管理</span>
+            <span>事件管理</span>
           </el-menu-item>
           <el-menu-item index="/event-type-schemas">
             <el-icon><Tickets /></el-icon>
-            <span>扩展字段</span>
+            <span>事件字段管理</span>
           </el-menu-item>
         </el-sub-menu>
         <el-sub-menu index="group-fsm">
           <template #title>
             <el-icon class="group-icon"><Cpu /></el-icon>
-            <span class="group-title">状态机管理</span>
+            <span class="group-title">行为配置管理</span>
           </template>
           <el-menu-item index="/fsm-state-dicts">
             <el-icon><Collection /></el-icon>
-            <span>状态字典</span>
+            <span>状态字典管理</span>
           </el-menu-item>
         </el-sub-menu>
       </el-menu>

@@ -50,7 +50,7 @@
         <el-table-column prop="name" label="模板标识" min-width="160" />
         <el-table-column prop="label" label="中文标签" min-width="160" />
         <el-table-column label="启用" width="80" align="center">
-          <template #default="{ row }: { row: TemplateListItem }">
+          <template #default="{ row }">
             <el-switch
               :model-value="row.enabled"
               @change="(val: string | number | boolean) => handleToggle(row, Boolean(val))"
@@ -58,35 +58,15 @@
           </template>
         </el-table-column>
         <el-table-column label="创建时间" width="170">
-          <template #default="{ row }: { row: TemplateListItem }">
+          <template #default="{ row }">
             {{ formatTime(row.created_at) }}
           </template>
         </el-table-column>
         <el-table-column label="操作" width="160" fixed="right">
-          <template #default="{ row }: { row: TemplateListItem }">
-            <el-link
-              type="primary"
-              :underline="false"
-              @click="$router.push(`/templates/${row.id}/view`)"
-            >
-              查看
-            </el-link>
-            <el-link
-              type="primary"
-              :underline="false"
-              style="margin-left: 12px"
-              @click="handleEdit(row)"
-            >
-              编辑
-            </el-link>
-            <el-link
-              type="danger"
-              :underline="false"
-              style="margin-left: 12px"
-              @click="handleDelete(row)"
-            >
-              删除
-            </el-link>
+          <template #default="{ row }">
+            <el-link type="primary" :underline="false" @click="router.push(`/templates/${row.id}/view`)">查看</el-link>
+            <el-link type="primary" :underline="false" style="margin-left: 12px" @click="handleEdit(row)">编辑</el-link>
+            <el-link type="danger" :underline="false" style="margin-left: 12px" @click="handleDelete(row)">删除</el-link>
           </template>
         </el-table-column>
         <template #empty>
@@ -125,6 +105,7 @@ import EnabledGuardDialog from '@/components/EnabledGuardDialog.vue'
 import { templateApi, TEMPLATE_ERR } from '@/api/templates'
 import type { TemplateListItem, TemplateListQuery } from '@/api/templates'
 import type { BizError } from '@/api/request'
+import { formatTime } from '@/utils/format'
 
 const router = useRouter()
 
@@ -257,12 +238,6 @@ function rowClassName({ row }: { row: TemplateListItem }) {
   return row.enabled ? '' : 'row-disabled'
 }
 
-function formatTime(str: string) {
-  if (!str) return ''
-  const d = new Date(str)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-}
 </script>
 
 <style scoped>
@@ -271,61 +246,6 @@ function formatTime(str: string) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 24px;
-  background: #fff;
-  border-bottom: 1px solid #E4E7ED;
-}
-
-.page-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
-  margin: 0;
-}
-
-.filter-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 24px;
-  background: #fff;
-  flex-wrap: wrap;
-}
-
-.filter-item {
-  flex: 1;
-  min-width: 0;
-}
-
-.filter-item-wide {
-  flex: 1.5;
-}
-
-.table-wrap {
-  flex: 1;
-  padding: 0 24px;
-  background: #fff;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.pagination-wrap {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 0;
-}
-
-.total-text {
-  font-size: 13px;
-  color: #909399;
 }
 
 /* 禁用行整行 opacity 0.5，但启用开关 + 创建时间 + 操作列保持高亮 */

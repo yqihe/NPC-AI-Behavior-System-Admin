@@ -7,35 +7,40 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/yqihe/npc-ai-admin/backend/internal/cache"
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
 	storeredis "github.com/yqihe/npc-ai-admin/backend/internal/store/redis"
 	rcfg "github.com/yqihe/npc-ai-admin/backend/internal/store/redis/shared"
+	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // FsmStateDictService 状态字典业务逻辑
 type FsmStateDictService struct {
-	store         *storemysql.FsmStateDictStore
+	store          *storemysql.FsmStateDictStore
 	fsmConfigStore *storemysql.FsmConfigStore
-	cache         *storeredis.FsmStateDictCache
-	pagCfg        *config.PaginationConfig
-	dictCfg       *config.FsmStateDictConfig
+	cache          *storeredis.FsmStateDictCache
+	dictCache      *cache.DictCache
+	pagCfg         *config.PaginationConfig
+	dictCfg        *config.FsmStateDictConfig
 }
 
 // NewFsmStateDictService 创建 FsmStateDictService
 func NewFsmStateDictService(
 	store *storemysql.FsmStateDictStore,
 	fsmConfigStore *storemysql.FsmConfigStore,
-	cache *storeredis.FsmStateDictCache,
+	redisCache *storeredis.FsmStateDictCache,
+	dictCache *cache.DictCache,
 	pagCfg *config.PaginationConfig,
 	dictCfg *config.FsmStateDictConfig,
 ) *FsmStateDictService {
 	return &FsmStateDictService{
 		store:          store,
 		fsmConfigStore: fsmConfigStore,
-		cache:          cache,
+		cache:          redisCache,
+		dictCache:      dictCache,
 		pagCfg:         pagCfg,
 		dictCfg:        dictCfg,
 	}
@@ -70,6 +75,11 @@ func (s *FsmStateDictService) List(ctx context.Context, q *model.FsmStateDictLis
 	items, total, err := s.store.List(ctx, q)
 	if err != nil {
 		return nil, err
+	}
+
+	// 翻译分类标签
+	for i := range items {
+		items[i].CategoryLabel = s.dictCache.GetLabel(util.DictGroupFsmStateCategory, items[i].Category)
 	}
 
 	// 写缓存
@@ -240,38 +250,27 @@ func (s *FsmStateDictService) CheckName(ctx context.Context, name string) (*mode
 }
 
 // ToggleEnabled 切换启用/停用
-func (s *FsmStateDictService) ToggleEnabled(ctx context.Context, id int64, version int) error {
-	slog.Debug("service.切换状态字典启用", "id", id)
+func (s *FsmStateDictService) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) error {
+	slog.Debug("service.切换状态字典启用", "id", req.ID)
 
-	d, err := s.getOrNotFound(ctx, id)
-	if err != nil {
+	if _, err := s.getOrNotFound(ctx, req.ID); err != nil {
 		return err
 	}
 
-	newEnabled := !d.Enabled
-	if err := s.store.ToggleEnabled(ctx, id, newEnabled, version); err != nil {
+	if err := s.store.ToggleEnabled(ctx, req.ID, req.Enabled, req.Version); err != nil {
 		if errors.Is(err, errcode.ErrVersionConflict) {
 			return errcode.New(errcode.ErrFsmStateDictVersionConflict)
 		}
-		slog.Error("service.切换状态字典启用失败", "error", err, "id", id)
+		slog.Error("service.切换状态字典启用失败", "error", err, "id", req.ID)
 		return fmt.Errorf("toggle enabled: %w", err)
 	}
 
 	// 清缓存
-	s.cache.DelDetail(ctx, id)
+	s.cache.DelDetail(ctx, req.ID)
 	s.cache.InvalidateList(ctx)
 
-	slog.Info("service.切换状态字典启用成功", "id", id, "enabled", newEnabled)
+	slog.Info("service.切换状态字典启用成功", "id", req.ID, "enabled", req.Enabled)
 	return nil
 }
 
-// ListCategories 返回所有分类（直查 MySQL，不缓存）
-func (s *FsmStateDictService) ListCategories(ctx context.Context) ([]string, error) {
-	categories, err := s.store.ListCategories(ctx)
-	if err != nil {
-		slog.Error("service.查询状态字典分类失败", "error", err)
-		return nil, fmt.Errorf("list categories: %w", err)
-	}
-	return categories, nil
-}
 
