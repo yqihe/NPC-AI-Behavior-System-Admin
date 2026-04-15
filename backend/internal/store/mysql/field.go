@@ -4,6 +4,7 @@ import (
 	shared "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql/shared"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -30,11 +31,14 @@ func (s *FieldStore) DB() *sqlx.DB {
 
 // Create 创建字段，返回自增 ID
 func (s *FieldStore) Create(ctx context.Context, req *model.CreateFieldRequest) (int64, error) {
+	var props model.FieldProperties
+	_ = json.Unmarshal(req.Properties, &props) // 解析失败时 ExposeBB 默认 false
+
 	now := time.Now()
 	result, err := s.db.ExecContext(ctx,
-		`INSERT INTO fields (name, label, type, category, properties, enabled, version, deleted, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, 0, 1, 0, ?, ?)`,
-		req.Name, req.Label, req.Type, req.Category, string(req.Properties), now, now,
+		`INSERT INTO fields (name, label, type, category, properties, expose_bb, enabled, version, deleted, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, 0, 1, 0, ?, ?)`,
+		req.Name, req.Label, req.Type, req.Category, string(req.Properties), props.ExposeBB, now, now,
 	)
 	if err != nil {
 		if shared.Is1062(err) {
@@ -53,7 +57,7 @@ func (s *FieldStore) Create(ctx context.Context, req *model.CreateFieldRequest) 
 func (s *FieldStore) GetByID(ctx context.Context, id int64) (*model.Field, error) {
 	var f model.Field
 	err := s.db.GetContext(ctx, &f,
-		`SELECT id, name, label, type, category, properties, enabled, version, deleted, created_at, updated_at
+		`SELECT id, name, label, type, category, properties, expose_bb, enabled, version, deleted, created_at, updated_at
 		 FROM fields WHERE id = ? AND deleted = 0`, id)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -68,7 +72,7 @@ func (s *FieldStore) GetByID(ctx context.Context, id int64) (*model.Field, error
 func (s *FieldStore) GetByName(ctx context.Context, name string) (*model.Field, error) {
 	var f model.Field
 	err := s.db.GetContext(ctx, &f,
-		`SELECT id, name, label, type, category, properties, enabled, version, deleted, created_at, updated_at
+		`SELECT id, name, label, type, category, properties, expose_bb, enabled, version, deleted, created_at, updated_at
 		 FROM fields WHERE name = ? AND deleted = 0`, name)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -111,6 +115,10 @@ func (s *FieldStore) List(ctx context.Context, q *model.FieldListQuery) ([]model
 		where = append(where, "enabled = ?")
 		args = append(args, *q.Enabled)
 	}
+	if q.ExposesBB != nil {
+		where = append(where, "expose_bb = ?")
+		args = append(args, *q.ExposesBB)
+	}
 
 	whereClause := strings.Join(where, " AND ")
 
@@ -146,10 +154,13 @@ func (s *FieldStore) List(ctx context.Context, q *model.FieldListQuery) ([]model
 
 // Update 编辑字段（乐观锁，按 ID）
 func (s *FieldStore) Update(ctx context.Context, req *model.UpdateFieldRequest) error {
+	var props model.FieldProperties
+	_ = json.Unmarshal(req.Properties, &props)
+
 	result, err := s.db.ExecContext(ctx,
-		`UPDATE fields SET label = ?, type = ?, category = ?, properties = ?, version = version + 1, updated_at = ?
+		`UPDATE fields SET label = ?, type = ?, category = ?, properties = ?, expose_bb = ?, version = version + 1, updated_at = ?
 		 WHERE id = ? AND version = ? AND deleted = 0`,
-		req.Label, req.Type, req.Category, string(req.Properties), time.Now(), req.ID, req.Version,
+		req.Label, req.Type, req.Category, string(req.Properties), props.ExposeBB, time.Now(), req.ID, req.Version,
 	)
 	if err != nil {
 		return fmt.Errorf("update field: %w", err)
@@ -166,10 +177,13 @@ func (s *FieldStore) Update(ctx context.Context, req *model.UpdateFieldRequest) 
 
 // UpdateTx 事务内编辑字段（乐观锁）
 func (s *FieldStore) UpdateTx(ctx context.Context, tx *sqlx.Tx, req *model.UpdateFieldRequest) error {
+	var props model.FieldProperties
+	_ = json.Unmarshal(req.Properties, &props)
+
 	result, err := tx.ExecContext(ctx,
-		`UPDATE fields SET label = ?, type = ?, category = ?, properties = ?, version = version + 1, updated_at = ?
+		`UPDATE fields SET label = ?, type = ?, category = ?, properties = ?, expose_bb = ?, version = version + 1, updated_at = ?
 		 WHERE id = ? AND version = ? AND deleted = 0`,
-		req.Label, req.Type, req.Category, string(req.Properties), time.Now(), req.ID, req.Version,
+		req.Label, req.Type, req.Category, string(req.Properties), props.ExposeBB, time.Now(), req.ID, req.Version,
 	)
 	if err != nil {
 		return fmt.Errorf("update field: %w", err)
@@ -229,7 +243,7 @@ func (s *FieldStore) GetByIDs(ctx context.Context, ids []int64) ([]model.Field, 
 		return make([]model.Field, 0), nil
 	}
 	query, args, err := sqlx.In(
-		`SELECT id, name, label, type, category, properties, enabled, version, deleted, created_at, updated_at
+		`SELECT id, name, label, type, category, properties, expose_bb, enabled, version, deleted, created_at, updated_at
 		 FROM fields WHERE id IN (?) AND deleted = 0`, ids)
 	if err != nil {
 		return nil, fmt.Errorf("build in query: %w", err)
@@ -251,7 +265,7 @@ func (s *FieldStore) GetByNames(ctx context.Context, names []string) ([]model.Fi
 		return make([]model.Field, 0), nil
 	}
 	query, args, err := sqlx.In(
-		`SELECT id, name, label, type, category, properties, enabled, version, deleted, created_at, updated_at
+		`SELECT id, name, label, type, category, properties, expose_bb, enabled, version, deleted, created_at, updated_at
 		 FROM fields WHERE name IN (?) AND deleted = 0`, names)
 	if err != nil {
 		return nil, fmt.Errorf("build in query: %w", err)
