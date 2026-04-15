@@ -303,3 +303,95 @@ func (s *BtTreeStore) GetNodeTypeUsages(ctx context.Context, typeName string) ([
 	}
 	return names, nil
 }
+
+// extractBBKeys 递归提取节点树中所有 bb_key 类型参数的值。
+//
+// nodeParamTypes: type_name → 该类型下 param_schema 中 type=bb_key 的参数名列表。
+// 由调用方（service 层）从 bt_node_types 表预加载，避免 store 间循环依赖。
+func extractBBKeys(node map[string]any, nodeParamTypes map[string][]string) []string {
+	keys := make([]string, 0)
+	walkNodes(node, func(n map[string]any) {
+		typeName, ok := n["type"].(string)
+		if !ok {
+			return
+		}
+		bbParamNames, ok := nodeParamTypes[typeName]
+		if !ok {
+			return
+		}
+		for _, paramName := range bbParamNames {
+			if val, ok := n[paramName].(string); ok && val != "" {
+				keys = append(keys, val)
+			}
+		}
+	})
+	return keys
+}
+
+// IsBBKeyUsed 检查指定 BB Key 是否被任意行为树的节点引用。
+//
+// nodeParamTypes: type_name → bb_key 参数名列表，由调用方预加载。
+// 全量扫描 deleted=0 的 bt_trees.config；json.Unmarshal 失败时返回 error，不跳过。
+func (s *BtTreeStore) IsBBKeyUsed(ctx context.Context, bbKey string, nodeParamTypes map[string][]string) (bool, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT config FROM bt_trees WHERE deleted = 0`)
+	if err != nil {
+		return false, fmt.Errorf("query bt_trees for bb key check: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var configStr string
+		if err := rows.Scan(&configStr); err != nil {
+			return false, fmt.Errorf("scan bt_tree config: %w", err)
+		}
+		var root map[string]any
+		if err := json.Unmarshal([]byte(configStr), &root); err != nil {
+			return false, fmt.Errorf("unmarshal bt_tree config: %w", err)
+		}
+		for _, k := range extractBBKeys(root, nodeParamTypes) {
+			if k == bbKey {
+				return true, nil
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return false, fmt.Errorf("iterate bt_trees: %w", err)
+	}
+	return false, nil
+}
+
+// GetBBKeyUsages 返回引用指定 BB Key 的行为树 name 列表。
+//
+// nodeParamTypes: type_name → bb_key 参数名列表，由调用方预加载。
+// 全量扫描 deleted=0 的 bt_trees；json.Unmarshal 失败时返回 error，不跳过。
+func (s *BtTreeStore) GetBBKeyUsages(ctx context.Context, bbKey string, nodeParamTypes map[string][]string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT name, config FROM bt_trees WHERE deleted = 0`)
+	if err != nil {
+		return nil, fmt.Errorf("query bt_trees for bb key usages: %w", err)
+	}
+	defer rows.Close()
+
+	names := make([]string, 0)
+	for rows.Next() {
+		var name, configStr string
+		if err := rows.Scan(&name, &configStr); err != nil {
+			return nil, fmt.Errorf("scan bt_tree row: %w", err)
+		}
+		var root map[string]any
+		if err := json.Unmarshal([]byte(configStr), &root); err != nil {
+			return nil, fmt.Errorf("unmarshal bt_tree config (name=%s): %w", name, err)
+		}
+		for _, k := range extractBBKeys(root, nodeParamTypes) {
+			if k == bbKey {
+				names = append(names, name)
+				break
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate bt_trees: %w", err)
+	}
+	return names, nil
+}

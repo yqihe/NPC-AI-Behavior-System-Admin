@@ -108,7 +108,7 @@
 
 ---
 
-## T9: BtTreeStore — BB Key 扫描方法 (R30, R31) [ ]
+## T9: BtTreeStore — BB Key 扫描方法 (R30, R31) [x]
 
 **涉及文件**：
 - `backend/internal/store/mysql/bt_tree.go`（改动）
