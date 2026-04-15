@@ -69,7 +69,7 @@
 
 ---
 
-## T6: Redis Key 管理 (R32-R35) [ ]
+## T6: Redis Key 管理 (R32-R35) [x]
 
 **涉及文件**：
 - `backend/internal/store/redis/config/keys.go`（改动）
