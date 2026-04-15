@@ -205,7 +205,7 @@
 
 ---
 
-## T14: BtNodeTypeHandler (R11-R20) [ ]
+## T14: BtNodeTypeHandler (R11-R20) [x]
 
 **涉及文件**：
 - `backend/internal/handler/bt_node_type.go`（新增）

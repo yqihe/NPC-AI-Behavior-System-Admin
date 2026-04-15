@@ -105,6 +105,12 @@ type IDRequest struct {
 	ID int64 `json:"id"`
 }
 
+// IDVersionRequest 通用的 ID + 乐观锁版本号请求（用于需要乐观锁的 Delete 操作）
+type IDVersionRequest struct {
+	ID      int64 `json:"id"`
+	Version int   `json:"version"`
+}
+
 // ReferenceItem 引用详情中的单条引用方
 type ReferenceItem struct {
 	RefType string `json:"ref_type"` // "template" / "field" / "fsm"

@@ -73,6 +73,12 @@ type BtNodeTypeDetail struct {
 // 请求结构
 // ──────────────────────────────────────────────
 
+// CreateBtNodeTypeResponse 创建响应
+type CreateBtNodeTypeResponse struct {
+	ID       int64  `json:"id"`
+	TypeName string `json:"type_name"`
+}
+
 // CreateBtNodeTypeRequest 创建请求
 type CreateBtNodeTypeRequest struct {
 	TypeName    string          `json:"type_name"`
