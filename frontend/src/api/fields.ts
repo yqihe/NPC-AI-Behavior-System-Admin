@@ -7,6 +7,7 @@ export interface FieldListQuery {
   type?: string
   category?: string
   enabled?: boolean | null
+  bb_exposed?: boolean      // 仅返回 expose_bb=true 的字段（BBKeySelector 用）
   page: number
   page_size: number
 }
