@@ -87,6 +87,12 @@ type BtTreeListQuery struct {
 	PageSize    int    `json:"page_size"`
 }
 
+// CreateBtTreeResponse 创建行为树响应
+type CreateBtTreeResponse struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
 // CreateBtTreeRequest 创建行为树请求
 type CreateBtTreeRequest struct {
 	Name        string          `json:"name"`

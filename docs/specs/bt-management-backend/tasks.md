@@ -223,7 +223,7 @@
 
 ---
 
-## T15: BtTreeHandler (R1-R10) [ ]
+## T15: BtTreeHandler (R1-R10) [x]
 
 **涉及文件**：
 - `backend/internal/handler/bt_tree.go`（新增）
