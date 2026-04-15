@@ -187,7 +187,7 @@
 
 ---
 
-## T13: BtTreeService (R1-R10, R21-R26, R36, R37) [ ]
+## T13: BtTreeService (R1-R10, R21-R26, R36, R37) [x]
 
 **涉及文件**：
 - `backend/internal/service/bt_tree.go`（新增）
