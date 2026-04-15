@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -179,6 +180,41 @@ func (s *BtNodeTypeStore) ToggleEnabled(ctx context.Context, req *model.ToggleEn
 		return errcode.ErrVersionConflict
 	}
 	return nil
+}
+
+// ListBBKeyParamNames 返回 type_name → bb_key 参数名列表（IsBBKeyUsed 调用方预加载用）
+//
+// 解析所有 enabled=1 AND deleted=0 节点类型的 param_schema，
+// 提取 type=bb_key 的参数 name，构建 type_name → []paramName 映射。
+// json.Unmarshal 失败时跳过该条目（param_schema 损坏不应阻断 BB Key 检查）。
+func (s *BtNodeTypeStore) ListBBKeyParamNames(ctx context.Context) (map[string][]string, error) {
+	type row struct {
+		TypeName    string `db:"type_name"`
+		ParamSchema []byte `db:"param_schema"`
+	}
+	var rows []row
+	if err := s.db.SelectContext(ctx, &rows,
+		`SELECT type_name, param_schema FROM bt_node_types WHERE enabled = 1 AND deleted = 0`); err != nil {
+		return nil, fmt.Errorf("list bt_node_type param schemas: %w", err)
+	}
+	m := make(map[string][]string)
+	for _, r := range rows {
+		var schema struct {
+			Params []struct {
+				Name string `json:"name"`
+				Type string `json:"type"`
+			} `json:"params"`
+		}
+		if err := json.Unmarshal(r.ParamSchema, &schema); err != nil {
+			continue // schema 损坏跳过，不阻断
+		}
+		for _, p := range schema.Params {
+			if p.Type == "bb_key" && p.Name != "" {
+				m[r.TypeName] = append(m[r.TypeName], p.Name)
+			}
+		}
+	}
+	return m, nil
 }
 
 // ListEnabledTypes 返回所有 enabled=1 AND deleted=0 的 type_name → category map（节点树校验用）

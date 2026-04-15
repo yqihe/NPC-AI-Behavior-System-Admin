@@ -265,7 +265,7 @@
 
 ---
 
-## T18: FieldService — BB Key 检查激活 (R30, R31) [ ]
+## T18: FieldService — BB Key 检查激活 (R30, R31) [x]
 
 **涉及文件**：
 - `backend/internal/service/field.go`（改动）
