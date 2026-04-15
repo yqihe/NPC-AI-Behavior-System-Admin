@@ -4,6 +4,7 @@ import (
 	shared "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql/shared"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -201,4 +202,104 @@ func (s *BtTreeStore) ExportAll(ctx context.Context) ([]model.BtTreeExportItem, 
 		return nil, fmt.Errorf("export bt_trees: %w", err)
 	}
 	return items, nil
+}
+
+// walkNodes 递归遍历节点树，对每个节点调用 visit。
+//
+// 节点结构：{"type": "...", "children": [...], "child": {...}, ...}
+// composite 节点用 children（数组），decorator 节点用 child（单节点），leaf 节点两者均无。
+func walkNodes(node map[string]any, visit func(map[string]any)) {
+	visit(node)
+
+	// composite: children 数组
+	if raw, ok := node["children"]; ok {
+		if arr, ok := raw.([]any); ok {
+			for _, item := range arr {
+				if child, ok := item.(map[string]any); ok {
+					walkNodes(child, visit)
+				}
+			}
+		}
+	}
+
+	// decorator: child 单节点
+	if raw, ok := node["child"]; ok {
+		if child, ok := raw.(map[string]any); ok {
+			walkNodes(child, visit)
+		}
+	}
+}
+
+// IsNodeTypeUsed 检查指定节点类型是否被任意行为树引用。
+//
+// 全量扫描 deleted=0 的 bt_trees.config；json.Unmarshal 失败时返回 error，不跳过。
+// 数据损坏应阻止删除操作，不能静默放行导致误删被引用的配置。
+func (s *BtTreeStore) IsNodeTypeUsed(ctx context.Context, typeName string) (bool, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT config FROM bt_trees WHERE deleted = 0`)
+	if err != nil {
+		return false, fmt.Errorf("query bt_trees for node type check: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var configStr string
+		if err := rows.Scan(&configStr); err != nil {
+			return false, fmt.Errorf("scan bt_tree config: %w", err)
+		}
+		var root map[string]any
+		if err := json.Unmarshal([]byte(configStr), &root); err != nil {
+			return false, fmt.Errorf("unmarshal bt_tree config: %w", err)
+		}
+		found := false
+		walkNodes(root, func(node map[string]any) {
+			if t, ok := node["type"].(string); ok && t == typeName {
+				found = true
+			}
+		})
+		if found {
+			return true, nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return false, fmt.Errorf("iterate bt_trees: %w", err)
+	}
+	return false, nil
+}
+
+// GetNodeTypeUsages 返回使用指定节点类型的行为树 name 列表。
+//
+// 全量扫描 deleted=0 的 bt_trees；json.Unmarshal 失败时返回 error，不跳过。
+func (s *BtTreeStore) GetNodeTypeUsages(ctx context.Context, typeName string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT name, config FROM bt_trees WHERE deleted = 0`)
+	if err != nil {
+		return nil, fmt.Errorf("query bt_trees for node type usages: %w", err)
+	}
+	defer rows.Close()
+
+	names := make([]string, 0)
+	for rows.Next() {
+		var name, configStr string
+		if err := rows.Scan(&name, &configStr); err != nil {
+			return nil, fmt.Errorf("scan bt_tree row: %w", err)
+		}
+		var root map[string]any
+		if err := json.Unmarshal([]byte(configStr), &root); err != nil {
+			return nil, fmt.Errorf("unmarshal bt_tree config (name=%s): %w", name, err)
+		}
+		found := false
+		walkNodes(root, func(node map[string]any) {
+			if t, ok := node["type"].(string); ok && t == typeName {
+				found = true
+			}
+		})
+		if found {
+			names = append(names, name)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate bt_trees: %w", err)
+	}
+	return names, nil
 }

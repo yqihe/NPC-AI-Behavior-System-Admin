@@ -172,7 +172,7 @@
 
 ---
 
-## T8b: BtTreeStore — NodeType 使用检查（T12 前置补充） (R14) [ ]
+## T8b: BtTreeStore — NodeType 使用检查（T12 前置补充） (R14) [x]
 
 **涉及文件**：
 - `backend/internal/store/mysql/bt_tree.go`（改动）
