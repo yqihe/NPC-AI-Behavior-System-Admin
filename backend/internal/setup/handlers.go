@@ -29,8 +29,8 @@ func NewHandlers(st *Stores, svc *Services, mc *MemCaches, cfg *config.Config) *
 		EventTypeSchema: handler.NewEventTypeSchemaHandler(svc.EventTypeSchema, svc.EventType, &cfg.EventTypeSchema),
 		FsmConfig:       handler.NewFsmConfigHandler(st.DB, svc.FsmConfig, svc.Field, &cfg.FsmConfig),
 		FsmStateDict:    handler.NewFsmStateDictHandler(svc.FsmStateDict, &cfg.FsmStateDict),
-		BtTree:          nil, // T19: handler.NewBtTreeHandler(svc.BtTree, &cfg.BtTree)
-		BtNodeType:      nil, // T19: handler.NewBtNodeTypeHandler(svc.BtNodeType, &cfg.BtNodeType)
-		Export:          handler.NewExportHandler(svc.EventType, svc.FsmConfig, nil), // T19: 替换 nil → svc.BtTree
+		BtTree:     handler.NewBtTreeHandler(svc.BtTree, &cfg.BtTree),
+		BtNodeType: handler.NewBtNodeTypeHandler(svc.BtNodeType, &cfg.BtNodeType),
+		Export:     handler.NewExportHandler(svc.EventType, svc.FsmConfig, svc.BtTree),
 	}
 }

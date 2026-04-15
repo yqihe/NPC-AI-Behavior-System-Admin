@@ -295,6 +295,11 @@ func (s *BtNodeTypeService) Update(ctx context.Context, req *model.UpdateBtNodeT
 		return errcode.New(errcode.ErrBtNodeTypeBuiltinEdit)
 	}
 
+	// 启用中禁止编辑
+	if d.Enabled {
+		return errcode.New(errcode.ErrBtNodeTypeEditNotDisabled)
+	}
+
 	// label 长度校验
 	if req.Label == "" || utf8.RuneCountInString(req.Label) > s.nodeCfg.LabelMaxLength {
 		return errcode.Newf(errcode.ErrBadRequest, "label 不能为空且长度不能超过 %d", s.nodeCfg.LabelMaxLength)

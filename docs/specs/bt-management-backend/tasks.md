@@ -280,7 +280,7 @@
 
 ---
 
-## T19: Setup — 全链路装配 (R1-R37) [ ]
+## T19: Setup — 全链路装配 (R1-R37) [x]
 
 **涉及文件**：
 - `backend/internal/setup/services.go`（改动）
@@ -297,7 +297,7 @@
 
 ---
 
-## T20: 种子数据 — 内置节点类型 (R20) [ ]
+## T20: 种子数据 — 内置节点类型 (R20) [x]
 
 **涉及文件**：
 - `backend/cmd/seed/bt_node_type_seed.go`（新增）
