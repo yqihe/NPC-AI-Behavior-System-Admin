@@ -48,7 +48,9 @@ type EventTypeSchemaLite struct {
 
 // EventTypeSchemaListQuery 列表查询参数
 type EventTypeSchemaListQuery struct {
-	Enabled *bool `json:"enabled,omitempty"` // nil=不筛选
+	Enabled  *bool `json:"enabled,omitempty"` // nil=不筛选
+	Page     int   `json:"page"`
+	PageSize int   `json:"page_size"`
 }
 
 // CreateEventTypeSchemaRequest 创建扩展字段 Schema 请求

@@ -22,6 +22,7 @@ type EventTypeSchemaService struct {
 	schemaRefStore *storemysql.SchemaRefStore
 	schemaCache    *cache.EventTypeSchemaCache
 	etsCfg         *config.EventTypeSchemaConfig
+	pagCfg         *config.PaginationConfig
 }
 
 // NewEventTypeSchemaService 创建 EventTypeSchemaService
@@ -30,12 +31,14 @@ func NewEventTypeSchemaService(
 	schemaRefStore *storemysql.SchemaRefStore,
 	schemaCache *cache.EventTypeSchemaCache,
 	etsCfg *config.EventTypeSchemaConfig,
+	pagCfg *config.PaginationConfig,
 ) *EventTypeSchemaService {
 	return &EventTypeSchemaService{
 		store:          store,
 		schemaRefStore: schemaRefStore,
 		schemaCache:    schemaCache,
 		etsCfg:         etsCfg,
+		pagCfg:         pagCfg,
 	}
 }
 
@@ -59,9 +62,20 @@ func (s *EventTypeSchemaService) GetByID(ctx context.Context, id int64) (*model.
 	return s.store.GetByID(ctx, id)
 }
 
-// List 列表查询（量小直查 MySQL，不走 Redis）
-func (s *EventTypeSchemaService) List(ctx context.Context, q *model.EventTypeSchemaListQuery) ([]model.EventTypeSchema, error) {
-	return s.store.List(ctx, q)
+// List 分页列表查询（直查 MySQL，不走 Redis）
+func (s *EventTypeSchemaService) List(ctx context.Context, q *model.EventTypeSchemaListQuery) (*model.ListData, error) {
+	shared.NormalizePagination(&q.Page, &q.PageSize, s.pagCfg.DefaultPage, s.pagCfg.DefaultPageSize, s.pagCfg.MaxPageSize)
+
+	items, total, err := s.store.List(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	return &model.ListData{
+		Items:    items,
+		Total:    total,
+		Page:     q.Page,
+		PageSize: q.PageSize,
+	}, nil
 }
 
 // ListEnabled 返回所有启用的扩展字段定义（内存缓存）
@@ -104,11 +118,11 @@ func (s *EventTypeSchemaService) Create(ctx context.Context, req *model.CreateEv
 
 	// 数量上限检查
 	if s.etsCfg.MaxSchemas > 0 {
-		all, err := s.store.List(ctx, nil)
+		_, total, err := s.store.List(ctx, &model.EventTypeSchemaListQuery{Page: 1, PageSize: 1})
 		if err != nil {
 			return 0, err
 		}
-		if len(all) >= s.etsCfg.MaxSchemas {
+		if int(total) >= s.etsCfg.MaxSchemas {
 			return 0, errcode.Newf(errcode.ErrBadRequest, "扩展字段数量已达上限 %d", s.etsCfg.MaxSchemas)
 		}
 	}
