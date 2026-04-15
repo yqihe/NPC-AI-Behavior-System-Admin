@@ -95,7 +95,7 @@ func (c *FieldCache) getListVersion(ctx context.Context) int64 {
 // GetList 查列表缓存（带版本号）
 func (c *FieldCache) GetList(ctx context.Context, q *model.FieldListQuery) (*model.FieldListData, bool, error) {
 	version := c.getListVersion(ctx)
-	key := rcfg.FieldListKey(version, q.Type, q.Category, q.Label, q.Enabled, q.Page, q.PageSize)
+	key := rcfg.FieldListKey(version, q.Type, q.Category, q.Label, q.Enabled, q.ExposesBB, q.Page, q.PageSize)
 	data, err := c.rdb.Get(ctx, key).Bytes()
 	if err == redis.Nil {
 		slog.Debug("cache.字段列表未命中", "key", key)
@@ -119,7 +119,7 @@ func (c *FieldCache) GetList(ctx context.Context, q *model.FieldListQuery) (*mod
 // SetList 写列表缓存（带当前版本号）
 func (c *FieldCache) SetList(ctx context.Context, q *model.FieldListQuery, list *model.FieldListData) {
 	version := c.getListVersion(ctx)
-	key := rcfg.FieldListKey(version, q.Type, q.Category, q.Label, q.Enabled, q.Page, q.PageSize)
+	key := rcfg.FieldListKey(version, q.Type, q.Category, q.Label, q.Enabled, q.ExposesBB, q.Page, q.PageSize)
 	data, err := json.Marshal(list)
 	if err != nil {
 		slog.Error("cache.字段列表序列化失败", "error", err)

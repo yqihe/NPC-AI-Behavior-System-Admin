@@ -39,8 +39,8 @@ func DictKey(group string) string { return prefixDict + group }
 
 // ── Field ──
 
-func FieldListKey(version int64, typ, category, label string, enabled *bool, page, pageSize int) string {
-	return fmt.Sprintf("%sv%d:%s:%s:%s:%s:%d:%d", prefixFieldList, version, typ, category, label, boolStr(enabled), page, pageSize)
+func FieldListKey(version int64, typ, category, label string, enabled *bool, exposesBB *bool, page, pageSize int) string {
+	return fmt.Sprintf("%sv%d:%s:%s:%s:%s:%s:%d:%d", prefixFieldList, version, typ, category, label, boolStr(enabled), boolStr(exposesBB), page, pageSize)
 }
 func FieldDetailKey(id int64) string { return fmt.Sprintf("%s%d", prefixFieldDetail, id) }
 func FieldLockKey(id int64) string   { return fmt.Sprintf("%s%d", prefixFieldLock, id) }

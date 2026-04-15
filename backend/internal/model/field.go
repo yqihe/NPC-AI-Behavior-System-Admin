@@ -14,8 +14,9 @@ type Field struct {
 	Category   string          `json:"category" db:"category"`
 	Properties json.RawMessage `json:"properties" db:"properties"`
 
-	Enabled bool `json:"enabled" db:"enabled"`
-	HasRefs bool `json:"has_refs" db:"-"` // 非 DB 列，service 层通过 field_refs 填充
+	ExposeBB bool `json:"expose_bb" db:"expose_bb"` // 是否暴露给 BB 系统（独立列）
+	Enabled  bool `json:"enabled" db:"enabled"`
+	HasRefs  bool `json:"has_refs" db:"-"` // 非 DB 列，service 层通过 field_refs 填充
 	Version   int       `json:"version" db:"version"`
 	Deleted   bool      `json:"-" db:"deleted"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
@@ -71,12 +72,13 @@ type FieldRef struct {
 
 // FieldListQuery 列表查询参数
 type FieldListQuery struct {
-	Label    string `json:"label"`
-	Type     string `json:"type"`
-	Category string `json:"category"`
-	Enabled  *bool  `json:"enabled,omitempty"` // nil=不筛选（字段管理页），true=仅启用（其他模块选字段）
-	Page     int    `json:"page"`
-	PageSize int    `json:"page_size"`
+	Label     string `json:"label"`
+	Type      string `json:"type"`
+	Category  string `json:"category"`
+	Enabled   *bool  `json:"enabled,omitempty"`   // nil=不筛选（字段管理页），true=仅启用（其他模块选字段）
+	ExposesBB *bool  `json:"bb_exposed,omitempty" form:"bb_exposed"` // nil=不筛选，true=仅暴露 BB 的字段
+	Page      int    `json:"page"`
+	PageSize  int    `json:"page_size"`
 }
 
 // CreateFieldRequest 创建字段请求（无 ID）
