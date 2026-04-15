@@ -135,16 +135,17 @@ const (
 // --- 节点类型管理 44016-44025 ---
 
 const (
-	ErrBtNodeTypeNameExists         = 44016 // 节点类型标识已存在（含软删除）
-	ErrBtNodeTypeNameInvalid        = 44017 // 节点类型标识格式不合法
-	ErrBtNodeTypeNotFound           = 44018 // 节点类型不存在
-	ErrBtNodeTypeCategoryInvalid    = 44019 // category 枚举非法
-	ErrBtNodeTypeDeleteNotDisabled  = 44020 // 删除前必须先停用
-	ErrBtNodeTypeEditNotDisabled    = 44021 // 编辑前必须先停用
-	ErrBtNodeTypeRefDelete          = 44022 // 被行为树引用，无法删除（携带引用树名列表）
-	ErrBtNodeTypeBuiltinDelete      = 44023 // 内置类型不可删除
-	ErrBtNodeTypeBuiltinEdit        = 44024 // 内置类型不可编辑
-	ErrBtNodeTypeParamSchemaInvalid = 44025 // param_schema 不合法
+	ErrBtNodeTypeNameExists          = 44016 // 节点类型标识已存在（含软删除）
+	ErrBtNodeTypeNameInvalid         = 44017 // 节点类型标识格式不合法
+	ErrBtNodeTypeNotFound            = 44018 // 节点类型不存在
+	ErrBtNodeTypeCategoryInvalid     = 44019 // category 枚举非法
+	ErrBtNodeTypeDeleteNotDisabled   = 44020 // 删除前必须先停用
+	ErrBtNodeTypeEditNotDisabled     = 44021 // 编辑前必须先停用
+	ErrBtNodeTypeRefDelete           = 44022 // 被行为树引用，无法删除（携带引用树名列表）
+	ErrBtNodeTypeBuiltinDelete       = 44023 // 内置类型不可删除
+	ErrBtNodeTypeBuiltinEdit         = 44024 // 内置类型不可编辑
+	ErrBtNodeTypeParamSchemaInvalid  = 44025 // param_schema 不合法
+	ErrBtNodeTypeVersionConflict     = 44026 // 版本冲突（乐观锁）
 )
 
 // --- 错误消息 ---
@@ -252,6 +253,7 @@ var messages = map[int]string{
 	ErrBtNodeTypeBuiltinDelete:      "内置节点类型不可删除",
 	ErrBtNodeTypeBuiltinEdit:        "内置节点类型不可编辑",
 	ErrBtNodeTypeParamSchemaInvalid: "param_schema 格式不合法",
+	ErrBtNodeTypeVersionConflict:    "该节点类型已被其他人修改，请刷新后重试",
 }
 
 // Msg 获取错误码对应的默认消息

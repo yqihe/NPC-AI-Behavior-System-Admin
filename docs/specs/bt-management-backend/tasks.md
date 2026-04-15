@@ -152,7 +152,7 @@
 
 ---
 
-## T12: BtNodeTypeService (R11-R20, R36, R37) [ ]
+## T12: BtNodeTypeService (R11-R20, R36, R37) [x]
 
 **涉及文件**：
 - `backend/internal/service/bt_node_type.go`（新增）

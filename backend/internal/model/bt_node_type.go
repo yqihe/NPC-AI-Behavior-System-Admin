@@ -91,6 +91,18 @@ type UpdateBtNodeTypeRequest struct {
 	ParamSchema json.RawMessage `json:"param_schema"`
 }
 
+// BtNodeTypeDeleteResult 删除结果
+//
+// 成功时：ID/TypeName/Label 有值，ReferencedBy 为空。
+// 被引用时：ReferencedBy 有值（引用该类型的行为树 name 列表），
+// WrapCtx 将 resp 作为 data 携带在错误响应中。
+type BtNodeTypeDeleteResult struct {
+	ID           int64    `json:"id,omitempty"`
+	TypeName     string   `json:"type_name,omitempty"`
+	Label        string   `json:"label,omitempty"`
+	ReferencedBy []string `json:"referenced_by,omitempty"`
+}
+
 // BtNodeTypeListQuery 列表查询参数
 type BtNodeTypeListQuery struct {
 	TypeName string `json:"type_name"` // 前缀匹配
