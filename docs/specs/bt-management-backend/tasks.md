@@ -44,7 +44,7 @@
 
 ---
 
-## T4: Model — bt_node_type (R11-R19) [ ]
+## T4: Model — bt_node_type (R11-R19) [x]
 
 **涉及文件**：
 - `backend/internal/model/bt_node_type.go`（新增）
@@ -57,7 +57,7 @@
 
 ---
 
-## T5: Model — bt_tree (R1-R10, R27-R29) [ ]
+## T5: Model — bt_tree (R1-R10, R27-R29) [x]
 
 **涉及文件**：
 - `backend/internal/model/bt_tree.go`（新增）
