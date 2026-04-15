@@ -124,7 +124,7 @@
 
 ---
 
-## T10: BtNodeTypeCache — Redis (R32-R35) [ ]
+## T10: BtNodeTypeCache — Redis (R32-R35) [x]
 
 **涉及文件**：
 - `backend/internal/store/redis/bt_node_type_cache.go`（新增）
@@ -139,7 +139,7 @@
 
 ---
 
-## T11: BtTreeCache — Redis (R32-R35) [ ]
+## T11: BtTreeCache — Redis (R32-R35) [x]
 
 **涉及文件**：
 - `backend/internal/store/redis/bt_tree_cache.go`（新增）
