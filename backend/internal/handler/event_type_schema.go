@@ -52,24 +52,19 @@ func checkJSONObjectShape(data []byte, fieldDesc string) *errcode.Error {
 
 // ---- 接口实现 ----
 
-// EventTypeSchemaListResponse 列表响应包装
-type EventTypeSchemaListResponse struct {
-	Items []model.EventTypeSchema `json:"items"`
-}
-
 // List 扩展字段 Schema 列表
-func (h *EventTypeSchemaHandler) List(ctx context.Context, req *model.EventTypeSchemaListQuery) (*EventTypeSchemaListResponse, error) {
+func (h *EventTypeSchemaHandler) List(ctx context.Context, req *model.EventTypeSchemaListQuery) (*model.ListData, error) {
 	slog.Debug("handler.event_type_schema.list")
-	items, err := h.schemaService.List(ctx, req)
+	data, err := h.schemaService.List(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	if items == nil {
-		items = make([]model.EventTypeSchema, 0)
-	}
 	// 填充 has_refs
-	h.schemaService.FillHasRefs(ctx, items)
-	return &EventTypeSchemaListResponse{Items: items}, nil
+	if items, ok := data.Items.([]model.EventTypeSchema); ok {
+		h.schemaService.FillHasRefs(ctx, items)
+		data.Items = items
+	}
+	return data, nil
 }
 
 // Create 创建扩展字段定义
@@ -104,11 +99,11 @@ func (h *EventTypeSchemaHandler) Create(ctx context.Context, req *model.CreateEv
 func (h *EventTypeSchemaHandler) Update(ctx context.Context, req *model.UpdateEventTypeSchemaRequest) (*string, error) {
 	slog.Debug("handler.event_type_schema.update", "id", req.ID)
 
-	if req.ID <= 0 {
-		return nil, errcode.Newf(errcode.ErrBadRequest, "ID 必须 > 0")
+	if err := shared.CheckID(req.ID); err != nil {
+		return nil, err
 	}
-	if req.Version <= 0 {
-		return nil, errcode.Newf(errcode.ErrBadRequest, "version 必须 > 0")
+	if err := shared.CheckVersion(req.Version); err != nil {
+		return nil, err
 	}
 	if e := shared.CheckLabel(req.FieldLabel, h.etsCfg.FieldLabelMaxLength, "扩展字段中文名"); e != nil {
 		return nil, e
@@ -128,11 +123,10 @@ func (h *EventTypeSchemaHandler) Update(ctx context.Context, req *model.UpdateEv
 
 // Delete 删除扩展字段定义
 func (h *EventTypeSchemaHandler) Delete(ctx context.Context, req *model.IDRequest) (*model.DeleteResult, error) {
-	slog.Debug("handler.event_type_schema.delete", "id", req.ID)
-
-	if req.ID <= 0 {
-		return nil, errcode.Newf(errcode.ErrBadRequest, "ID 必须 > 0")
+	if err := shared.CheckID(req.ID); err != nil {
+		return nil, err
 	}
+	slog.Debug("handler.event_type_schema.delete", "id", req.ID)
 
 	ets, err := h.schemaService.GetByID(ctx, req.ID)
 	if err != nil {
@@ -169,10 +163,9 @@ func (h *EventTypeSchemaHandler) ToggleEnabled(ctx context.Context, req *model.T
 //
 // 跨模块编排：SchemaService 返回 event_type IDs，handler 调 EventTypeService 补 display_name。
 func (h *EventTypeSchemaHandler) GetReferences(ctx context.Context, req *model.IDRequest) (*model.SchemaReferenceDetail, error) {
-	if req.ID <= 0 {
-		return nil, errcode.Newf(errcode.ErrBadRequest, "ID 必须 > 0")
+	if err := shared.CheckID(req.ID); err != nil {
+		return nil, err
 	}
-
 	slog.Debug("handler.event_type_schema.references", "id", req.ID)
 
 	detail, err := h.schemaService.GetReferences(ctx, req.ID)

@@ -74,24 +74,42 @@ func (s *EventTypeSchemaStore) ExistsByFieldName(ctx context.Context, fieldName 
 	return count > 0, nil
 }
 
-// List 列表查询（可按 enabled 筛选，按 sort_order ASC, id ASC 排序）
-func (s *EventTypeSchemaStore) List(ctx context.Context, q *model.EventTypeSchemaListQuery) ([]model.EventTypeSchema, error) {
-	query := `SELECT id, field_name, field_label, field_type, constraints, default_value, sort_order, enabled, version, created_at, updated_at
-		 FROM event_type_schema WHERE deleted = 0`
-	args := make([]any, 0, 1)
+// List 分页列表查询（可按 enabled 筛选，按 sort_order ASC, id ASC 排序）
+func (s *EventTypeSchemaStore) List(ctx context.Context, q *model.EventTypeSchemaListQuery) ([]model.EventTypeSchema, int64, error) {
+	where := "deleted = 0"
+	args := make([]any, 0, 2)
 
 	if q != nil && q.Enabled != nil {
-		query += " AND enabled = ?"
+		where += " AND enabled = ?"
 		args = append(args, *q.Enabled)
 	}
 
-	query += " ORDER BY sort_order ASC, id ASC"
-
-	items := make([]model.EventTypeSchema, 0)
-	if err := s.db.SelectContext(ctx, &items, query, args...); err != nil {
-		return nil, fmt.Errorf("list event_type_schema: %w", err)
+	// 计数
+	var total int64
+	if err := s.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM event_type_schema WHERE "+where, args...); err != nil {
+		return nil, 0, fmt.Errorf("count event_type_schema: %w", err)
 	}
-	return items, nil
+
+	// 分页查询
+	page, pageSize := 1, 20
+	if q != nil && q.Page > 0 {
+		page = q.Page
+	}
+	if q != nil && q.PageSize > 0 {
+		pageSize = q.PageSize
+	}
+	offset := (page - 1) * pageSize
+	listSQL := fmt.Sprintf(
+		`SELECT id, field_name, field_label, field_type, constraints, default_value, sort_order, enabled, version, created_at, updated_at
+		 FROM event_type_schema WHERE %s ORDER BY sort_order ASC, id ASC LIMIT ? OFFSET ?`,
+		where,
+	)
+	allArgs := append(args, pageSize, offset)
+	items := make([]model.EventTypeSchema, 0)
+	if err := s.db.SelectContext(ctx, &items, listSQL, allArgs...); err != nil {
+		return nil, 0, fmt.Errorf("list event_type_schema: %w", err)
+	}
+	return items, total, nil
 }
 
 // ListEnabled 全量拉启用的（给内存缓存 Load 用）
