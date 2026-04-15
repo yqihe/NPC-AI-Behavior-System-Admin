@@ -82,7 +82,7 @@
 
 ---
 
-## T7: BtNodeTypeStore — MySQL CRUD (R11-R19) [ ]
+## T7: BtNodeTypeStore — MySQL CRUD (R11-R19) [x]
 
 **涉及文件**：
 - `backend/internal/store/mysql/bt_node_type.go`（新增）
@@ -95,7 +95,7 @@
 
 ---
 
-## T8: BtTreeStore — MySQL CRUD (R1-R10) [ ]
+## T8: BtTreeStore — MySQL CRUD (R1-R10) [x]
 
 **涉及文件**：
 - `backend/internal/store/mysql/bt_tree.go`（新增）
