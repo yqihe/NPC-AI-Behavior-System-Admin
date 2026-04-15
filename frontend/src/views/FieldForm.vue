@@ -191,16 +191,6 @@
             />
           </el-form-item>
 
-          <!-- 查看模式下展示时间戳 -->
-          <template v-if="isView">
-            <el-form-item label="创建时间">
-              <el-input :model-value="formatTime(createdAt)" :disabled="true" style="width: 200px" />
-            </el-form-item>
-            <el-form-item label="更新时间">
-              <el-input :model-value="formatTime(updatedAt)" :disabled="true" style="width: 200px" />
-            </el-form-item>
-          </template>
-
         </el-form>
         </div>
       </div>
@@ -222,7 +212,6 @@ import type { FormInstance } from 'element-plus'
 import { ArrowLeft, Lock, WarningFilled, Loading, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { fieldApi, FIELD_ERR } from '@/api/fields'
 import type { BizError } from '@/api/request'
-import { formatTime } from '@/utils/format'
 import { dictApi } from '@/api/dictionaries'
 import type { DictionaryItem } from '@/api/dictionaries'
 import FieldConstraintInteger from '@/components/FieldConstraintInteger.vue'
@@ -244,8 +233,6 @@ const typeOptions = ref<DictionaryItem[]>([])
 const categoryOptions = ref<DictionaryItem[]>([])
 const version = ref(0)
 const hasRefs = ref(false)
-const createdAt = ref('')
-const updatedAt = ref('')
 
 interface FormState {
   name: string
@@ -347,8 +334,6 @@ async function loadFieldDetail() {
     }
     version.value = data.version
     hasRefs.value = data.has_refs || false
-    createdAt.value = data.created_at || ''
-    updatedAt.value = data.updated_at || ''
   } catch (err: unknown) {
     if ((err as BizError).code === FIELD_ERR.NOT_FOUND) {
       router.push('/fields')

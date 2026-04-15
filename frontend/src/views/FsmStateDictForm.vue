@@ -94,16 +94,6 @@
                 style="width: 100%"
               />
             </el-form-item>
-
-            <!-- 查看模式下展示时间戳 -->
-            <template v-if="isView">
-              <el-form-item label="创建时间">
-                <el-input :model-value="formatTime(createdAt)" :disabled="true" style="width: 200px" />
-              </el-form-item>
-              <el-form-item label="更新时间">
-                <el-input :model-value="formatTime(updatedAt)" :disabled="true" style="width: 200px" />
-              </el-form-item>
-            </template>
           </el-form>
         </div>
       </div>
@@ -130,7 +120,6 @@ import { fsmStateDictApi, FSM_STATE_DICT_ERR } from '@/api/fsmStateDicts'
 import type { BizError } from '@/api/request'
 import { dictApi } from '@/api/dictionaries'
 import type { DictionaryItem } from '@/api/dictionaries'
-import { formatTime } from '@/utils/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -142,8 +131,6 @@ const submitting = ref(false)
 const nameStatus = ref<'' | 'checking' | 'available' | 'taken'>('')
 const version = ref(0)
 const categoryOptions = ref<DictionaryItem[]>([])
-const createdAt = ref('')
-const updatedAt = ref('')
 
 interface FormState {
   name: string
@@ -202,8 +189,6 @@ async function loadDetail() {
     form.category = data.category
     form.description = data.description ?? ''
     version.value = data.version
-    createdAt.value = data.created_at
-    updatedAt.value = data.updated_at
   } catch (err: unknown) {
     if ((err as BizError).code === FSM_STATE_DICT_ERR.NOT_FOUND) {
       ElMessage.error('状态不存在')

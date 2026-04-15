@@ -174,16 +174,6 @@
             <span class="field-extra">数值越小越靠前，默认 0</span>
           </el-form-item>
 
-          <!-- 查看模式下展示时间戳 -->
-          <template v-if="isView">
-            <el-form-item label="创建时间">
-              <el-input :model-value="formatTime(createdAt)" :disabled="true" style="width: 200px" />
-            </el-form-item>
-            <el-form-item label="更新时间">
-              <el-input :model-value="formatTime(updatedAt)" :disabled="true" style="width: 200px" />
-            </el-form-item>
-          </template>
-
         </el-form>
         </div>
       </div>
@@ -205,7 +195,6 @@ import type { FormInstance } from 'element-plus'
 import { ArrowLeft, Lock, WarningFilled, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { eventTypeApi, EXT_SCHEMA_ERR } from '@/api/eventTypes'
 import type { BizError } from '@/api/request'
-import { formatTime } from '@/utils/format'
 import FieldConstraintInteger from '@/components/FieldConstraintInteger.vue'
 import FieldConstraintString from '@/components/FieldConstraintString.vue'
 import FieldConstraintSelect from '@/components/FieldConstraintSelect.vue'
@@ -221,8 +210,6 @@ const submitting = ref(false)
 const nameStatus = ref<'' | 'valid' | 'invalid' | 'taken'>('')
 const nameMessage = ref('')
 const version = ref(0)
-const createdAt = ref('')
-const updatedAt = ref('')
 
 interface SelectOption {
   value: string
@@ -308,8 +295,6 @@ async function loadDetail() {
     form.constraints = target.constraints || {}
     form.sort_order = target.sort_order
     version.value = target.version
-    createdAt.value = target.created_at || ''
-    updatedAt.value = target.updated_at || ''
 
     // 按类型还原默认值
     setDefaultValueFromLoaded(target.field_type, target.default_value)

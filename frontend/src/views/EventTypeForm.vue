@@ -127,16 +127,6 @@
               </div>
             </div>
           </el-form-item>
-
-          <!-- 查看模式下展示时间戳 -->
-          <template v-if="isView">
-            <el-form-item label="创建时间">
-              <el-input :model-value="formatTime(createdAt)" :disabled="true" style="width: 200px" />
-            </el-form-item>
-            <el-form-item label="更新时间">
-              <el-input :model-value="formatTime(updatedAt)" :disabled="true" style="width: 200px" />
-            </el-form-item>
-          </template>
         </el-form>
       </div>
 
@@ -247,7 +237,6 @@ import {
 import { eventTypeApi, EVENT_TYPE_ERR } from '@/api/eventTypes'
 import type { ExtensionSchemaItem } from '@/api/eventTypes'
 import type { BizError } from '@/api/request'
-import { formatTime } from '@/utils/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -259,8 +248,6 @@ const submitting = ref(false)
 const nameStatus = ref<'' | 'checking' | 'available' | 'taken'>('')
 const nameMessage = ref('')
 const version = ref(0)
-const createdAt = ref('')
-const updatedAt = ref('')
 
 // 扩展字段
 const extensionSchema = ref<ExtensionSchemaItem[]>([])
@@ -349,8 +336,6 @@ async function loadDetail() {
     form.name = data.name
     form.display_name = data.display_name
     version.value = data.version
-    createdAt.value = data.created_at || ''
-    updatedAt.value = data.updated_at || ''
 
     // 从 config 中提取系统字段
     const cfg = data.config || {}

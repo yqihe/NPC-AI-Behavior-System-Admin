@@ -265,8 +265,6 @@ const formRef    = ref<FormInstance | null>(null)
 const loading    = ref(false)
 const submitting = ref(false)
 const version    = ref(0)            // 乐观锁版本
-const createdAt  = ref('')           // 查看模式显示
-const updatedAt  = ref('')
 
 const formState = reactive<XxxFormState>({
   name: '',   // 标识字段，create 时可编辑，edit/view 锁定
@@ -319,8 +317,6 @@ onMounted(async () => {
     version.value        = d.version
     formState.name       = d.name
     formState.display_name = d.display_name
-    createdAt.value      = formatTime(d.created_at)
-    updatedAt.value      = formatTime(d.updated_at)
     // ...
   } catch (err) {
     if ((err as BizError).code === XXX_ERR.NOT_FOUND) {
@@ -382,16 +378,7 @@ async function onSubmit() {
 
 - `<el-form :disabled="isView">` 整体禁用
 - `<div v-if="!isView" class="form-footer">` 隐藏按钮栏
-- 时间戳块（`v-if="isEdit"`）：
-
-```html
-<el-form-item label="创建时间">
-  <span class="view-text">{{ createdAt }}</span>
-</el-form-item>
-<el-form-item label="更新时间">
-  <span class="view-text">{{ updatedAt }}</span>
-</el-form-item>
-```
+- 不展示创建时间 / 更新时间（时间戳仅在列表页 `created_at` 列可见，详情页不展示）
 
 ---
 
