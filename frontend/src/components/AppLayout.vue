@@ -46,6 +46,10 @@
             <el-icon class="group-icon"><Cpu /></el-icon>
             <span class="group-title">行为配置管理</span>
           </template>
+          <el-menu-item index="/fsm-configs">
+            <el-icon><Operation /></el-icon>
+            <span>状态机管理</span>
+          </el-menu-item>
           <el-menu-item index="/fsm-state-dicts">
             <el-icon><Collection /></el-icon>
             <span>状态字典管理</span>
@@ -62,7 +66,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { List, Files, Lightning, Tickets, User, Cpu, Collection } from '@element-plus/icons-vue'
+import { List, Files, Lightning, Tickets, User, Cpu, Collection, Operation } from '@element-plus/icons-vue'
 
 const route = useRoute()
 

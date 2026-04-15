@@ -22,7 +22,7 @@ func NewServices(st *Stores, rc *Caches, mc *MemCaches, cfg *config.Config) *Ser
 		Template:        service.NewTemplateService(st.Template, rc.Template, &cfg.Pagination),
 		EventType:       service.NewEventTypeService(st.EventType, st.SchemaRef, rc.EventType, mc.EventTypeSchema, &cfg.Pagination, &cfg.EventType),
 		EventTypeSchema: service.NewEventTypeSchemaService(st.EventTypeSchema, st.SchemaRef, mc.EventTypeSchema, &cfg.EventTypeSchema, &cfg.Pagination),
-		FsmConfig:       service.NewFsmConfigService(st.FsmConfig, rc.FsmConfig, &cfg.Pagination, &cfg.FsmConfig),
+		FsmConfig:       service.NewFsmConfigService(st.FsmConfig, st.FsmStateDict, rc.FsmConfig, &cfg.Pagination, &cfg.FsmConfig),
 		FsmStateDict:    service.NewFsmStateDictService(st.FsmStateDict, st.FsmConfig, rc.FsmStateDict, mc.Dict, &cfg.Pagination, &cfg.FsmStateDict),
 	}
 }

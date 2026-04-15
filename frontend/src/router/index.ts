@@ -131,6 +131,30 @@ const router = createRouter({
       meta: { title: '编辑状态', isCreate: false },
     },
     {
+      path: '/fsm-configs',
+      name: 'fsm-config-list',
+      component: () => import('@/views/FsmConfigList.vue'),
+      meta: { title: '状态机管理' },
+    },
+    {
+      path: '/fsm-configs/create',
+      name: 'fsm-config-create',
+      component: () => import('@/views/FsmConfigForm.vue'),
+      meta: { title: '新建状态机', isCreate: true },
+    },
+    {
+      path: '/fsm-configs/:id/view',
+      name: 'fsm-config-view',
+      component: () => import('@/views/FsmConfigForm.vue'),
+      meta: { title: '查看状态机', isCreate: false, isView: true },
+    },
+    {
+      path: '/fsm-configs/:id/edit',
+      name: 'fsm-config-edit',
+      component: () => import('@/views/FsmConfigForm.vue'),
+      meta: { title: '编辑状态机', isCreate: false },
+    },
+    {
       path: '/:pathMatch(.*)*',
       name: 'not-found',
       component: () => import('@/views/NotFound.vue'),
