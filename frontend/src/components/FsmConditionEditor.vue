@@ -200,7 +200,7 @@ const depth = computed(() => props.depth ?? 0)
 const condType = computed<'none' | 'leaf' | 'group'>(() => {
   const v = props.modelValue
   if (!v) return 'none'
-  if (v.key) return 'leaf'
+  if ('key' in v) return 'leaf'
   if (v.and || v.or) return 'group'
   return 'none'
 })
@@ -208,7 +208,7 @@ const condType = computed<'none' | 'leaf' | 'group'>(() => {
 // ─── 值模式（直接值 / 引用 Key） ───
 
 const valueMode = computed<'value' | 'ref_key'>(() =>
-  props.modelValue.ref_key ? 'ref_key' : 'value',
+  'ref_key' in props.modelValue ? 'ref_key' : 'value',
 )
 
 // ─── 选中字段类型（用于 value 控件自适应） ───

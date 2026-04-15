@@ -46,13 +46,13 @@
             <el-icon class="group-icon"><Cpu /></el-icon>
             <span class="group-title">行为配置管理</span>
           </template>
-          <el-menu-item index="/fsm-state-dicts">
-            <el-icon><Collection /></el-icon>
-            <span>状态字典管理</span>
-          </el-menu-item>
           <el-menu-item index="/fsm-configs">
             <el-icon><Operation /></el-icon>
             <span>状态机管理</span>
+          </el-menu-item>
+          <el-menu-item index="/fsm-state-dicts">
+            <el-icon><Collection /></el-icon>
+            <span>状态字典管理</span>
           </el-menu-item>
         </el-sub-menu>
       </el-menu>

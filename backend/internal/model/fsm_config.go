@@ -38,8 +38,9 @@ type FsmConfigListItem struct {
 	CreatedAt   time.Time `json:"created_at" db:"created_at"`
 
 	// 以下字段从 config_json unmarshal 后由 service 层填充
-	InitialState string `json:"initial_state" db:"-"`
-	StateCount   int    `json:"state_count" db:"-"`
+	InitialState      string `json:"initial_state" db:"-"`
+	InitialStateLabel string `json:"initial_state_label" db:"-"`
+	StateCount        int    `json:"state_count" db:"-"`
 }
 
 // FsmConfigListData 列表缓存数据（类型安全，避免 any 反序列化丢类型）

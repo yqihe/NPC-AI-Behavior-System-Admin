@@ -84,6 +84,8 @@
             v-model="stateNames"
             v-model:initialState="initialState"
             :disabled="isView"
+            :available-states="availableStates"
+            :loading-dicts="loadingDicts"
           />
           <div v-if="statesError" class="states-error">
             <el-icon><WarningFilled /></el-icon>
@@ -126,9 +128,11 @@ import {
   CircleCheck, CircleClose,
 } from '@element-plus/icons-vue'
 import FsmStateListEditor from '@/components/FsmStateListEditor.vue'
+import type { StateDictOption } from '@/components/FsmStateListEditor.vue'
 import FsmTransitionListEditor from '@/components/FsmTransitionListEditor.vue'
 import { fsmConfigApi, FSM_ERR } from '@/api/fsmConfigs'
 import type { FsmTransition } from '@/api/fsmConfigs'
+import { fsmStateDictApi } from '@/api/fsmStateDicts'
 import type { BizError } from '@/api/request'
 
 const route = useRoute()
@@ -153,6 +157,10 @@ const stateNames = ref<string[]>([])
 const initialState = ref('')
 const transitions = ref<FsmTransition[]>([])
 
+// 状态字典选项（从状态字典管理拉取）
+const availableStates = ref<StateDictOption[]>([])
+const loadingDicts = ref(false)
+
 // 有效（非空且无重名）的状态名
 const validStateNames = computed(() =>
   stateNames.value.filter((n, idx) =>
@@ -175,10 +183,26 @@ const rules = {
 // ---------- 初始化 ----------
 
 onMounted(async () => {
+  await loadStateDicts()
   if (!isCreate) {
     await loadDetail()
   }
 })
+
+async function loadStateDicts() {
+  loadingDicts.value = true
+  try {
+    const res = await fsmStateDictApi.list({ enabled: true, page: 1, page_size: 1000 })
+    availableStates.value = (res.data?.items || []).map((s) => ({
+      name: s.name,
+      display_name: s.display_name,
+    }))
+  } catch {
+    // 加载失败不阻塞表单，保持空列表
+  } finally {
+    loadingDicts.value = false
+  }
+}
 
 async function loadDetail() {
   const id = Number(route.params.id)

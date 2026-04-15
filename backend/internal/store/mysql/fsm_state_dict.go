@@ -189,6 +189,34 @@ func (s *FsmStateDictStore) ToggleEnabled(ctx context.Context, id int64, enabled
 	return nil
 }
 
+// GetDisplayNamesByNames 批量返回 name -> display_name 映射，用于列表页展示中文名
+func (s *FsmStateDictStore) GetDisplayNamesByNames(ctx context.Context, names []string) (map[string]string, error) {
+	if len(names) == 0 {
+		return map[string]string{}, nil
+	}
+	type row struct {
+		Name        string `db:"name"`
+		DisplayName string `db:"display_name"`
+	}
+	query, args, err := sqlx.In(
+		`SELECT name, display_name FROM fsm_state_dicts WHERE deleted = 0 AND name IN (?)`,
+		names,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("build GetDisplayNamesByNames query: %w", err)
+	}
+	query = s.db.Rebind(query)
+	var rows []row
+	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+		return nil, fmt.Errorf("GetDisplayNamesByNames: %w", err)
+	}
+	m := make(map[string]string, len(rows))
+	for _, r := range rows {
+		m[r.Name] = r.DisplayName
+	}
+	return m, nil
+}
+
 // ListCategories 返回所有未删除条目的分类（DISTINCT）
 func (s *FsmStateDictStore) ListCategories(ctx context.Context) ([]string, error) {
 	categories := make([]string, 0)

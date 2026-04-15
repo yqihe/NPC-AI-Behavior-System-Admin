@@ -29,24 +29,27 @@ var validConditionOps = map[string]bool{
 //
 // 只持有自身的 store/cache，不持有其他模块的 store/service。
 type FsmConfigService struct {
-	store  *storemysql.FsmConfigStore
-	cache  *storeredis.FsmConfigCache
-	pagCfg *config.PaginationConfig
-	fsmCfg *config.FsmConfigConfig
+	store     *storemysql.FsmConfigStore
+	dictStore *storemysql.FsmStateDictStore
+	cache     *storeredis.FsmConfigCache
+	pagCfg    *config.PaginationConfig
+	fsmCfg    *config.FsmConfigConfig
 }
 
 // NewFsmConfigService 创建 FsmConfigService
 func NewFsmConfigService(
 	store *storemysql.FsmConfigStore,
+	dictStore *storemysql.FsmStateDictStore,
 	cache *storeredis.FsmConfigCache,
 	pagCfg *config.PaginationConfig,
 	fsmCfg *config.FsmConfigConfig,
 ) *FsmConfigService {
 	return &FsmConfigService{
-		store:  store,
-		cache:  cache,
-		pagCfg: pagCfg,
-		fsmCfg: fsmCfg,
+		store:     store,
+		dictStore: dictStore,
+		cache:     cache,
+		pagCfg:    pagCfg,
+		fsmCfg:    fsmCfg,
 	}
 }
 
@@ -220,6 +223,7 @@ func (s *FsmConfigService) List(ctx context.Context, q *model.FsmConfigListQuery
 
 	// 从 config_json 抽展示字段
 	listItems := make([]model.FsmConfigListItem, 0, len(items))
+	initialNames := make([]string, 0, len(items))
 	for _, fc := range items {
 		item := model.FsmConfigListItem{
 			ID:          fc.ID,
@@ -236,8 +240,19 @@ func (s *FsmConfigService) List(ctx context.Context, q *model.FsmConfigListQuery
 		if err := json.Unmarshal(fc.ConfigJSON, &cfg); err == nil {
 			item.InitialState = cfg.InitialState
 			item.StateCount = len(cfg.States)
+			if cfg.InitialState != "" {
+				initialNames = append(initialNames, cfg.InitialState)
+			}
 		}
 		listItems = append(listItems, item)
+	}
+
+	// 批量解析 initial_state 中文名
+	labelMap, _ := s.dictStore.GetDisplayNamesByNames(ctx, initialNames)
+	for i := range listItems {
+		if label, ok := labelMap[listItems[i].InitialState]; ok {
+			listItems[i].InitialStateLabel = label
+		}
 	}
 
 	// 写缓存

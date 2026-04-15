@@ -48,6 +48,7 @@ export interface FsmConfigListItem {
   name: string
   display_name: string
   initial_state: string
+  initial_state_label: string
   state_count: number
   enabled: boolean
   created_at: string

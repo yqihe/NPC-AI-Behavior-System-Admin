@@ -3,7 +3,7 @@
     <!-- 顶部标题栏 -->
     <div class="page-header">
       <div class="header-left">
-        <h2 class="page-title">扩展字段管理</h2>
+        <h2 class="page-title">事件字段管理</h2>
       </div>
       <div class="header-right">
         <el-button type="primary" @click="$router.push('/event-type-schemas/create')">
