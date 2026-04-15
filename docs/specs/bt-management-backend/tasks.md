@@ -30,7 +30,7 @@
 
 ---
 
-## T3: 配置结构 BtTreeConfig + BtNodeTypeConfig (R20) [ ]
+## T3: 配置结构 BtTreeConfig + BtNodeTypeConfig (R20) [x]
 
 **涉及文件**：
 - `backend/internal/config/config.go`（改动）
