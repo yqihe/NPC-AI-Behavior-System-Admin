@@ -237,7 +237,7 @@
 
 ---
 
-## T16: ExportHandler — BTTrees (R27-R29) [ ]
+## T16: ExportHandler — BTTrees (R27-R29) [x]
 
 **涉及文件**：
 - `backend/internal/handler/export.go`（改动）

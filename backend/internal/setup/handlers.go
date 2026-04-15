@@ -27,6 +27,6 @@ func NewHandlers(st *Stores, svc *Services, mc *MemCaches, cfg *config.Config) *
 		EventTypeSchema: handler.NewEventTypeSchemaHandler(svc.EventTypeSchema, svc.EventType, &cfg.EventTypeSchema),
 		FsmConfig:       handler.NewFsmConfigHandler(st.DB, svc.FsmConfig, svc.Field, &cfg.FsmConfig),
 		FsmStateDict:    handler.NewFsmStateDictHandler(svc.FsmStateDict, &cfg.FsmStateDict),
-		Export:          handler.NewExportHandler(svc.EventType, svc.FsmConfig),
+		Export:          handler.NewExportHandler(svc.EventType, svc.FsmConfig, nil), // T19: 替换 nil → svc.BtTree
 	}
 }
