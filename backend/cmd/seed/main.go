@@ -170,6 +170,12 @@ func main() {
 		slog.Error("seed.分类迁移失败", "error", err)
 		os.Exit(1)
 	}
+
+	// 内置行为树节点类型种子
+	if err := seedBtNodeTypes(ctx, db); err != nil {
+		slog.Error("seed.内置节点类型写入失败", "error", err)
+		os.Exit(1)
+	}
 }
 
 func mustRawJSON(v any) *json.RawMessage {

@@ -22,21 +22,33 @@ import (
 
 // FieldService 字段管理业务逻辑
 type FieldService struct {
-	fieldStore    *storemysql.FieldStore
-	fieldRefStore *storemysql.FieldRefStore
-	fieldCache    *storeredis.FieldCache
-	dictCache     *cache.DictCache
-	pagCfg        *config.PaginationConfig
+	fieldStore       *storemysql.FieldStore
+	fieldRefStore    *storemysql.FieldRefStore
+	fieldCache       *storeredis.FieldCache
+	dictCache        *cache.DictCache
+	pagCfg           *config.PaginationConfig
+	btTreeStore      *storemysql.BtTreeStore      // T18: BB Key 引用检查
+	btNodeTypeStore  *storemysql.BtNodeTypeStore  // T18: 构建 bb_key 参数名 map
 }
 
 // NewFieldService 创建 FieldService
-func NewFieldService(fieldStore *storemysql.FieldStore, fieldRefStore *storemysql.FieldRefStore, fieldCache *storeredis.FieldCache, dictCache *cache.DictCache, pagCfg *config.PaginationConfig) *FieldService {
+func NewFieldService(
+	fieldStore *storemysql.FieldStore,
+	fieldRefStore *storemysql.FieldRefStore,
+	fieldCache *storeredis.FieldCache,
+	dictCache *cache.DictCache,
+	pagCfg *config.PaginationConfig,
+	btTreeStore *storemysql.BtTreeStore,
+	btNodeTypeStore *storemysql.BtNodeTypeStore,
+) *FieldService {
 	return &FieldService{
-		fieldStore:    fieldStore,
-		fieldRefStore: fieldRefStore,
-		fieldCache:    fieldCache,
-		dictCache:     dictCache,
-		pagCfg:        pagCfg,
+		fieldStore:      fieldStore,
+		fieldRefStore:   fieldRefStore,
+		fieldCache:      fieldCache,
+		dictCache:       dictCache,
+		pagCfg:          pagCfg,
+		btTreeStore:     btTreeStore,
+		btNodeTypeStore: btNodeTypeStore,
 	}
 }
 
@@ -267,11 +279,12 @@ func (s *FieldService) Update(ctx context.Context, req *model.UpdateFieldRequest
 		return errcode.New(errcode.ErrFieldEditNotDisabled)
 	}
 
-	// 硬约束：取消 expose_bb 时，检查是否有 FSM 引用该 BB Key
+	// 硬约束：取消 expose_bb 时，检查是否有 FSM/BT 引用该 BB Key
 	// 使用非事务读（GetByFieldID），风险低（仅可能过度拒绝，不会放行非法操作）
 	oldProps, _ := parseProperties(old.Properties)
 	newProps, _ := parseProperties(req.Properties)
 	if oldProps != nil && newProps != nil && oldProps.ExposeBB && !newProps.ExposeBB {
+		// FSM 引用检查
 		refs, err := s.fieldRefStore.GetByFieldID(ctx, req.ID)
 		if err != nil {
 			slog.Error("service.查字段引用失败", "error", err, "id", req.ID)
@@ -279,6 +292,23 @@ func (s *FieldService) Update(ctx context.Context, req *model.UpdateFieldRequest
 		}
 		for _, r := range refs {
 			if r.RefType == util.RefTypeFsm {
+				return errcode.New(errcode.ErrFieldBBKeyInUse)
+			}
+		}
+
+		// BT 引用检查（T18：扫描 bt_trees.config 中是否有节点用该 BB Key）
+		if s.btTreeStore != nil && s.btNodeTypeStore != nil {
+			nodeParamTypes, err := s.btNodeTypeStore.ListBBKeyParamNames(ctx)
+			if err != nil {
+				slog.Error("service.加载节点类型BBKey参数失败", "error", err, "id", req.ID)
+				return fmt.Errorf("load bb_key param names: %w", err)
+			}
+			used, err := s.btTreeStore.IsBBKeyUsed(ctx, old.Name, nodeParamTypes)
+			if err != nil {
+				slog.Error("service.BT引用检查失败", "error", err, "name", old.Name)
+				return fmt.Errorf("check bt bb key usage: %w", err)
+			}
+			if used {
 				return errcode.New(errcode.ErrFieldBBKeyInUse)
 			}
 		}

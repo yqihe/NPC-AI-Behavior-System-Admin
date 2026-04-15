@@ -109,10 +109,35 @@ func Setup(r *gin.Engine, h *setup.Handlers) {
 		fsmStateDicts.POST("/toggle-enabled", handler.WrapCtx(h.FsmStateDict.ToggleEnabled))
 	}
 
+	// 行为树管理（7 个接口）
+	btTrees := v1.Group("/bt-trees")
+	{
+		btTrees.POST("/list", handler.WrapCtx(h.BtTree.List))
+		btTrees.POST("/create", handler.WrapCtx(h.BtTree.Create))
+		btTrees.POST("/detail", handler.WrapCtx(h.BtTree.Detail))
+		btTrees.POST("/update", handler.WrapCtx(h.BtTree.Update))
+		btTrees.POST("/delete", handler.WrapCtx(h.BtTree.Delete))
+		btTrees.POST("/check-name", handler.WrapCtx(h.BtTree.CheckName))
+		btTrees.POST("/toggle-enabled", handler.WrapCtx(h.BtTree.ToggleEnabled))
+	}
+
+	// 节点类型管理（7 个接口）
+	btNodeTypes := v1.Group("/bt-node-types")
+	{
+		btNodeTypes.POST("/list", handler.WrapCtx(h.BtNodeType.List))
+		btNodeTypes.POST("/create", handler.WrapCtx(h.BtNodeType.Create))
+		btNodeTypes.POST("/detail", handler.WrapCtx(h.BtNodeType.Detail))
+		btNodeTypes.POST("/update", handler.WrapCtx(h.BtNodeType.Update))
+		btNodeTypes.POST("/delete", handler.WrapCtx(h.BtNodeType.Delete))
+		btNodeTypes.POST("/check-name", handler.WrapCtx(h.BtNodeType.CheckName))
+		btNodeTypes.POST("/toggle-enabled", handler.WrapCtx(h.BtNodeType.ToggleEnabled))
+	}
+
 	// 配置导出 API
 	configs := r.Group("/api/configs")
 	{
 		configs.GET("/event_types", h.Export.EventTypes)
 		configs.GET("/fsm_configs", h.Export.FsmConfigs)
+		configs.GET("/bt_trees", h.Export.BTTrees)
 	}
 }
