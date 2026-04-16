@@ -416,6 +416,26 @@ func (s *BtTreeService) CheckName(ctx context.Context, name string) (*model.Chec
 	return &model.CheckNameResult{Available: true, Message: "该标识可用"}, nil
 }
 
+// CheckEnabledByNames 批量校验行为树是否存在且已启用（供 NPC handler 调用）
+//
+// 返回不存在或已停用的 name 列表（notOK）。
+// names 为空时直接返回 nil, nil，不发起查询。
+func (s *BtTreeService) CheckEnabledByNames(ctx context.Context, names []string) (notOK []string, err error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
+	enabledSet, err := s.store.GetEnabledByNames(ctx, names)
+	if err != nil {
+		return nil, fmt.Errorf("get enabled bt_trees by names: %w", err)
+	}
+	for _, name := range names {
+		if !enabledSet[name] {
+			notOK = append(notOK, name)
+		}
+	}
+	return notOK, nil
+}
+
 // ExportAll 导出所有已启用且未删除的行为树（直查 MySQL，不走缓存）
 func (s *BtTreeService) ExportAll(ctx context.Context) ([]model.BtTreeExportItem, error) {
 	items, err := s.store.ExportAll(ctx)

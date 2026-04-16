@@ -160,7 +160,7 @@ T8 + T9 + T10 → T11 → T12
 
 ---
 
-## T7：扩展已有 Service 层
+## ✅ T7：扩展已有 Service 层
 
 **关联需求**：R9、R10（FSM/BT service 对外接口）
 

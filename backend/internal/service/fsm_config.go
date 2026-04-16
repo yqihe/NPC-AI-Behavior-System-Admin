@@ -609,3 +609,21 @@ func (s *FsmConfigService) ToggleEnabled(ctx context.Context, req *model.ToggleE
 func (s *FsmConfigService) ExportAll(ctx context.Context) ([]model.FsmConfigExportItem, error) {
 	return s.store.ExportAll(ctx)
 }
+
+// GetEnabledByName 按 name 查询状态机配置并校验启用状态（供 NPC handler 调用）
+//
+// 不存在 → ErrNPCFsmNotFound(45008)；已停用 → ErrNPCFsmDisabled(45009)。
+// 错误码属于 NPC 错误段，由 NPC handler 的调用场景决定。
+func (s *FsmConfigService) GetEnabledByName(ctx context.Context, name string) (*model.FsmConfig, error) {
+	fsm, err := s.store.GetByName(ctx, name)
+	if err != nil {
+		return nil, fmt.Errorf("get fsm_config by name: %w", err)
+	}
+	if fsm == nil {
+		return nil, errcode.New(errcode.ErrNPCFsmNotFound)
+	}
+	if !fsm.Enabled {
+		return nil, errcode.New(errcode.ErrNPCFsmDisabled)
+	}
+	return fsm, nil
+}
