@@ -54,6 +54,7 @@ type NPCListItem struct {
 	ID            int64     `json:"id"             db:"id"`
 	Name          string    `json:"name"           db:"name"`
 	Label         string    `json:"label"          db:"label"`
+	TemplateID    int64     `json:"template_id"    db:"template_id"`
 	TemplateName  string    `json:"template_name"  db:"template_name"`
 	TemplateLabel string    `json:"template_label" db:"-"` // 跨模块补全
 	FsmRef        string    `json:"fsm_ref"        db:"fsm_ref"`

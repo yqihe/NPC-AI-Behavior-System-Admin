@@ -19,6 +19,7 @@ type Caches struct {
 	FsmStateDict *storeredis.FsmStateDictCache
 	BtTree       *storeredis.BtTreeCache
 	BtNodeType   *storeredis.BtNodeTypeCache
+	Npc          *storeredis.NPCCache
 }
 
 // NewCaches 连接 Redis + 一次性初始化所有 cache
@@ -45,6 +46,7 @@ func NewCaches(ctx context.Context, cfg *config.RedisConfig) *Caches {
 		FsmStateDict: storeredis.NewFsmStateDictCache(rdb),
 		BtTree:       storeredis.NewBtTreeCache(rdb),
 		BtNodeType:   storeredis.NewBtNodeTypeCache(rdb),
+		Npc:          storeredis.NewNPCCache(rdb),
 	}
 }
 

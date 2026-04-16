@@ -25,16 +25,18 @@ type Field struct {
 
 // FieldLite 给跨模块调用的字段精简结构
 //
-// 用途：模板管理详情接口由 handler 调 fieldService.GetByIDsLite 拿到，
-// 用于拼装 TemplateFieldItem。CategoryLabel 由 service 层翻译填充。
+// 用途：模板详情/NPC 创建-编辑 由 handler 调 fieldService.GetByIDsLite 拿到，
+// 用于拼装展示或校验字段值（NPC handler 用 Properties 提取 constraints 后调 ValidateValue）。
+// CategoryLabel 由 service 层翻译填充；Properties 由 service 层从 model.Field.Properties 复制。
 type FieldLite struct {
-	ID            int64  `json:"id" db:"id"`
-	Name          string `json:"name" db:"name"`
-	Label         string `json:"label" db:"label"`
-	Type          string `json:"type" db:"type"`
-	Category      string `json:"category" db:"category"`
-	CategoryLabel string `json:"category_label" db:"-"` // service 层翻译
-	Enabled       bool   `json:"enabled" db:"enabled"`
+	ID            int64           `json:"id" db:"id"`
+	Name          string          `json:"name" db:"name"`
+	Label         string          `json:"label" db:"label"`
+	Type          string          `json:"type" db:"type"`
+	Category      string          `json:"category" db:"category"`
+	CategoryLabel string          `json:"category_label" db:"-"`  // service 层翻译
+	Enabled       bool            `json:"enabled" db:"enabled"`
+	Properties    json.RawMessage `json:"properties" db:"-"`      // service 层从 model.Field 复制（供 NPC 字段值校验）
 }
 
 // FieldListItem 列表页展示项（覆盖索引返回，不含 properties）

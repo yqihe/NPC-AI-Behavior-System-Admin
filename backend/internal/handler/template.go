@@ -25,6 +25,7 @@ type TemplateHandler struct {
 	db              *sqlx.DB
 	templateService *service.TemplateService
 	fieldService    *service.FieldService
+	npcService      *service.NpcService
 	valCfg          *config.ValidationConfig
 }
 
@@ -33,12 +34,14 @@ func NewTemplateHandler(
 	db *sqlx.DB,
 	templateService *service.TemplateService,
 	fieldService *service.FieldService,
+	npcService *service.NpcService,
 	valCfg *config.ValidationConfig,
 ) *TemplateHandler {
 	return &TemplateHandler{
 		db:              db,
 		templateService: templateService,
 		fieldService:    fieldService,
+		npcService:      npcService,
 		valCfg:          valCfg,
 	}
 }
@@ -112,7 +115,7 @@ func (h *TemplateHandler) ToggleEnabled(ctx context.Context, req *model.ToggleEn
 	return shared.SuccessMsg("操作成功"), nil
 }
 
-// GetReferences 引用详情（NPC 模块未上线前返回空数组占位）
+// GetReferences 引用详情（列出引用该模板的 NPC，最多 50 条）
 func (h *TemplateHandler) GetReferences(ctx context.Context, req *model.IDRequest) (*model.TemplateReferenceDetail, error) {
 	if err := shared.CheckID(req.ID); err != nil {
 		return nil, err
@@ -123,11 +126,19 @@ func (h *TemplateHandler) GetReferences(ctx context.Context, req *model.IDReques
 	if err != nil {
 		return nil, err
 	}
-	// NPC 模块未上线，npcs 占位空数组（make 防 nil → null）
+
+	npcs, _, _ := h.npcService.ListByTemplateID(ctx, tpl.ID, 1, 50)
+	npcItems := make([]model.TemplateReferenceItem, 0, len(npcs))
+	for _, n := range npcs {
+		npcItems = append(npcItems, model.TemplateReferenceItem{
+			NPCID:   n.ID,
+			NPCName: n.Name,
+		})
+	}
 	return &model.TemplateReferenceDetail{
 		TemplateID:    tpl.ID,
 		TemplateLabel: tpl.Label,
-		NPCs:          make([]model.TemplateReferenceItem, 0),
+		NPCs:          npcItems,
 	}, nil
 }
 
@@ -325,6 +336,15 @@ func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateR
 		}
 	}
 
+	// 字段有变更时：存在 NPC 引用则拒绝修改字段配置
+	if fieldsWillChange(oldEntries, req.Fields) {
+		if count, err := h.npcService.CountByTemplateID(ctx, req.ID); err != nil {
+			return nil, err
+		} else if count > 0 {
+			return nil, errcode.New(errcode.ErrTemplateRefEditFields)
+		}
+	}
+
 	// 4. 跨模块事务
 	tx, err := h.db.BeginTxx(ctx, nil)
 	if err != nil {
@@ -401,6 +421,13 @@ func (h *TemplateHandler) Delete(ctx context.Context, req *model.IDRequest) (*mo
 		return nil, errcode.New(errcode.ErrTemplateDeleteNotDisabled)
 	}
 
+	// 跨模块引用检查：存在 NPC 引用则拒绝删除
+	if count, err := h.npcService.CountByTemplateID(ctx, tpl.ID); err != nil {
+		return nil, err
+	} else if count > 0 {
+		return nil, errcode.New(errcode.ErrTemplateRefDelete)
+	}
+
 	// 解 fields 拿要 detach 的 fieldIDs
 	entries, err := h.templateService.ParseFieldEntries(tpl.Fields)
 	if err != nil {
@@ -446,6 +473,21 @@ func (h *TemplateHandler) Delete(ctx context.Context, req *model.IDRequest) (*mo
 }
 
 // ---- 内部辅助 ----
+
+// fieldsWillChange 判断字段配置是否有变更（集合 + 顺序 + required 任一不同均视为变更）
+//
+// 用于事务外预判：若有变更则校验 NPC 引用，避免破坏 NPC 快照一致性。
+func fieldsWillChange(old, new []model.TemplateFieldEntry) bool {
+	if len(old) != len(new) {
+		return true
+	}
+	for i := range old {
+		if old[i].FieldID != new[i].FieldID || old[i].Required != new[i].Required {
+			return true
+		}
+	}
+	return false
+}
 
 // diffNewFieldIDs 计算新增的 fieldIDs（用于事务前校验启用状态）
 //

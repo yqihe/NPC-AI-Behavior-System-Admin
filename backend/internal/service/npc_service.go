@@ -61,14 +61,16 @@ func (s *NpcService) getOrNotFound(ctx context.Context, id int64) (*model.NPC, e
 // CRUD
 // ──────────────────────────────────────────────
 
-// List 分页列表（Cache-Aside）
-func (s *NpcService) List(ctx context.Context, q *model.NPCListQuery) (*model.ListData, error) {
+// List 分页列表（Cache-Aside），返回类型安全的 *NPCListData
+//
+// 返回 *NPCListData 而非通用 *ListData，使 handler 层可对 Items 切片逐条补全 TemplateLabel。
+func (s *NpcService) List(ctx context.Context, q *model.NPCListQuery) (*model.NPCListData, error) {
 	shared.NormalizePagination(&q.Page, &q.PageSize, s.pagCfg.DefaultPage, s.pagCfg.DefaultPageSize, s.pagCfg.MaxPageSize)
 
 	// 查缓存
 	if cached, hit, err := s.cache.GetList(ctx, q); err == nil && hit {
 		slog.Debug("service.NPC列表.缓存命中")
-		return cached.ToListData(), nil
+		return cached, nil
 	}
 
 	// 查 MySQL
@@ -86,7 +88,7 @@ func (s *NpcService) List(ctx context.Context, q *model.NPCListQuery) (*model.Li
 	}
 	s.cache.SetList(ctx, q, listData)
 
-	return listData.ToListData(), nil
+	return listData, nil
 }
 
 // GetByID 查详情（Cache-Aside + 分布式锁 + 空标记）

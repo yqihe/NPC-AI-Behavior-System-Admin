@@ -16,6 +16,7 @@ type ExportHandler struct {
 	eventTypeService *service.EventTypeService
 	fsmConfigService *service.FsmConfigService
 	btTreeService    *service.BtTreeService
+	npcService       *service.NpcService
 }
 
 // NewExportHandler 创建 ExportHandler
@@ -23,11 +24,13 @@ func NewExportHandler(
 	eventTypeService *service.EventTypeService,
 	fsmConfigService *service.FsmConfigService,
 	btTreeService *service.BtTreeService,
+	npcService *service.NpcService,
 ) *ExportHandler {
 	return &ExportHandler{
 		eventTypeService: eventTypeService,
 		fsmConfigService: fsmConfigService,
 		btTreeService:    btTreeService,
+		npcService:       npcService,
 	}
 }
 
@@ -97,6 +100,28 @@ func (h *ExportHandler) BTTrees(c *gin.Context) {
 	}
 
 	// 空数据返回 {"items": []}
+	if len(items) == 0 {
+		c.JSON(http.StatusOK, exportResponse{Items: make([]interface{}, 0)})
+		return
+	}
+
+	c.JSON(http.StatusOK, exportResponse{Items: items})
+}
+
+// NPCTemplates GET /api/configs/npc_templates
+//
+// 返回所有已启用且未删除的 NPC 配置（含字段值快照 + 行为配置）。
+// 格式：{name, config: {template_ref, fields: {k:v}, behavior: {fsm_ref?, bt_refs?}}}
+func (h *ExportHandler) NPCTemplates(c *gin.Context) {
+	slog.Debug("handler.export.npc_templates")
+
+	items, err := h.npcService.ExportAll(c.Request.Context())
+	if err != nil {
+		slog.Error("handler.export.npc_templates.error", "error", err)
+		c.JSON(http.StatusInternalServerError, exportResponse{Items: make([]interface{}, 0)})
+		return
+	}
+
 	if len(items) == 0 {
 		c.JSON(http.StatusOK, exportResponse{Items: make([]interface{}, 0)})
 		return

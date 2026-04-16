@@ -174,7 +174,7 @@ T8 + T9 + T10 → T11 → T12
 
 ---
 
-## T8：NPC Handler
+## ✅ T8：NPC Handler
 
 **关联需求**：R1–R9、R11
 
@@ -219,7 +219,7 @@ T8 + T9 + T10 → T11 → T12
 
 ---
 
-## T9：跨模块激活 — 模板
+## ✅ T9：跨模块激活 — 模板
 
 **关联需求**：R12、R13、R16
 
@@ -259,7 +259,7 @@ T8 + T9 + T10 → T11 → T12
 
 ---
 
-## T10：跨模块激活 — BT 树 + FSM
+## ✅ T10：跨模块激活 — BT 树 + FSM
 
 **关联需求**：R14、R15
 
@@ -289,7 +289,7 @@ if count, _ := h.npcService.CountByFsmRef(ctx, fsm.Name); count > 0 {
 
 ---
 
-## T11：Setup 依赖注入
+## ✅ T11：Setup 依赖注入
 
 **关联需求**：所有 R 的运行前提
 
@@ -306,7 +306,7 @@ if count, _ := h.npcService.CountByFsmRef(ctx, fsm.Name); count > 0 {
 
 ---
 
-## T12：路由 + Handler 注入 + 导出接口
+## ✅ T12：路由 + Handler 注入 + 导出接口
 
 **关联需求**：R1–R17（整体可跑）
 

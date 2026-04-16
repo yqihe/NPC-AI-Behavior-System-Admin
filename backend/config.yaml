@@ -22,6 +22,7 @@ validation:
   field_name_max_length: 64
   field_label_max_length: 128
   template_name_max_length: 64
+  npc_name_max_length: 64
   description_max_length: 512
 
 event_type:

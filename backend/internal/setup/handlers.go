@@ -17,6 +17,7 @@ type Handlers struct {
 	BtTree          *handler.BtTreeHandler
 	BtNodeType      *handler.BtNodeTypeHandler
 	Export          *handler.ExportHandler
+	Npc             *handler.NpcHandler
 }
 
 // NewHandlers 一次性初始化所有 handler
@@ -24,13 +25,14 @@ func NewHandlers(st *Stores, svc *Services, mc *MemCaches, cfg *config.Config) *
 	return &Handlers{
 		Field:           handler.NewFieldHandler(svc.Field, svc.Template, svc.FsmConfig, &cfg.Validation),
 		Dict:            handler.NewDictionaryHandler(mc.Dict),
-		Template:        handler.NewTemplateHandler(st.DB, svc.Template, svc.Field, &cfg.Validation),
+		Template:        handler.NewTemplateHandler(st.DB, svc.Template, svc.Field, svc.Npc, &cfg.Validation),
 		EventType:       handler.NewEventTypeHandler(svc.EventType, svc.EventTypeSchema, &cfg.EventType),
 		EventTypeSchema: handler.NewEventTypeSchemaHandler(svc.EventTypeSchema, svc.EventType, &cfg.EventTypeSchema),
-		FsmConfig:       handler.NewFsmConfigHandler(st.DB, svc.FsmConfig, svc.Field, &cfg.FsmConfig),
+		FsmConfig:       handler.NewFsmConfigHandler(st.DB, svc.FsmConfig, svc.Field, svc.Npc, &cfg.FsmConfig),
 		FsmStateDict:    handler.NewFsmStateDictHandler(svc.FsmStateDict, &cfg.FsmStateDict),
-		BtTree:     handler.NewBtTreeHandler(svc.BtTree, &cfg.BtTree),
-		BtNodeType: handler.NewBtNodeTypeHandler(svc.BtNodeType, &cfg.BtNodeType),
-		Export:     handler.NewExportHandler(svc.EventType, svc.FsmConfig, svc.BtTree),
+		BtTree:          handler.NewBtTreeHandler(svc.BtTree, svc.Npc, &cfg.BtTree),
+		BtNodeType:      handler.NewBtNodeTypeHandler(svc.BtNodeType, &cfg.BtNodeType),
+		Export:          handler.NewExportHandler(svc.EventType, svc.FsmConfig, svc.BtTree, svc.Npc),
+		Npc:             handler.NewNpcHandler(svc.Npc, svc.Template, svc.Field, svc.FsmConfig, svc.BtTree, &cfg.Validation),
 	}
 }

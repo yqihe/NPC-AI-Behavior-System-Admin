@@ -133,11 +133,24 @@ func Setup(r *gin.Engine, h *setup.Handlers) {
 		btNodeTypes.POST("/toggle-enabled", handler.WrapCtx(h.BtNodeType.ToggleEnabled))
 	}
 
+	// NPC 管理（7 个接口）
+	npcs := v1.Group("/npcs")
+	{
+		npcs.POST("/list", handler.WrapCtx(h.Npc.List))
+		npcs.POST("/create", handler.WrapCtx(h.Npc.Create))
+		npcs.POST("/detail", handler.WrapCtx(h.Npc.Get))
+		npcs.POST("/update", handler.WrapCtx(h.Npc.Update))
+		npcs.POST("/delete", handler.WrapCtx(h.Npc.Delete))
+		npcs.POST("/check-name", handler.WrapCtx(h.Npc.CheckName))
+		npcs.POST("/toggle-enabled", handler.WrapCtx(h.Npc.ToggleEnabled))
+	}
+
 	// 配置导出 API
 	configs := r.Group("/api/configs")
 	{
 		configs.GET("/event_types", h.Export.EventTypes)
 		configs.GET("/fsm_configs", h.Export.FsmConfigs)
 		configs.GET("/bt_trees", h.Export.BTTrees)
+		configs.GET("/npc_templates", h.Export.NPCTemplates)
 	}
 }

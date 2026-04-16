@@ -23,6 +23,7 @@ type Stores struct {
 	FsmStateDict    *storemysql.FsmStateDictStore
 	BtTree          *storemysql.BtTreeStore
 	BtNodeType      *storemysql.BtNodeTypeStore
+	Npc             *storemysql.NpcStore
 }
 
 // NewStores 连接 MySQL + 一次性初始化所有 store
@@ -48,6 +49,7 @@ func NewStores(cfg *config.MySQLConfig) (*Stores, error) {
 		FsmStateDict:    storemysql.NewFsmStateDictStore(db),
 		BtTree:          storemysql.NewBtTreeStore(db),
 		BtNodeType:      storemysql.NewBtNodeTypeStore(db),
+		Npc:             storemysql.NewNpcStore(db),
 	}, nil
 }
 

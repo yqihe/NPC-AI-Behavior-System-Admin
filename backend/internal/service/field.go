@@ -717,6 +717,7 @@ func (s *FieldService) GetByIDsLite(ctx context.Context, fieldIDs []int64) ([]mo
 			Category:      f.Category,
 			CategoryLabel: s.dictCache.GetLabel(util.DictGroupFieldCategory, f.Category),
 			Enabled:       f.Enabled,
+			Properties:    f.Properties,
 		}
 	}
 	return result, nil

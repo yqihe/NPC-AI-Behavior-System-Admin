@@ -21,6 +21,7 @@ type FsmConfigHandler struct {
 	db               *sqlx.DB
 	fsmConfigService *service.FsmConfigService
 	fieldService     *service.FieldService
+	npcService       *service.NpcService
 	fsmCfg           *config.FsmConfigConfig
 }
 
@@ -29,12 +30,14 @@ func NewFsmConfigHandler(
 	db *sqlx.DB,
 	fsmConfigService *service.FsmConfigService,
 	fieldService *service.FieldService,
+	npcService *service.NpcService,
 	fsmCfg *config.FsmConfigConfig,
 ) *FsmConfigHandler {
 	return &FsmConfigHandler{
 		db:               db,
 		fsmConfigService: fsmConfigService,
 		fieldService:     fieldService,
+		npcService:       npcService,
 		fsmCfg:           fsmCfg,
 	}
 }
@@ -193,6 +196,22 @@ func (h *FsmConfigHandler) Delete(ctx context.Context, req *model.IDRequest) (*m
 	}
 
 	slog.Debug("handler.删除状态机", "id", req.ID)
+
+	// 获取状态机（含 name，用于 NPC 引用检查）
+	fsm, err := h.fsmConfigService.GetByID(ctx, req.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 必须先停用（SoftDeleteInTx 内部同样校验，此处提前给出友好提示）
+	if fsm.Enabled {
+		return nil, errcode.New(errcode.ErrFsmConfigDeleteNotDisabled)
+	}
+
+	// 跨模块引用检查：存在 NPC 引用则拒绝删除
+	if count, _ := h.npcService.CountByFsmRef(ctx, fsm.Name); count > 0 {
+		return nil, errcode.New(errcode.ErrFsmConfigRefDelete)
+	}
 
 	tx, err := h.db.BeginTxx(ctx, nil)
 	if err != nil {

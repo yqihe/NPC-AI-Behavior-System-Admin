@@ -99,6 +99,7 @@ type ValidationConfig struct {
 	FieldNameMaxLength     int `yaml:"field_name_max_length"`
 	FieldLabelMaxLength    int `yaml:"field_label_max_length"`
 	TemplateNameMaxLength  int `yaml:"template_name_max_length"`
+	NPCNameMaxLength       int `yaml:"npc_name_max_length"`
 	DescriptionMaxLength   int `yaml:"description_max_length"`
 }
 

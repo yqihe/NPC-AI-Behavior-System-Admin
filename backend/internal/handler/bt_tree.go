@@ -18,16 +18,18 @@ var btTreeNameRe = regexp.MustCompile(`^[a-z][a-z0-9_/]*$`)
 
 // BtTreeHandler 行为树管理 HTTP handler
 type BtTreeHandler struct {
-	svc   *service.BtTreeService
-	btCfg *config.BtTreeConfig
+	svc        *service.BtTreeService
+	npcService *service.NpcService
+	btCfg      *config.BtTreeConfig
 }
 
 // NewBtTreeHandler 创建 BtTreeHandler
 func NewBtTreeHandler(
 	svc *service.BtTreeService,
+	npcService *service.NpcService,
 	btCfg *config.BtTreeConfig,
 ) *BtTreeHandler {
-	return &BtTreeHandler{svc: svc, btCfg: btCfg}
+	return &BtTreeHandler{svc: svc, npcService: npcService, btCfg: btCfg}
 }
 
 // checkBtTreeName 校验 bt_tree name 格式（允许斜杠）
@@ -104,10 +106,26 @@ func (h *BtTreeHandler) Delete(ctx context.Context, req *model.IDRequest) (*mode
 	}
 	slog.Debug("handler.删除行为树", "id", req.ID)
 
+	// 获取行为树（含 name，用于 NPC 引用检查）
+	btree, err := h.svc.GetByID(ctx, req.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 必须先停用
+	if btree.Enabled {
+		return nil, errcode.New(errcode.ErrBtTreeDeleteNotDisabled)
+	}
+
+	// 跨模块引用检查：存在 NPC 引用则拒绝删除
+	if count, _ := h.npcService.CountByBtTreeName(ctx, btree.Name); count > 0 {
+		return nil, errcode.New(errcode.ErrBtTreeRefDelete)
+	}
+
 	if err := h.svc.Delete(ctx, req.ID); err != nil {
 		return nil, err
 	}
-	return &model.DeleteResult{ID: req.ID}, nil
+	return &model.DeleteResult{ID: req.ID, Name: btree.Name, Label: btree.DisplayName}, nil
 }
 
 // CheckName name 唯一性校验

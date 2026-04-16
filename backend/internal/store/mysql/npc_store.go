@@ -107,7 +107,7 @@ func (s *NpcStore) List(ctx context.Context, q *model.NPCListQuery) ([]model.NPC
 	// fsm_ref 不在覆盖索引内，但 WHERE 子句仍命中索引，额外回表可接受
 	offset := (q.Page - 1) * q.PageSize
 	listSQL := fmt.Sprintf(
-		`SELECT id, name, label, template_name, fsm_ref, enabled, created_at
+		`SELECT id, name, label, template_id, template_name, fsm_ref, enabled, created_at
 		 FROM npcs WHERE %s ORDER BY id DESC LIMIT ? OFFSET ?`,
 		whereClause,
 	)
