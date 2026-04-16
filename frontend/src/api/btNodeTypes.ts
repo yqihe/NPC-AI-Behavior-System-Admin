@@ -96,10 +96,10 @@ export const BT_NODE_TYPE_ERR = {
 
 export const btNodeTypeApi = {
   list: (params: BtNodeTypeListQuery) =>
-    request.get('/bt-node-types', { params }) as Promise<ApiResponse<ListData<BtNodeTypeListItem>>>,
+    request.post('/bt-node-types/list', params) as Promise<ApiResponse<ListData<BtNodeTypeListItem>>>,
 
   create: (data: CreateBtNodeTypeRequest) =>
-    request.post('/bt-node-types', data) as Promise<ApiResponse<{ id: number; type_name: string }>>,
+    request.post('/bt-node-types/create', data) as Promise<ApiResponse<{ id: number; type_name: string }>>,
 
   detail: (id: number) =>
     request.post('/bt-node-types/detail', { id }) as Promise<ApiResponse<BtNodeTypeDetail>>,

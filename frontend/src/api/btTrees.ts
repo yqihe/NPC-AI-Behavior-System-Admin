@@ -136,10 +136,10 @@ export function deserializeBtNode(
 
 export const btTreeApi = {
   list: (params: BtTreeListQuery) =>
-    request.get('/bt-trees', { params }) as Promise<ApiResponse<ListData<BtTreeListItem>>>,
+    request.post('/bt-trees/list', params) as Promise<ApiResponse<ListData<BtTreeListItem>>>,
 
   create: (data: CreateBtTreeRequest) =>
-    request.post('/bt-trees', data) as Promise<ApiResponse<{ id: number; name: string }>>,
+    request.post('/bt-trees/create', data) as Promise<ApiResponse<{ id: number; name: string }>>,
 
   detail: (id: number) =>
     request.post('/bt-trees/detail', { id }) as Promise<ApiResponse<BtTreeDetail>>,
