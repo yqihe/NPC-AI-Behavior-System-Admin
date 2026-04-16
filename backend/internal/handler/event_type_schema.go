@@ -69,8 +69,6 @@ func (h *EventTypeSchemaHandler) List(ctx context.Context, req *model.EventTypeS
 
 // Create 创建扩展字段定义
 func (h *EventTypeSchemaHandler) Create(ctx context.Context, req *model.CreateEventTypeSchemaRequest) (*model.CreateEventTypeSchemaResponse, error) {
-	slog.Debug("handler.event_type_schema.create", "field_name", req.FieldName)
-
 	if e := shared.CheckName(req.FieldName, h.etsCfg.FieldNameMaxLength, errcode.ErrExtSchemaNameInvalid, "扩展字段标识"); e != nil {
 		return nil, e
 	}
@@ -86,6 +84,8 @@ func (h *EventTypeSchemaHandler) Create(ctx context.Context, req *model.CreateEv
 	if len(req.DefaultValue) == 0 {
 		return nil, errcode.Newf(errcode.ErrBadRequest, "默认值不能为空")
 	}
+
+	slog.Debug("handler.event_type_schema.create", "field_name", req.FieldName)
 
 	id, err := h.schemaService.Create(ctx, req)
 	if err != nil {
@@ -128,15 +128,8 @@ func (h *EventTypeSchemaHandler) Delete(ctx context.Context, req *model.IDReques
 	}
 	slog.Debug("handler.event_type_schema.delete", "id", req.ID)
 
-	ets, err := h.schemaService.GetByID(ctx, req.ID)
+	ets, err := h.schemaService.Delete(ctx, req.ID)
 	if err != nil {
-		return nil, err
-	}
-	if ets == nil {
-		return nil, errcode.New(errcode.ErrExtSchemaNotFound)
-	}
-
-	if err := h.schemaService.Delete(ctx, req.ID); err != nil {
 		return nil, err
 	}
 	return &model.DeleteResult{ID: req.ID, Name: ets.FieldName, Label: ets.FieldLabel}, nil

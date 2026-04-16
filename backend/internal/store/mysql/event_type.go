@@ -176,11 +176,11 @@ func (s *EventTypeStore) SoftDelete(ctx context.Context, id int64) error {
 }
 
 // ToggleEnabled 切换启用/停用（乐观锁，按 ID）
-func (s *EventTypeStore) ToggleEnabled(ctx context.Context, id int64, enabled bool, version int) error {
+func (s *EventTypeStore) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) error {
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE event_types SET enabled = ?, version = version + 1, updated_at = ?
 		 WHERE id = ? AND version = ? AND deleted = 0`,
-		enabled, time.Now(), id, version,
+		req.Enabled, time.Now(), req.ID, req.Version,
 	)
 	if err != nil {
 		return fmt.Errorf("toggle event_type enabled: %w", err)

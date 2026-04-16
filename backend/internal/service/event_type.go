@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/yqihe/npc-ai-admin/backend/internal/cache"
@@ -17,15 +16,18 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
 	storeredis "github.com/yqihe/npc-ai-admin/backend/internal/store/redis"
+	rcfg "github.com/yqihe/npc-ai-admin/backend/internal/store/redis/shared"
 	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // EventTypeService 事件类型管理业务逻辑
 //
-// EventTypeSchemaCache 是内存缓存，语义上是"基础设施"（类似 DictCache），允许直接调用。
 // SchemaRefStore 用于维护扩展字段引用关系（事件类型 CRUD 时写 schema_refs）。
+// schemaStore 用于在写 schema_refs 时按 field_name 查 schema ID——必须走 DB
+// 而非只含启用条目的内存缓存，否则 schema 被禁用后 ref 无法正确记录。
 type EventTypeService struct {
 	store          *storemysql.EventTypeStore
+	schemaStore    *storemysql.EventTypeSchemaStore
 	schemaRefStore *storemysql.SchemaRefStore
 	cache          *storeredis.EventTypeCache
 	schemaCache    *cache.EventTypeSchemaCache
@@ -36,6 +38,7 @@ type EventTypeService struct {
 // NewEventTypeService 创建 EventTypeService
 func NewEventTypeService(
 	store *storemysql.EventTypeStore,
+	schemaStore *storemysql.EventTypeSchemaStore,
 	schemaRefStore *storemysql.SchemaRefStore,
 	cache *storeredis.EventTypeCache,
 	schemaCache *cache.EventTypeSchemaCache,
@@ -44,6 +47,7 @@ func NewEventTypeService(
 ) *EventTypeService {
 	return &EventTypeService{
 		store:          store,
+		schemaStore:    schemaStore,
 		schemaRefStore: schemaRefStore,
 		cache:          cache,
 		schemaCache:    schemaCache,
@@ -253,11 +257,7 @@ func (s *EventTypeService) GetByID(ctx context.Context, id int64) (*model.EventT
 	}
 
 	// 2. 分布式锁防击穿
-	lockTTL := 3 * time.Second
-	if s.etCfg.CacheLockTTL > 0 {
-		lockTTL = s.etCfg.CacheLockTTL
-	}
-	lockID, lockErr := s.cache.TryLock(ctx, id, lockTTL)
+	lockID, lockErr := s.cache.TryLock(ctx, id, rcfg.LockExpire)
 	if lockErr != nil {
 		slog.Warn("service.获取锁失败，降级直查MySQL", "error", lockErr, "id", id)
 	}
@@ -434,7 +434,7 @@ func (s *EventTypeService) ToggleEnabled(ctx context.Context, req *model.ToggleE
 		return err
 	}
 
-	if err := s.store.ToggleEnabled(ctx, req.ID, req.Enabled, req.Version); err != nil {
+	if err := s.store.ToggleEnabled(ctx, req); err != nil {
 		if errors.Is(err, errcode.ErrVersionConflict) {
 			return errcode.New(errcode.ErrEventTypeVersionConflict)
 		}
@@ -482,13 +482,19 @@ func (s *EventTypeService) extractExtensionKeys(configJSON json.RawMessage) map[
 }
 
 // attachSchemaRefs 为事件类型的扩展字段写入 schema_refs（事务内）
+//
+// 必须走 DB 查 schema ID，不能依赖只含启用条目的内存缓存——
+// 若 schema 已禁用，缓存中查不到，ref 会被漏写，导致删除检查失效。
 func (s *EventTypeService) attachSchemaRefs(ctx context.Context, tx *sqlx.Tx, eventTypeID int64, extensions map[string]interface{}) error {
 	for key := range extensions {
-		schema, ok := s.schemaCache.GetByFieldName(key)
-		if !ok {
-			continue // 校验阶段已确保存在，此处防御性跳过
+		id, err := s.schemaStore.GetIDByFieldNameTx(ctx, tx, key)
+		if err != nil {
+			return fmt.Errorf("lookup schema id for %q: %w", key, err)
 		}
-		if err := s.schemaRefStore.Add(ctx, tx, schema.ID, util.RefTypeEventType, eventTypeID); err != nil {
+		if id == 0 {
+			continue // schema 不存在（已被硬/软删除），跳过
+		}
+		if err := s.schemaRefStore.Add(ctx, tx, id, util.RefTypeEventType, eventTypeID); err != nil {
 			return fmt.Errorf("add schema ref %s → event_type %d: %w", key, eventTypeID, err)
 		}
 	}
@@ -496,15 +502,20 @@ func (s *EventTypeService) attachSchemaRefs(ctx context.Context, tx *sqlx.Tx, ev
 }
 
 // syncSchemaRefs diff 旧/新扩展字段 key，增删 schema_refs（事务内）
+//
+// 新增和删除都走 DB 查 schema ID，不依赖内存缓存，确保 disabled schema 的 ref 也能正确维护。
 func (s *EventTypeService) syncSchemaRefs(ctx context.Context, tx *sqlx.Tx, eventTypeID int64, oldKeys, newKeys map[string]bool) error {
 	// toAdd: newKeys 中有但 oldKeys 没有
 	for key := range newKeys {
 		if !oldKeys[key] {
-			schema, ok := s.schemaCache.GetByFieldName(key)
-			if !ok {
-				continue
+			id, err := s.schemaStore.GetIDByFieldNameTx(ctx, tx, key)
+			if err != nil {
+				return fmt.Errorf("lookup schema id for %q: %w", key, err)
 			}
-			if err := s.schemaRefStore.Add(ctx, tx, schema.ID, util.RefTypeEventType, eventTypeID); err != nil {
+			if id == 0 {
+				continue // schema 不存在，跳过
+			}
+			if err := s.schemaRefStore.Add(ctx, tx, id, util.RefTypeEventType, eventTypeID); err != nil {
 				return fmt.Errorf("add schema ref %s: %w", key, err)
 			}
 		}
@@ -512,25 +523,13 @@ func (s *EventTypeService) syncSchemaRefs(ctx context.Context, tx *sqlx.Tx, even
 	// toRemove: oldKeys 中有但 newKeys 没有
 	for key := range oldKeys {
 		if !newKeys[key] {
-			// 旧 key 对应的 schema 可能已禁用/删除，从 schemaCache 查不到
-			// 需要从 ListAllLite 查，但这里在事务内不方便。
-			// 更简单的方式：直接从 schema_refs 按 ref 删除再重建。
-			// 但按 schema_id 删需要知道 ID。走 ListAllLite 查一次。
-			// 使用 tx.QueryContext 读事务一致快照，防止绕过事务隔离。
-			allSchemas, err := tx.QueryContext(ctx,
-				`SELECT id FROM event_type_schema WHERE field_name = ? AND deleted = 0`, key)
+			id, err := s.schemaStore.GetIDByFieldNameTx(ctx, tx, key)
 			if err != nil {
 				slog.Warn("service.查schema_id失败", "key", key, "error", err)
 				continue
 			}
-			defer allSchemas.Close()
-			var schemaID int64
-			if allSchemas.Next() {
-				allSchemas.Scan(&schemaID)
-			}
-			allSchemas.Close()
-			if schemaID > 0 {
-				if err := s.schemaRefStore.Remove(ctx, tx, schemaID, util.RefTypeEventType, eventTypeID); err != nil {
+			if id > 0 {
+				if err := s.schemaRefStore.Remove(ctx, tx, id, util.RefTypeEventType, eventTypeID); err != nil {
 					return fmt.Errorf("remove schema ref %s: %w", key, err)
 				}
 			}

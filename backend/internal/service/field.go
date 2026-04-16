@@ -582,7 +582,7 @@ func (s *FieldService) ToggleEnabled(ctx context.Context, req *model.ToggleEnabl
 		return err
 	}
 
-	err := s.fieldStore.ToggleEnabled(ctx, req.ID, req.Enabled, req.Version)
+	err := s.fieldStore.ToggleEnabled(ctx, req)
 	if err != nil {
 		if errors.Is(err, errcode.ErrVersionConflict) {
 			return errcode.New(errcode.ErrFieldVersionConflict)

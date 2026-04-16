@@ -257,7 +257,7 @@ func (s *FsmStateDictService) ToggleEnabled(ctx context.Context, req *model.Togg
 		return err
 	}
 
-	if err := s.store.ToggleEnabled(ctx, req.ID, req.Enabled, req.Version); err != nil {
+	if err := s.store.ToggleEnabled(ctx, req); err != nil {
 		if errors.Is(err, errcode.ErrVersionConflict) {
 			return errcode.New(errcode.ErrFsmStateDictVersionConflict)
 		}

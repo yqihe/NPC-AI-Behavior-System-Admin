@@ -177,11 +177,11 @@ func (s *TemplateStore) SoftDeleteTx(ctx context.Context, tx *sqlx.Tx, id int64)
 // ToggleEnabled 切换启用/停用（乐观锁，按 ID）
 //
 // 单模块写，不需要事务（不联动其它表）。
-func (s *TemplateStore) ToggleEnabled(ctx context.Context, id int64, enabled bool, version int) error {
+func (s *TemplateStore) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) error {
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE templates SET enabled = ?, version = version + 1, updated_at = ?
 		 WHERE id = ? AND version = ? AND deleted = 0`,
-		enabled, time.Now(), id, version,
+		req.Enabled, time.Now(), req.ID, req.Version,
 	)
 	if err != nil {
 		return fmt.Errorf("toggle template enabled: %w", err)

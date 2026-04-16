@@ -51,8 +51,8 @@ func (h *BtNodeTypeHandler) Create(ctx context.Context, req *model.CreateBtNodeT
 	return &model.CreateBtNodeTypeResponse{ID: id, TypeName: req.TypeName}, nil
 }
 
-// Detail 节点类型详情
-func (h *BtNodeTypeHandler) Detail(ctx context.Context, req *model.IDRequest) (*model.BtNodeType, error) {
+// Get 节点类型详情
+func (h *BtNodeTypeHandler) Get(ctx context.Context, req *model.IDRequest) (*model.BtNodeType, error) {
 	if err := shared.CheckID(req.ID); err != nil {
 		return nil, err
 	}
@@ -81,19 +81,15 @@ func (h *BtNodeTypeHandler) Update(ctx context.Context, req *model.UpdateBtNodeT
 
 // Delete 删除节点类型
 //
-// 请求包含 ID + version（乐观锁）。
 // 被引用时响应 44022，data 携带 BtNodeTypeDeleteResult（含 ReferencedBy 列表）。
 // WrapCtx 在 err 非 nil 时自动将 resp 作为 data 输出（见 wrap.go writeError）。
-func (h *BtNodeTypeHandler) Delete(ctx context.Context, req *model.IDVersionRequest) (*model.BtNodeTypeDeleteResult, error) {
+func (h *BtNodeTypeHandler) Delete(ctx context.Context, req *model.IDRequest) (*model.BtNodeTypeDeleteResult, error) {
 	if err := shared.CheckID(req.ID); err != nil {
-		return nil, err
-	}
-	if err := shared.CheckVersion(req.Version); err != nil {
 		return nil, err
 	}
 	slog.Debug("handler.删除节点类型", "id", req.ID)
 
-	return h.svc.Delete(ctx, req.ID, req.Version)
+	return h.svc.Delete(ctx, req.ID)
 }
 
 // CheckName type_name 唯一性校验

@@ -208,23 +208,23 @@ func (s *EventTypeSchemaService) Update(ctx context.Context, req *model.UpdateEv
 	return nil
 }
 
-// Delete 软删除扩展字段定义
-func (s *EventTypeSchemaService) Delete(ctx context.Context, id int64) error {
+// Delete 软删除扩展字段定义，返回被删实体（供 handler 构造响应用）
+func (s *EventTypeSchemaService) Delete(ctx context.Context, id int64) (*model.EventTypeSchema, error) {
 	slog.Debug("service.删除扩展字段", "id", id)
 
 	ets, err := s.getOrNotFound(ctx, id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// 必须先停用
 	if ets.Enabled {
-		return errcode.New(errcode.ErrExtSchemaDeleteNotDisabled)
+		return nil, errcode.New(errcode.ErrExtSchemaDeleteNotDisabled)
 	}
 
 	tx, err := s.store.DB().BeginTxx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
+		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() {
 		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
@@ -236,21 +236,21 @@ func (s *EventTypeSchemaService) Delete(ctx context.Context, id int64) error {
 	hasRefs, err := s.schemaRefStore.HasRefsTx(ctx, tx, id)
 	if err != nil {
 		slog.Error("service.查询扩展字段引用失败", "error", err, "id", id)
-		return fmt.Errorf("check schema refs: %w", err)
+		return nil, fmt.Errorf("check schema refs: %w", err)
 	}
 	if hasRefs {
-		return errcode.New(errcode.ErrExtSchemaRefDelete)
+		return nil, errcode.New(errcode.ErrExtSchemaRefDelete)
 	}
 
 	if err := s.store.SoftDeleteTx(ctx, tx, id); err != nil {
 		if errors.Is(err, errcode.ErrNotFound) {
-			return errcode.New(errcode.ErrExtSchemaNotFound)
+			return nil, errcode.New(errcode.ErrExtSchemaNotFound)
 		}
-		return err
+		return nil, err
 	}
 
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit: %w", err)
+		return nil, fmt.Errorf("commit: %w", err)
 	}
 
 	// 内存缓存必须在 Commit 成功后 Reload（全量重查 DB，Commit 前读到旧数据）
@@ -258,8 +258,8 @@ func (s *EventTypeSchemaService) Delete(ctx context.Context, id int64) error {
 		slog.Error("service.删除扩展字段-重载缓存失败", "error", err)
 	}
 
-	slog.Info("service.删除扩展字段成功", "id", id)
-	return nil
+	slog.Info("service.删除扩展字段成功", "id", id, "field_name", ets.FieldName)
+	return ets, nil
 }
 
 // ToggleEnabled 切换启用/停用
@@ -270,7 +270,7 @@ func (s *EventTypeSchemaService) ToggleEnabled(ctx context.Context, req *model.T
 		return err
 	}
 
-	if err := s.store.ToggleEnabled(ctx, req.ID, req.Enabled, req.Version); err != nil {
+	if err := s.store.ToggleEnabled(ctx, req); err != nil {
 		if errors.Is(err, errcode.ErrVersionConflict) {
 			return errcode.New(errcode.ErrExtSchemaVersionConflict)
 		}

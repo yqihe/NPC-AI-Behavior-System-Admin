@@ -279,17 +279,14 @@ async function handleDelete(row: FsmStateDictListItem) {
     })
     return
   }
+  // 已禁用：直接调删除接口
+  // - 有引用（IN_USE）→ 直接展示引用弹窗（与字段管理一致，不走无效确认）
+  // - 无引用 → 删除成功（先禁用本身已是一层保护，无需重复确认）
   try {
-    await ElMessageBox.confirm(
-      `确认删除状态「${row.display_name}」（${row.name}）？删除后无法恢复。`,
-      '删除确认',
-      { confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'warning' },
-    )
     await fsmStateDictApi.delete(row.id)
     ElMessage.success('删除成功')
     fetchList()
   } catch (err: unknown) {
-    if (err === 'cancel') return
     const bizErr = err as BizError
     if (bizErr.code === FSM_STATE_DICT_ERR.IN_USE) {
       refDeleteResult.value = bizErr.data as FsmStateDictDeleteResult

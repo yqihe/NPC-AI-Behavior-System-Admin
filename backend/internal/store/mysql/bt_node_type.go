@@ -45,14 +45,14 @@ func (s *BtNodeTypeStore) Create(ctx context.Context, req *model.CreateBtNodeTyp
 	return id, nil
 }
 
-// GetByID 按主键查询节点类型（deleted=0），未找到返回 errcode.ErrNotFound
+// GetByID 按主键查询节点类型（deleted=0），未找到返回 nil, nil
 func (s *BtNodeTypeStore) GetByID(ctx context.Context, id int64) (*model.BtNodeType, error) {
 	var t model.BtNodeType
 	err := s.db.GetContext(ctx, &t,
 		`SELECT id, type_name, category, label, description, param_schema, is_builtin, enabled, version, created_at, updated_at, deleted
 		 FROM bt_node_types WHERE id = ? AND deleted = 0`, id)
 	if err == sql.ErrNoRows {
-		return nil, errcode.ErrNotFound
+		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get bt_node_type by id: %w", err)
@@ -106,7 +106,7 @@ func (s *BtNodeTypeStore) List(ctx context.Context, q *model.BtNodeTypeListQuery
 	// 分页查询（按 id DESC）
 	offset := (q.Page - 1) * q.PageSize
 	listSQL := fmt.Sprintf(
-		`SELECT id, type_name, category, label, is_builtin, enabled
+		`SELECT id, type_name, category, label, is_builtin, enabled, created_at
 		 FROM bt_node_types WHERE %s ORDER BY id DESC LIMIT ? OFFSET ?`,
 		whereClause,
 	)
@@ -142,12 +142,11 @@ func (s *BtNodeTypeStore) Update(ctx context.Context, req *model.UpdateBtNodeTyp
 	return nil
 }
 
-// Delete 软删除（deleted=1）+ 乐观锁，0 rows → errcode.ErrVersionConflict
-func (s *BtNodeTypeStore) Delete(ctx context.Context, id int64, version int) error {
+// SoftDelete 软删除（deleted=1），0 rows → errcode.ErrNotFound
+func (s *BtNodeTypeStore) SoftDelete(ctx context.Context, id int64) error {
 	result, err := s.db.ExecContext(ctx,
-		`UPDATE bt_node_types SET deleted = 1, updated_at = ?
-		 WHERE id = ? AND version = ? AND deleted = 0`,
-		time.Now(), id, version,
+		`UPDATE bt_node_types SET deleted = 1, updated_at = ? WHERE id = ? AND deleted = 0`,
+		time.Now(), id,
 	)
 	if err != nil {
 		return fmt.Errorf("soft delete bt_node_type: %w", err)
@@ -157,7 +156,7 @@ func (s *BtNodeTypeStore) Delete(ctx context.Context, id int64, version int) err
 		return fmt.Errorf("rows affected: %w", err)
 	}
 	if rows == 0 {
-		return errcode.ErrVersionConflict
+		return errcode.ErrNotFound
 	}
 	return nil
 }

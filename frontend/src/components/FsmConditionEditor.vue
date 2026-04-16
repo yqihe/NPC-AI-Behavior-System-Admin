@@ -176,8 +176,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import BBKeySelector from './BBKeySelector.vue'
+import type { BBKeyField } from './BBKeySelector.vue'
 import type { FsmConditionNode } from '@/api/fsmConfigs'
-import type { FieldListItem } from '@/api/fields'
 
 const MAX_DEPTH = 10
 
@@ -226,7 +226,7 @@ function handleKeyChange(key: string) {
   }
 }
 
-function handleFieldSelected(field: FieldListItem | null) {
+function handleFieldSelected(field: BBKeyField | null) {
   if (field) {
     selectedFieldType.value = field.type
   } else {

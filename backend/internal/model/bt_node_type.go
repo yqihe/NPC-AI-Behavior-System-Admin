@@ -37,6 +37,7 @@ type BtNodeTypeListItem struct {
 	Label     string `json:"label"      db:"label"`
 	IsBuiltin bool   `json:"is_builtin" db:"is_builtin"`
 	Enabled   bool   `json:"enabled"    db:"enabled"`
+	CreatedAt string `json:"created_at" db:"created_at"`
 }
 
 // BtNodeTypeListData 列表分页数据（含 ToListData 方法）
