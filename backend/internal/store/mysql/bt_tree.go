@@ -188,6 +188,33 @@ func (s *BtTreeStore) ToggleEnabled(ctx context.Context, req *model.ToggleEnable
 	return nil
 }
 
+// GetEnabledByNames 批量查询指定 name 中已启用且未删除的行为树名集合
+//
+// 返回 map[name → true]，不在 map 中的 name 表示不存在或未启用。
+// names 为空时直接返回空 map，不发起数据库查询。
+func (s *BtTreeStore) GetEnabledByNames(ctx context.Context, names []string) (map[string]bool, error) {
+	result := make(map[string]bool)
+	if len(names) == 0 {
+		return result, nil
+	}
+
+	query, args, err := sqlx.In(
+		`SELECT name FROM bt_trees WHERE name IN (?) AND enabled = 1 AND deleted = 0`, names)
+	if err != nil {
+		return nil, fmt.Errorf("build in query: %w", err)
+	}
+	query = s.db.Rebind(query)
+
+	rows := make([]string, 0)
+	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+		return nil, fmt.Errorf("get enabled bt_trees by names: %w", err)
+	}
+	for _, name := range rows {
+		result[name] = true
+	}
+	return result, nil
+}
+
 // ExportAll 导出所有已启用且未删除的行为树
 //
 // 返回 (name, config) 二元组，handler 层原样输出到 HTTP 响应。

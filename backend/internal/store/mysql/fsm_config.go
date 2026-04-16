@@ -272,6 +272,21 @@ func (s *FsmConfigStore) ListFsmConfigsReferencingState(ctx context.Context, sta
 	return refs, nil
 }
 
+// GetByName 按 name 查询状态机配置（WHERE name=? AND deleted=0），未找到返回 nil, nil
+func (s *FsmConfigStore) GetByName(ctx context.Context, name string) (*model.FsmConfig, error) {
+	var fc model.FsmConfig
+	err := s.db.GetContext(ctx, &fc,
+		`SELECT id, name, display_name, config_json, enabled, version, created_at, updated_at, deleted
+		 FROM fsm_configs WHERE name = ? AND deleted = 0`, name)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get fsm_config by name: %w", err)
+	}
+	return &fc, nil
+}
+
 // ExportAll 导出所有已启用且未删除的状态机配置
 //
 // 返回 (name, config_json) 二元组，handler 层原样输出到 HTTP 响应。
