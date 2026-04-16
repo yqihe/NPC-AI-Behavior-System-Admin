@@ -200,7 +200,7 @@ func (s *TemplateService) ToggleEnabled(ctx context.Context, req *model.ToggleEn
 		return err
 	}
 
-	err := s.store.ToggleEnabled(ctx, req.ID, req.Enabled, req.Version)
+	err := s.store.ToggleEnabled(ctx, req)
 	if err != nil {
 		if errors.Is(err, errcode.ErrVersionConflict) {
 			return errcode.New(errcode.ErrTemplateVersionConflict)

@@ -39,6 +39,7 @@ export interface BtNodeTypeListItem {
   label: string
   is_builtin: boolean
   enabled: boolean
+  created_at: string
 }
 
 // ─── 详情 ───

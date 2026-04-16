@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -76,37 +77,34 @@ func (s *EventTypeSchemaStore) ExistsByFieldName(ctx context.Context, fieldName 
 
 // List 分页列表查询（可按 enabled 筛选，按 sort_order ASC, id ASC 排序）
 func (s *EventTypeSchemaStore) List(ctx context.Context, q *model.EventTypeSchemaListQuery) ([]model.EventTypeSchema, int64, error) {
-	where := "deleted = 0"
+	where := []string{"deleted = 0"}
 	args := make([]any, 0, 2)
 
 	if q != nil && q.Enabled != nil {
-		where += " AND enabled = ?"
+		where = append(where, "enabled = ?")
 		args = append(args, *q.Enabled)
 	}
 
+	whereClause := strings.Join(where, " AND ")
+
 	// 计数
 	var total int64
-	if err := s.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM event_type_schema WHERE "+where, args...); err != nil {
+	if err := s.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM event_type_schema WHERE "+whereClause, args...); err != nil {
 		return nil, 0, fmt.Errorf("count event_type_schema: %w", err)
 	}
 
-	// 分页查询
-	page, pageSize := 1, 20
-	if q != nil && q.Page > 0 {
-		page = q.Page
-	}
-	if q != nil && q.PageSize > 0 {
-		pageSize = q.PageSize
-	}
-	offset := (page - 1) * pageSize
+	// 分页查询（service 层已 NormalizePagination，直接使用）
+	offset := (q.Page - 1) * q.PageSize
 	listSQL := fmt.Sprintf(
 		`SELECT id, field_name, field_label, field_type, constraints, default_value, sort_order, enabled, version, created_at, updated_at
 		 FROM event_type_schema WHERE %s ORDER BY sort_order ASC, id ASC LIMIT ? OFFSET ?`,
-		where,
+		whereClause,
 	)
-	allArgs := append(args, pageSize, offset)
+	listArgs := make([]any, len(args), len(args)+2)
+	copy(listArgs, args)
+	listArgs = append(listArgs, q.PageSize, offset)
 	items := make([]model.EventTypeSchema, 0)
-	if err := s.db.SelectContext(ctx, &items, listSQL, allArgs...); err != nil {
+	if err := s.db.SelectContext(ctx, &items, listSQL, listArgs...); err != nil {
 		return nil, 0, fmt.Errorf("list event_type_schema: %w", err)
 	}
 	return items, total, nil
@@ -216,12 +214,30 @@ func (s *EventTypeSchemaStore) SoftDeleteTx(ctx context.Context, tx *sqlx.Tx, id
 	return nil
 }
 
+// GetIDByFieldNameTx 事务内按 field_name 查 ID（含禁用，排除软删除）
+//
+// 用于 attachSchemaRefs / syncSchemaRefs 等场景。
+// 必须查库而非依赖只含启用条目的内存缓存，否则 schema 被禁用后引用记录无法正确写入。
+func (s *EventTypeSchemaStore) GetIDByFieldNameTx(ctx context.Context, tx *sqlx.Tx, fieldName string) (int64, error) {
+	var id int64
+	err := tx.QueryRowContext(ctx,
+		`SELECT id FROM event_type_schema WHERE field_name = ? AND deleted = 0 LIMIT 1`, fieldName,
+	).Scan(&id)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("get event_type_schema id by field_name %q: %w", fieldName, err)
+	}
+	return id, nil
+}
+
 // ToggleEnabled 切换启用/停用（乐观锁）
-func (s *EventTypeSchemaStore) ToggleEnabled(ctx context.Context, id int64, enabled bool, version int) error {
+func (s *EventTypeSchemaStore) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) error {
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE event_type_schema SET enabled = ?, version = version + 1, updated_at = ?
 		 WHERE id = ? AND version = ? AND deleted = 0`,
-		enabled, time.Now(), id, version,
+		req.Enabled, time.Now(), req.ID, req.Version,
 	)
 	if err != nil {
 		return fmt.Errorf("toggle event_type_schema enabled: %w", err)

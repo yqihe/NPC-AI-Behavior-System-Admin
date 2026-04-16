@@ -1,27 +1,26 @@
 <template>
   <div class="bt-node-type-form">
-    <!-- Header -->
+    <!-- 顶部导航栏 -->
     <div class="form-header">
-      <el-icon class="back-icon" @click="router.back()"><ArrowLeft /></el-icon>
-      <span class="back-text" @click="router.back()">返回</span>
+      <el-icon class="back-icon" @click="router.push('/bt-node-types')"><ArrowLeft /></el-icon>
+      <span class="back-text" @click="router.push('/bt-node-types')">返回</span>
       <span class="header-sep"></span>
       <span class="header-title">
         {{ isView ? '查看节点类型' : isCreate ? '新建节点类型' : '编辑节点类型' }}
       </span>
     </div>
 
-    <!-- Scroll area -->
+    <!-- 滚动内容区 -->
     <div class="form-scroll">
       <div class="form-body">
 
         <!-- Card 1: 基本信息 -->
-        <div class="card">
+        <div class="form-card">
           <div class="card-title">
             <span class="title-bar title-bar-blue"></span>
             <span class="title-text">基本信息</span>
           </div>
 
-          <!-- Builtin lock alert inside card -->
           <el-alert
             v-if="isBuiltinLocked"
             type="info"
@@ -34,10 +33,11 @@
             ref="formRef"
             :model="form"
             :rules="rules"
+            :disabled="isView || isBuiltinLocked"
             label-width="120px"
             label-position="right"
           >
-            <!-- type_name -->
+            <!-- 节点标识 -->
             <el-form-item label="节点标识" prop="type_name">
               <template v-if="!isCreate">
                 <el-input :model-value="form.type_name" disabled style="width: 100%">
@@ -52,14 +52,14 @@
                   style="width: 100%"
                   @blur="checkNameUnique"
                 />
-                <div class="field-hint">格式：小写字母、数字、下划线，以字母开头，如 sequence</div>
-                <div v-if="nameStatus === 'checking'" class="name-status checking">校验中...</div>
-                <div v-else-if="nameStatus === 'available'" class="name-status available">标识符可用</div>
-                <div v-else-if="nameStatus === 'taken'" class="name-status taken">{{ nameMessage }}</div>
+                <div class="field-hint">格式：小写字母开头，仅含小写字母、数字、下划线，如 sequence</div>
+                <div v-if="nameStatus === 'checking'" class="field-hint">校验中...</div>
+                <div v-else-if="nameStatus === 'available'" class="field-hint field-hint-success">标识符可用</div>
+                <div v-else-if="nameStatus === 'taken'" class="field-hint field-hint-error">{{ nameMessage }}</div>
               </template>
             </el-form-item>
 
-            <!-- category -->
+            <!-- 节点分类：创建后不可修改，el-form disabled 接管 isView/builtin，这里仅追加 !isCreate -->
             <el-form-item label="节点分类" prop="category">
               <el-select
                 v-model="form.category"
@@ -73,7 +73,7 @@
               </el-select>
             </el-form-item>
 
-            <!-- label -->
+            <!-- 中文名称 -->
             <el-form-item label="中文名称" prop="label">
               <el-input
                 v-model="form.label"
@@ -83,7 +83,7 @@
               />
             </el-form-item>
 
-            <!-- description -->
+            <!-- 描述 -->
             <el-form-item label="描述">
               <el-input
                 v-model="form.description"
@@ -98,7 +98,7 @@
         </div>
 
         <!-- Card 2: 参数定义 -->
-        <div class="card">
+        <div class="form-card">
           <div class="card-title">
             <span class="title-bar title-bar-orange"></span>
             <span class="title-text">参数定义</span>
@@ -113,17 +113,10 @@
       </div>
     </div>
 
-    <!-- Footer -->
-    <div class="form-footer">
-      <el-button @click="router.back()">取消</el-button>
-      <el-button
-        v-if="!isView && !isBuiltinLocked"
-        type="primary"
-        :loading="submitting"
-        @click="handleSubmit"
-      >
-        保存
-      </el-button>
+    <!-- 底部操作栏（查看/内置模式隐藏） -->
+    <div v-if="!isView && !isBuiltinLocked" class="form-footer">
+      <el-button @click="router.push('/bt-node-types')">取消</el-button>
+      <el-button type="primary" :loading="submitting" @click="handleSubmit">保存</el-button>
     </div>
   </div>
 </template>
@@ -180,7 +173,7 @@ const rules = {
   ],
 }
 
-// ─── init ───
+// ─── 初始化 ───
 
 onMounted(async () => {
   if (!isCreate) await loadDetail()
@@ -206,7 +199,7 @@ async function loadDetail() {
   }
 }
 
-// ─── name check ───
+// ─── 标识符校验 ───
 
 async function checkNameUnique() {
   if (!form.type_name || !namePattern.test(form.type_name)) {
@@ -228,10 +221,9 @@ async function checkNameUnique() {
   }
 }
 
-// ─── submit ───
+// ─── 提交 ───
 
 async function handleSubmit() {
-  // Validate param schema first
   const schemaErr = paramSchemaEditorRef.value?.validate()
   if (schemaErr) {
     ElMessage.error(schemaErr)
@@ -256,7 +248,7 @@ async function handleSubmit() {
         description: form.description,
         param_schema: { params: paramDefs.value },
       })
-      ElMessage.success('保存成功')
+      ElMessage.success('创建成功，节点类型默认为禁用状态，确认无误后请手动启用')
     } else {
       await btNodeTypeApi.update({
         id: Number(route.params.id),
@@ -296,7 +288,7 @@ async function handleSubmit() {
       ElMessage.error(bizErr.message)
       return
     }
-    // Other errors handled by global interceptor
+    // 其他错误拦截器已 toast
   } finally {
     submitting.value = false
   }
@@ -304,6 +296,7 @@ async function handleSubmit() {
 </script>
 
 <style scoped>
+/* 容器：撑满父级，flex 纵向 */
 .bt-node-type-form {
   height: 100%;
   display: flex;
@@ -311,113 +304,12 @@ async function handleSubmit() {
   overflow: hidden;
 }
 
-.form-scroll {
-  flex: 1;
-  overflow-y: auto;
-}
-
-.form-body {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 24px;
-}
-
-.card {
-  background: #fff;
-  border-radius: 8px;
-  padding: 24px;
-  margin-bottom: 20px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
-}
-
-.card-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 20px;
-  font-size: 15px;
-  font-weight: 600;
-  color: #303133;
-}
-
-.title-bar {
-  display: inline-block;
-  width: 4px;
-  height: 16px;
-  border-radius: 2px;
-}
-
-.title-bar-blue {
-  background: #409eff;
-}
-
-.title-bar-orange {
-  background: #e6a23c;
-}
-
-.form-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 16px 24px;
-  background: #fff;
-  border-top: 1px solid #ebeef5;
-  margin-top: 8px;
-}
-
+/* 字段提示（组件私有） */
 .field-hint {
   font-size: 12px;
   color: #909399;
   margin-top: 4px;
 }
-
-.name-status {
-  font-size: 12px;
-  margin-top: 4px;
-}
-
-.name-status.available {
-  color: #67c23a;
-}
-
-.name-status.taken {
-  color: #f56c6c;
-}
-
-.name-status.checking {
-  color: #909399;
-}
-
-.form-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 16px 24px;
-  background: #fff;
-  border-bottom: 1px solid #ebeef5;
-}
-
-.back-icon,
-.back-text {
-  cursor: pointer;
-  color: #606266;
-}
-
-.back-text:hover,
-.back-icon:hover {
-  color: #409eff;
-}
-
-.header-sep {
-  width: 1px;
-  height: 16px;
-  background: #dcdfe6;
-  margin: 0 4px;
-}
-
-.header-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: #303133;
-}
+.field-hint-success { color: #67C23A; }
+.field-hint-error   { color: #F56C6C; }
 </style>

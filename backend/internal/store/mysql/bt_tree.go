@@ -14,9 +14,7 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 )
 
-// BtTreeStore bt_trees 表操作
-//
-// 严格遵守"分层职责"硬规则：只对 bt_trees 表 CRUD。
+// BtTreeStore bt_trees 及 bt_node_type_refs 表操作
 type BtTreeStore struct {
 	db *sqlx.DB
 }
@@ -24,6 +22,11 @@ type BtTreeStore struct {
 // NewBtTreeStore 创建 BtTreeStore
 func NewBtTreeStore(db *sqlx.DB) *BtTreeStore {
 	return &BtTreeStore{db: db}
+}
+
+// DB 暴露数据库连接（service 层开事务用）
+func (s *BtTreeStore) DB() *sqlx.DB {
+	return s.db
 }
 
 // Create 插入新行为树，唯一冲突返回 errcode.ErrDuplicate
@@ -47,14 +50,14 @@ func (s *BtTreeStore) Create(ctx context.Context, req *model.CreateBtTreeRequest
 	return id, nil
 }
 
-// GetByID 按主键查询行为树（含 config），未找到返回 errcode.ErrNotFound
+// GetByID 按主键查询行为树（含 config），未找到返回 nil, nil
 func (s *BtTreeStore) GetByID(ctx context.Context, id int64) (*model.BtTree, error) {
 	var bt model.BtTree
 	err := s.db.GetContext(ctx, &bt,
 		`SELECT id, name, display_name, description, config, enabled, version, created_at, updated_at, deleted
 		 FROM bt_trees WHERE id = ? AND deleted = 0`, id)
 	if err == sql.ErrNoRows {
-		return nil, errcode.ErrNotFound
+		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get bt_tree by id: %w", err)
@@ -83,10 +86,6 @@ func (s *BtTreeStore) List(ctx context.Context, q *model.BtTreeListQuery) ([]mod
 	where := []string{"deleted = 0"}
 	args := make([]any, 0, 4)
 
-	if q.Name != "" {
-		where = append(where, "name LIKE ?")
-		args = append(args, shared.EscapeLike(q.Name)+"%")
-	}
 	if q.DisplayName != "" {
 		where = append(where, "display_name LIKE ?")
 		args = append(args, "%"+shared.EscapeLike(q.DisplayName)+"%")
@@ -150,13 +149,11 @@ func (s *BtTreeStore) Update(ctx context.Context, req *model.UpdateBtTreeRequest
 	return nil
 }
 
-// Delete 软删除行为树（乐观锁，按 ID）
-//
-// rows=0 → errcode.ErrVersionConflict（version 不匹配 或 记录已删除）。
-func (s *BtTreeStore) Delete(ctx context.Context, id int64, version int) error {
+// SoftDelete 软删除行为树，0 rows → errcode.ErrNotFound
+func (s *BtTreeStore) SoftDelete(ctx context.Context, id int64) error {
 	result, err := s.db.ExecContext(ctx,
-		`UPDATE bt_trees SET deleted = 1, updated_at = ? WHERE id = ? AND version = ? AND deleted = 0`,
-		time.Now(), id, version,
+		`UPDATE bt_trees SET deleted = 1, updated_at = ? WHERE id = ? AND deleted = 0`,
+		time.Now(), id,
 	)
 	if err != nil {
 		return fmt.Errorf("soft delete bt_tree: %w", err)
@@ -166,7 +163,7 @@ func (s *BtTreeStore) Delete(ctx context.Context, id int64, version int) error {
 		return fmt.Errorf("rows affected: %w", err)
 	}
 	if rows == 0 {
-		return errcode.ErrVersionConflict
+		return errcode.ErrNotFound
 	}
 	return nil
 }
@@ -230,76 +227,19 @@ func walkNodes(node map[string]any, visit func(map[string]any)) {
 	}
 }
 
-// IsNodeTypeUsed 检查指定节点类型是否被任意行为树引用。
-//
-// 全量扫描 deleted=0 的 bt_trees.config；json.Unmarshal 失败时返回 error，不跳过。
-// 数据损坏应阻止删除操作，不能静默放行导致误删被引用的配置。
-func (s *BtTreeStore) IsNodeTypeUsed(ctx context.Context, typeName string) (bool, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT config FROM bt_trees WHERE deleted = 0`)
-	if err != nil {
-		return false, fmt.Errorf("query bt_trees for node type check: %w", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var configStr string
-		if err := rows.Scan(&configStr); err != nil {
-			return false, fmt.Errorf("scan bt_tree config: %w", err)
-		}
-		var root map[string]any
-		if err := json.Unmarshal([]byte(configStr), &root); err != nil {
-			return false, fmt.Errorf("unmarshal bt_tree config: %w", err)
-		}
-		found := false
-		walkNodes(root, func(node map[string]any) {
-			if t, ok := node["type"].(string); ok && t == typeName {
-				found = true
-			}
-		})
-		if found {
-			return true, nil
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return false, fmt.Errorf("iterate bt_trees: %w", err)
-	}
-	return false, nil
-}
-
 // GetNodeTypeUsages 返回使用指定节点类型的行为树 name 列表。
 //
-// 全量扫描 deleted=0 的 bt_trees；json.Unmarshal 失败时返回 error，不跳过。
+// 使用 JSON_SEARCH 扫描 config 列，对配置数量较少的运营平台场景足够高效。
 func (s *BtTreeStore) GetNodeTypeUsages(ctx context.Context, typeName string) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT name, config FROM bt_trees WHERE deleted = 0`)
-	if err != nil {
-		return nil, fmt.Errorf("query bt_trees for node type usages: %w", err)
-	}
-	defer rows.Close()
-
 	names := make([]string, 0)
-	for rows.Next() {
-		var name, configStr string
-		if err := rows.Scan(&name, &configStr); err != nil {
-			return nil, fmt.Errorf("scan bt_tree row: %w", err)
-		}
-		var root map[string]any
-		if err := json.Unmarshal([]byte(configStr), &root); err != nil {
-			return nil, fmt.Errorf("unmarshal bt_tree config (name=%s): %w", name, err)
-		}
-		found := false
-		walkNodes(root, func(node map[string]any) {
-			if t, ok := node["type"].(string); ok && t == typeName {
-				found = true
-			}
-		})
-		if found {
-			names = append(names, name)
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate bt_trees: %w", err)
+	err := s.db.SelectContext(ctx, &names,
+		`SELECT name FROM bt_trees
+		 WHERE deleted = 0
+		   AND JSON_SEARCH(config, 'one', ?, NULL, '$**.type') IS NOT NULL`,
+		typeName,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get bt_tree usages for node type %q: %w", typeName, err)
 	}
 	return names, nil
 }
@@ -394,4 +334,130 @@ func (s *BtTreeStore) GetBBKeyUsages(ctx context.Context, bbKey string, nodePara
 		return nil, fmt.Errorf("iterate bt_trees: %w", err)
 	}
 	return names, nil
+}
+
+// ---- bt_node_type_refs 维护 ----
+
+// extractTypeNamesFromConfig 从 config JSON 中提取所有节点类型名（去重）。
+func extractTypeNamesFromConfig(config json.RawMessage) ([]string, error) {
+	var root map[string]any
+	if err := json.Unmarshal(config, &root); err != nil {
+		return nil, fmt.Errorf("unmarshal config: %w", err)
+	}
+	seen := make(map[string]bool)
+	walkNodes(root, func(node map[string]any) {
+		if t, ok := node["type"].(string); ok && t != "" {
+			seen[t] = true
+		}
+	})
+	names := make([]string, 0, len(seen))
+	for t := range seen {
+		names = append(names, t)
+	}
+	return names, nil
+}
+
+// SyncNodeTypeRefsTx 替换行为树的节点类型引用（事务内：先全删再批量插入）。
+//
+// 在 Create/Update 时调用，保证 bt_node_type_refs 与 bt_trees.config 一致。
+func (s *BtTreeStore) SyncNodeTypeRefsTx(ctx context.Context, tx *sqlx.Tx, btTreeID int64, config json.RawMessage) error {
+	typeNames, err := extractTypeNamesFromConfig(config)
+	if err != nil {
+		return fmt.Errorf("extract type names: %w", err)
+	}
+
+	// 先删旧引用
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM bt_node_type_refs WHERE bt_tree_id = ?`, btTreeID); err != nil {
+		return fmt.Errorf("delete bt_node_type_refs: %w", err)
+	}
+
+	// 批量插入新引用
+	if len(typeNames) == 0 {
+		return nil
+	}
+	placeholders := strings.Repeat("(?,?),", len(typeNames))
+	placeholders = placeholders[:len(placeholders)-1] // 去掉末尾逗号
+	args := make([]any, 0, len(typeNames)*2)
+	for _, t := range typeNames {
+		args = append(args, btTreeID, t)
+	}
+	if _, err := tx.ExecContext(ctx,
+		"INSERT INTO bt_node_type_refs (bt_tree_id, type_name) VALUES "+placeholders,
+		args...,
+	); err != nil {
+		return fmt.Errorf("insert bt_node_type_refs: %w", err)
+	}
+	return nil
+}
+
+// DeleteNodeTypeRefsTx 删除行为树的所有节点类型引用（软删除时调用）。
+func (s *BtTreeStore) DeleteNodeTypeRefsTx(ctx context.Context, tx *sqlx.Tx, btTreeID int64) error {
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM bt_node_type_refs WHERE bt_tree_id = ?`, btTreeID); err != nil {
+		return fmt.Errorf("delete bt_node_type_refs: %w", err)
+	}
+	return nil
+}
+
+// ---- 事务版方法（service 层单模块事务用）----
+
+// CreateInTx 事务内插入行为树，返回自增 ID
+func (s *BtTreeStore) CreateInTx(ctx context.Context, tx *sqlx.Tx, req *model.CreateBtTreeRequest) (int64, error) {
+	now := time.Now()
+	result, err := tx.ExecContext(ctx,
+		`INSERT INTO bt_trees (name, display_name, description, config, enabled, version, created_at, updated_at, deleted)
+		 VALUES (?, ?, ?, ?, 0, 1, ?, ?, 0)`,
+		req.Name, req.DisplayName, req.Description, req.Config, now, now,
+	)
+	if err != nil {
+		if shared.Is1062(err) {
+			return 0, errcode.ErrDuplicate
+		}
+		return 0, fmt.Errorf("insert bt_tree tx: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("last insert id: %w", err)
+	}
+	return id, nil
+}
+
+// UpdateInTx 事务内编辑行为树（乐观锁）
+func (s *BtTreeStore) UpdateInTx(ctx context.Context, tx *sqlx.Tx, req *model.UpdateBtTreeRequest) error {
+	result, err := tx.ExecContext(ctx,
+		`UPDATE bt_trees SET display_name = ?, description = ?, config = ?, version = version + 1, updated_at = ?
+		 WHERE id = ? AND version = ? AND deleted = 0`,
+		req.DisplayName, req.Description, req.Config, time.Now(), req.ID, req.Version,
+	)
+	if err != nil {
+		return fmt.Errorf("update bt_tree tx: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if rows == 0 {
+		return errcode.ErrVersionConflict
+	}
+	return nil
+}
+
+// SoftDeleteInTx 事务内软删除行为树
+func (s *BtTreeStore) SoftDeleteInTx(ctx context.Context, tx *sqlx.Tx, id int64) error {
+	result, err := tx.ExecContext(ctx,
+		`UPDATE bt_trees SET deleted = 1, updated_at = ? WHERE id = ? AND deleted = 0`,
+		time.Now(), id,
+	)
+	if err != nil {
+		return fmt.Errorf("soft delete bt_tree tx: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if rows == 0 {
+		return errcode.ErrNotFound
+	}
+	return nil
 }

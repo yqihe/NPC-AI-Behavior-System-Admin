@@ -3,12 +3,11 @@ package service
 import (
 	shared "github.com/yqihe/npc-ai-admin/backend/internal/service/shared"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
-	"regexp"
-	"unicode/utf8"
 
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
@@ -17,10 +16,6 @@ import (
 	storeredis "github.com/yqihe/npc-ai-admin/backend/internal/store/redis"
 	rcfg "github.com/yqihe/npc-ai-admin/backend/internal/store/redis/shared"
 )
-
-// btTreeNameRe bt_tree name 合法格式：小写字母开头，仅含小写字母/数字/下划线/斜杠
-// 斜杠仅用于前端分组展示，MySQL 存储时视为普通字符
-var btTreeNameRe = regexp.MustCompile(`^[a-z][a-z0-9_/]*$`)
 
 // BtTreeService 行为树业务逻辑
 type BtTreeService struct {
@@ -53,26 +48,12 @@ func NewBtTreeService(
 func (s *BtTreeService) getOrNotFound(ctx context.Context, id int64) (*model.BtTree, error) {
 	d, err := s.store.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, errcode.ErrNotFound) {
-			return nil, errcode.New(errcode.ErrBtTreeNotFound)
-		}
 		return nil, fmt.Errorf("get bt_tree %d: %w", id, err)
 	}
+	if d == nil {
+		return nil, errcode.New(errcode.ErrBtTreeNotFound)
+	}
 	return d, nil
-}
-
-// validateName 校验 name 格式和长度
-func (s *BtTreeService) validateName(name string) error {
-	if name == "" {
-		return errcode.Newf(errcode.ErrBtTreeNameInvalid, "行为树标识不能为空")
-	}
-	if len(name) > s.btCfg.NameMaxLength {
-		return errcode.Newf(errcode.ErrBtTreeNameInvalid, "行为树标识长度不能超过 %d", s.btCfg.NameMaxLength)
-	}
-	if !btTreeNameRe.MatchString(name) {
-		return errcode.Newf(errcode.ErrBtTreeNameInvalid, "行为树标识只能包含小写字母、数字、下划线、斜杠，且以小写字母开头")
-	}
-	return nil
 }
 
 // validateConfig 解析 JSON 并递归校验节点树结构
@@ -220,31 +201,23 @@ func (s *BtTreeService) GetByID(ctx context.Context, id int64) (*model.BtTree, e
 	// 3. 查 MySQL
 	d, err := s.store.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, errcode.ErrNotFound) {
-			s.cache.SetDetail(ctx, id, nil)
-			return nil, errcode.New(errcode.ErrBtTreeNotFound)
-		}
 		return nil, fmt.Errorf("get bt_tree: %w", err)
 	}
 
-	// 4. 写缓存
+	// 4. 写缓存（含空标记）
 	s.cache.SetDetail(ctx, id, d)
+
+	if d == nil {
+		return nil, errcode.New(errcode.ErrBtTreeNotFound)
+	}
 	return d, nil
 }
 
 // Create 创建行为树
+//
+// 事务内同时写 bt_trees + bt_node_type_refs，保证节点类型引用表与 config 一致。
 func (s *BtTreeService) Create(ctx context.Context, req *model.CreateBtTreeRequest) (int64, error) {
 	slog.Debug("service.创建行为树", "name", req.Name)
-
-	// name 格式校验
-	if err := s.validateName(req.Name); err != nil {
-		return 0, err
-	}
-
-	// display_name 长度校验（中文用 RuneCountInString）
-	if req.DisplayName == "" || utf8.RuneCountInString(req.DisplayName) > s.btCfg.DisplayNameMaxLength {
-		return 0, errcode.Newf(errcode.ErrBadRequest, "display_name 不能为空且长度不能超过 %d", s.btCfg.DisplayNameMaxLength)
-	}
 
 	// 校验节点树结构
 	if err := s.validateConfig(ctx, req.Config); err != nil {
@@ -261,8 +234,18 @@ func (s *BtTreeService) Create(ctx context.Context, req *model.CreateBtTreeReque
 		return 0, errcode.Newf(errcode.ErrBtTreeNameExists, "行为树标识 '%s' 已存在", req.Name)
 	}
 
-	// 写 MySQL
-	id, err := s.store.Create(ctx, req)
+	// 事务：写 bt_trees + bt_node_type_refs
+	tx, err := s.store.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			slog.Warn("service.创建行为树事务回滚失败", "error", rbErr)
+		}
+	}()
+
+	id, err := s.store.CreateInTx(ctx, tx, req)
 	if err != nil {
 		if errors.Is(err, errcode.ErrDuplicate) {
 			return 0, errcode.Newf(errcode.ErrBtTreeNameExists, "行为树标识 '%s' 已存在", req.Name)
@@ -271,14 +254,25 @@ func (s *BtTreeService) Create(ctx context.Context, req *model.CreateBtTreeReque
 		return 0, fmt.Errorf("create bt_tree: %w", err)
 	}
 
-	// 清列表缓存
+	if err := s.store.SyncNodeTypeRefsTx(ctx, tx, id, req.Config); err != nil {
+		slog.Error("service.创建行为树-同步节点类型引用失败", "error", err, "id", id)
+		return 0, fmt.Errorf("sync node type refs: %w", err)
+	}
+
+	// 先清缓存再 Commit
 	s.cache.InvalidateList(ctx)
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit: %w", err)
+	}
 
 	slog.Info("service.创建行为树成功", "id", id, "name", req.Name)
 	return id, nil
 }
 
 // Update 编辑行为树（启用中禁止编辑）
+//
+// 事务内同时更新 bt_trees + bt_node_type_refs。
 func (s *BtTreeService) Update(ctx context.Context, req *model.UpdateBtTreeRequest) error {
 	slog.Debug("service.编辑行为树", "id", req.ID)
 
@@ -292,18 +286,23 @@ func (s *BtTreeService) Update(ctx context.Context, req *model.UpdateBtTreeReque
 		return errcode.New(errcode.ErrBtTreeEditNotDisabled)
 	}
 
-	// display_name 长度校验
-	if req.DisplayName == "" || utf8.RuneCountInString(req.DisplayName) > s.btCfg.DisplayNameMaxLength {
-		return errcode.Newf(errcode.ErrBadRequest, "display_name 不能为空且长度不能超过 %d", s.btCfg.DisplayNameMaxLength)
-	}
-
 	// 校验节点树结构
 	if err := s.validateConfig(ctx, req.Config); err != nil {
 		return err
 	}
 
-	// 乐观锁更新
-	if err := s.store.Update(ctx, req); err != nil {
+	// 事务：更新 bt_trees + bt_node_type_refs
+	tx, err := s.store.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			slog.Warn("service.编辑行为树事务回滚失败", "error", rbErr)
+		}
+	}()
+
+	if err := s.store.UpdateInTx(ctx, tx, req); err != nil {
 		if errors.Is(err, errcode.ErrVersionConflict) {
 			return errcode.New(errcode.ErrBtTreeVersionConflict)
 		}
@@ -311,16 +310,27 @@ func (s *BtTreeService) Update(ctx context.Context, req *model.UpdateBtTreeReque
 		return fmt.Errorf("update bt_tree: %w", err)
 	}
 
-	// 清缓存
+	if err := s.store.SyncNodeTypeRefsTx(ctx, tx, req.ID, req.Config); err != nil {
+		slog.Error("service.编辑行为树-同步节点类型引用失败", "error", err, "id", req.ID)
+		return fmt.Errorf("sync node type refs: %w", err)
+	}
+
+	// 先清缓存再 Commit
 	s.cache.DelDetail(ctx, req.ID)
 	s.cache.InvalidateList(ctx)
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
 
 	slog.Info("service.编辑行为树成功", "id", req.ID)
 	return nil
 }
 
 // Delete 软删除行为树（启用中禁止删除）
-func (s *BtTreeService) Delete(ctx context.Context, id int64, version int) error {
+//
+// 事务内同时软删 bt_trees + 清理 bt_node_type_refs。
+func (s *BtTreeService) Delete(ctx context.Context, id int64) error {
 	slog.Debug("service.删除行为树", "id", id)
 
 	d, err := s.getOrNotFound(ctx, id)
@@ -333,18 +343,37 @@ func (s *BtTreeService) Delete(ctx context.Context, id int64, version int) error
 		return errcode.New(errcode.ErrBtTreeDeleteNotDisabled)
 	}
 
-	// 软删除
-	if err := s.store.Delete(ctx, id, version); err != nil {
-		if errors.Is(err, errcode.ErrVersionConflict) {
-			return errcode.New(errcode.ErrBtTreeVersionConflict)
+	// 事务：软删 bt_trees + 清理 bt_node_type_refs
+	tx, err := s.store.DB().BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			slog.Warn("service.删除行为树事务回滚失败", "error", rbErr)
+		}
+	}()
+
+	if err := s.store.SoftDeleteInTx(ctx, tx, id); err != nil {
+		if errors.Is(err, errcode.ErrNotFound) {
+			return errcode.New(errcode.ErrBtTreeNotFound)
 		}
 		slog.Error("service.删除行为树失败", "error", err, "id", id)
 		return fmt.Errorf("soft delete bt_tree: %w", err)
 	}
 
-	// 清缓存
+	if err := s.store.DeleteNodeTypeRefsTx(ctx, tx, id); err != nil {
+		slog.Error("service.删除行为树-清理节点类型引用失败", "error", err, "id", id)
+		return fmt.Errorf("delete node type refs: %w", err)
+	}
+
+	// 先清缓存再 Commit
 	s.cache.DelDetail(ctx, id)
 	s.cache.InvalidateList(ctx)
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
 
 	slog.Info("service.删除行为树成功", "id", id, "name", d.Name)
 	return nil

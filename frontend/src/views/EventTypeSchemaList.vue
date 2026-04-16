@@ -82,15 +82,9 @@
         </el-table-column>
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
-            <el-link type="primary" :underline="false" @click="$router.push(`/event-type-schemas/${row.id}/view`)">
-              查看
-            </el-link>
-            <el-link type="primary" :underline="false" @click="handleEdit(row)" style="margin-left: 12px">
-              编辑
-            </el-link>
-            <el-link type="danger" :underline="false" @click="handleDelete(row)" style="margin-left: 12px">
-              删除
-            </el-link>
+            <el-link type="primary" :underline="false" @click="router.push(`/event-type-schemas/${row.id}/view`)">查看</el-link>
+            <el-link type="primary" :underline="false" style="margin-left: 12px" @click="handleEdit(row)">编辑</el-link>
+            <el-link type="danger" :underline="false" style="margin-left: 12px" @click="handleDelete(row)">删除</el-link>
           </template>
         </el-table-column>
         <template #empty>
@@ -373,50 +367,12 @@ function typeLabel(type: string) {
   overflow: hidden;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 24px;
-  background: #fff;
-  border-bottom: 1px solid #E4E7ED;
-}
-
-.page-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
-  margin: 0;
-}
-
-.filter-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 24px;
-  background: #fff;
-  flex-wrap: wrap;
-}
-
-.filter-item {
-  width: 180px;
-}
-
 .filter-spacer {
   flex: 1;
 }
 
 .sort-toggle {
   flex-shrink: 0;
-}
-
-.table-wrap {
-  flex: 1;
-  padding: 0 24px;
-  background: #fff;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
 }
 
 :deep(.row-disabled td:not(:nth-last-child(-n+3))) {

@@ -17,7 +17,7 @@
     <div class="filter-bar">
       <el-input
         v-model="query.label"
-        placeholder="搜索中文名称"
+        placeholder="搜索中文标签"
         clearable
         class="filter-item filter-item-wide"
         @keyup.enter="handleSearch"
@@ -47,12 +47,12 @@
         style="width: 100%"
       >
         <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column prop="name" label="标识" min-width="140" />
-        <el-table-column prop="display_name" label="中文名称" min-width="120" />
+        <el-table-column prop="name" label="状态机标识" min-width="140" />
+        <el-table-column prop="display_name" label="中文标签" min-width="120" />
         <el-table-column label="初始状态" width="140">
           <template #default="{ row }">{{ row.initial_state_label || row.initial_state }}</template>
         </el-table-column>
-<el-table-column label="启用" width="80" align="center">
+        <el-table-column label="启用" width="80" align="center">
           <template #default="{ row }">
             <el-switch
               :model-value="row.enabled"

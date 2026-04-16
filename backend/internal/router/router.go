@@ -114,7 +114,7 @@ func Setup(r *gin.Engine, h *setup.Handlers) {
 	{
 		btTrees.POST("/list", handler.WrapCtx(h.BtTree.List))
 		btTrees.POST("/create", handler.WrapCtx(h.BtTree.Create))
-		btTrees.POST("/detail", handler.WrapCtx(h.BtTree.Detail))
+		btTrees.POST("/detail", handler.WrapCtx(h.BtTree.Get))
 		btTrees.POST("/update", handler.WrapCtx(h.BtTree.Update))
 		btTrees.POST("/delete", handler.WrapCtx(h.BtTree.Delete))
 		btTrees.POST("/check-name", handler.WrapCtx(h.BtTree.CheckName))
@@ -126,7 +126,7 @@ func Setup(r *gin.Engine, h *setup.Handlers) {
 	{
 		btNodeTypes.POST("/list", handler.WrapCtx(h.BtNodeType.List))
 		btNodeTypes.POST("/create", handler.WrapCtx(h.BtNodeType.Create))
-		btNodeTypes.POST("/detail", handler.WrapCtx(h.BtNodeType.Detail))
+		btNodeTypes.POST("/detail", handler.WrapCtx(h.BtNodeType.Get))
 		btNodeTypes.POST("/update", handler.WrapCtx(h.BtNodeType.Update))
 		btNodeTypes.POST("/delete", handler.WrapCtx(h.BtNodeType.Delete))
 		btNodeTypes.POST("/check-name", handler.WrapCtx(h.BtNodeType.CheckName))

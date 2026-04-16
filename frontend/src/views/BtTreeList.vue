@@ -16,17 +16,10 @@
     <!-- 筛选栏 -->
     <div class="filter-bar">
       <el-input
-        v-model="query.name"
-        placeholder="搜索行为树标识"
+        v-model="query.display_name"
+        placeholder="搜索中文标签"
         clearable
         class="filter-item filter-item-wide"
-        @keyup.enter="handleSearch"
-      />
-      <el-input
-        v-model="query.display_name"
-        placeholder="搜索中文名称"
-        clearable
-        class="filter-item"
         @keyup.enter="handleSearch"
       />
       <el-select
@@ -54,8 +47,8 @@
         style="width: 100%"
       >
         <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column prop="name" label="标识" min-width="160" />
-        <el-table-column prop="display_name" label="中文名称" min-width="120" />
+        <el-table-column prop="name" label="行为树标识" min-width="160" />
+        <el-table-column prop="display_name" label="中文标签" min-width="120" />
         <el-table-column label="启用" width="80" align="center">
           <template #default="{ row }">
             <el-switch
@@ -122,7 +115,6 @@ const total = ref(0)
 const guardRef = ref<InstanceType<typeof EnabledGuardDialog> | null>(null)
 
 const query = reactive<BtTreeListQuery>({
-  name: '',
   display_name: '',
   enabled: null,
   page: 1,
@@ -138,7 +130,6 @@ async function fetchList() {
       page: query.page,
       page_size: query.page_size,
     }
-    if (query.name) params.name = query.name
     if (query.display_name) params.display_name = query.display_name
     if (query.enabled !== null && query.enabled !== undefined) {
       params.enabled = query.enabled
@@ -165,7 +156,6 @@ function handleSearch() {
 }
 
 function handleReset() {
-  query.name = ''
   query.display_name = ''
   query.enabled = null
   query.page = 1

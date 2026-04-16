@@ -93,8 +93,8 @@ func FsmStateDictLockKey(id int64) string   { return fmt.Sprintf("%s%d", prefixF
 
 // ── BtTree ──
 
-func BtTreeListKey(version int64, name, displayName string, enabled *bool, page, pageSize int) string {
-	return fmt.Sprintf("%sv%d:%s:%s:%s:%d:%d", prefixBtTreeList, version, name, displayName, boolStr(enabled), page, pageSize)
+func BtTreeListKey(version int64, displayName string, enabled *bool, page, pageSize int) string {
+	return fmt.Sprintf("%sv%d:%s:%s:%d:%d", prefixBtTreeList, version, displayName, boolStr(enabled), page, pageSize)
 }
 func BtTreeDetailKey(id int64) string { return fmt.Sprintf("%s%d", prefixBtTreeDetail, id) }
 func BtTreeLockKey(id int64) string   { return fmt.Sprintf("%s%d", prefixBtTreeLock, id) }

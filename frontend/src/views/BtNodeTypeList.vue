@@ -58,7 +58,7 @@
       >
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="type_name" label="节点标识" min-width="160" />
-        <el-table-column prop="label" label="中文名" min-width="120" />
+        <el-table-column prop="label" label="中文标签" min-width="120" />
         <el-table-column label="分类" width="110">
           <template #default="{ row }">
             <el-tag
@@ -85,6 +85,11 @@
               :model-value="row.enabled"
               @change="(val: string | number | boolean) => handleToggle(row, Boolean(val))"
             />
+          </template>
+        </el-table-column>
+        <el-table-column label="创建时间" width="170">
+          <template #default="{ row }">
+            {{ formatTime(row.created_at) }}
           </template>
         </el-table-column>
         <el-table-column label="操作" width="160" fixed="right">
@@ -145,6 +150,7 @@ import EnabledGuardDialog from '@/components/EnabledGuardDialog.vue'
 import { btNodeTypeApi, BT_NODE_TYPE_ERR } from '@/api/btNodeTypes'
 import type { BtNodeTypeListItem, BtNodeTypeListQuery } from '@/api/btNodeTypes'
 import type { BizError } from '@/api/request'
+import { formatTime } from '@/utils/format'
 
 const router = useRouter()
 

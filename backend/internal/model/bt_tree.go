@@ -80,7 +80,6 @@ type BtTreeExportItem struct {
 
 // BtTreeListQuery 列表查询参数
 type BtTreeListQuery struct {
-	Name        string `json:"name"`         // 前缀匹配
 	DisplayName string `json:"display_name"` // 模糊匹配
 	Enabled     *bool  `json:"enabled"`      // nil=全部
 	Page        int    `json:"page"`

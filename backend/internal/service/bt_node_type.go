@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"regexp"
-	"unicode/utf8"
 
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
@@ -34,9 +32,6 @@ var validCategories = map[string]bool{
 	"decorator": true,
 	"leaf":      true,
 }
-
-// btNodeTypeNameRe type_name 合法格式：小写字母开头，仅含小写字母/数字/下划线
-var btNodeTypeNameRe = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // BtNodeTypeService 节点类型业务逻辑
 type BtNodeTypeService struct {
@@ -69,26 +64,12 @@ func NewBtNodeTypeService(
 func (s *BtNodeTypeService) getOrNotFound(ctx context.Context, id int64) (*model.BtNodeType, error) {
 	d, err := s.store.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, errcode.ErrNotFound) {
-			return nil, errcode.New(errcode.ErrBtNodeTypeNotFound)
-		}
 		return nil, fmt.Errorf("get bt_node_type %d: %w", id, err)
 	}
+	if d == nil {
+		return nil, errcode.New(errcode.ErrBtNodeTypeNotFound)
+	}
 	return d, nil
-}
-
-// validateTypeName 校验 type_name 格式和长度
-func (s *BtNodeTypeService) validateTypeName(name string) error {
-	if name == "" {
-		return errcode.Newf(errcode.ErrBtNodeTypeNameInvalid, "type_name 不能为空")
-	}
-	if len(name) > s.nodeCfg.NameMaxLength {
-		return errcode.Newf(errcode.ErrBtNodeTypeNameInvalid, "type_name 长度不能超过 %d", s.nodeCfg.NameMaxLength)
-	}
-	if !btNodeTypeNameRe.MatchString(name) {
-		return errcode.Newf(errcode.ErrBtNodeTypeNameInvalid, "type_name 只能包含小写字母、数字、下划线，且以小写字母开头")
-	}
-	return nil
 }
 
 // validateParamSchema 校验 param_schema 结构合法性
@@ -218,31 +199,21 @@ func (s *BtNodeTypeService) GetByID(ctx context.Context, id int64) (*model.BtNod
 	// 3. 查 MySQL
 	d, err := s.store.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, errcode.ErrNotFound) {
-			s.cache.SetDetail(ctx, id, nil)
-			return nil, errcode.New(errcode.ErrBtNodeTypeNotFound)
-		}
 		return nil, fmt.Errorf("get bt_node_type: %w", err)
 	}
 
-	// 4. 写缓存
+	// 4. 写缓存（含空标记）
 	s.cache.SetDetail(ctx, id, d)
+
+	if d == nil {
+		return nil, errcode.New(errcode.ErrBtNodeTypeNotFound)
+	}
 	return d, nil
 }
 
 // Create 创建节点类型
 func (s *BtNodeTypeService) Create(ctx context.Context, req *model.CreateBtNodeTypeRequest) (int64, error) {
 	slog.Debug("service.创建节点类型", "type_name", req.TypeName)
-
-	// type_name 格式校验
-	if err := s.validateTypeName(req.TypeName); err != nil {
-		return 0, err
-	}
-
-	// label 长度校验（中文用 RuneCountInString）
-	if req.Label == "" || utf8.RuneCountInString(req.Label) > s.nodeCfg.LabelMaxLength {
-		return 0, errcode.Newf(errcode.ErrBadRequest, "label 不能为空且长度不能超过 %d", s.nodeCfg.LabelMaxLength)
-	}
 
 	// category 校验
 	if !validCategories[req.Category] {
@@ -300,11 +271,6 @@ func (s *BtNodeTypeService) Update(ctx context.Context, req *model.UpdateBtNodeT
 		return errcode.New(errcode.ErrBtNodeTypeEditNotDisabled)
 	}
 
-	// label 长度校验
-	if req.Label == "" || utf8.RuneCountInString(req.Label) > s.nodeCfg.LabelMaxLength {
-		return errcode.Newf(errcode.ErrBadRequest, "label 不能为空且长度不能超过 %d", s.nodeCfg.LabelMaxLength)
-	}
-
 	// param_schema 校验
 	if err := validateParamSchema(req.ParamSchema); err != nil {
 		return err
@@ -331,7 +297,7 @@ func (s *BtNodeTypeService) Update(ctx context.Context, req *model.UpdateBtNodeT
 //
 // 内置类型返回 44023；启用中返回 44020；
 // 被行为树引用返回 (*BtNodeTypeDeleteResult{ReferencedBy:[...]}, 44022)。
-func (s *BtNodeTypeService) Delete(ctx context.Context, id int64, version int) (*model.BtNodeTypeDeleteResult, error) {
+func (s *BtNodeTypeService) Delete(ctx context.Context, id int64) (*model.BtNodeTypeDeleteResult, error) {
 	slog.Debug("service.删除节点类型", "id", id)
 
 	d, err := s.getOrNotFound(ctx, id)
@@ -350,25 +316,20 @@ func (s *BtNodeTypeService) Delete(ctx context.Context, id int64, version int) (
 	}
 
 	// 引用检查：扫描 bt_trees.config 中是否有节点使用该 type_name
-	used, err := s.btStore.IsNodeTypeUsed(ctx, d.TypeName)
+	refs, err := s.btStore.GetNodeTypeUsages(ctx, d.TypeName)
 	if err != nil {
 		slog.Error("service.删除节点类型-引用扫描失败", "error", err, "type_name", d.TypeName)
 		return nil, fmt.Errorf("scan bt_tree refs: %w", err)
 	}
-	if used {
-		refs, err := s.btStore.GetNodeTypeUsages(ctx, d.TypeName)
-		if err != nil {
-			slog.Error("service.删除节点类型-获取引用列表失败", "error", err, "type_name", d.TypeName)
-			return nil, fmt.Errorf("get bt_tree usages: %w", err)
-		}
+	if len(refs) > 0 {
 		slog.Info("service.删除节点类型-被引用拒绝", "type_name", d.TypeName, "ref_count", len(refs))
 		return &model.BtNodeTypeDeleteResult{ReferencedBy: refs}, errcode.New(errcode.ErrBtNodeTypeRefDelete)
 	}
 
 	// 软删除
-	if err := s.store.Delete(ctx, id, version); err != nil {
-		if errors.Is(err, errcode.ErrVersionConflict) {
-			return nil, errcode.New(errcode.ErrBtNodeTypeVersionConflict)
+	if err := s.store.SoftDelete(ctx, id); err != nil {
+		if errors.Is(err, errcode.ErrNotFound) {
+			return nil, errcode.New(errcode.ErrBtNodeTypeNotFound)
 		}
 		slog.Error("service.删除节点类型失败", "error", err, "id", id)
 		return nil, fmt.Errorf("soft delete bt_node_type: %w", err)

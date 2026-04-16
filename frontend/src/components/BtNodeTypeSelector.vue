@@ -2,70 +2,74 @@
   <el-dialog
     :model-value="modelValue"
     title="选择节点类型"
-    width="480px"
+    width="520px"
     append-to-body
     :close-on-click-modal="false"
     @close="handleClose"
   >
-    <div class="node-type-selector-body">
-      <el-radio-group v-model="selectedTypeName" class="radio-group">
-        <!-- 组合节点 -->
-        <template v-if="compositeTypes.length > 0">
-          <div class="category-title">组合节点</div>
-          <div class="radio-list">
-            <el-radio
-              v-for="t in compositeTypes"
-              :key="t.type_name"
-              :value="t.type_name"
-            >
-              {{ t.label }} ({{ t.type_name }})
-            </el-radio>
+    <div class="selector-body">
+      <!-- 组合节点 -->
+      <template v-if="compositeTypes.length > 0">
+        <div class="category-label">组合节点</div>
+        <div class="card-grid">
+          <div
+            v-for="t in compositeTypes"
+            :key="t.type_name"
+            class="type-card"
+            @click="handleConfirm(t)"
+          >
+            <el-tag type="primary" size="small" effect="light" class="card-tag">composite</el-tag>
+            <span class="card-name">{{ t.label }}</span>
+            <span class="card-key">{{ t.type_name }}</span>
           </div>
-          <el-divider v-if="decoratorTypes.length > 0 || leafTypes.length > 0" />
-        </template>
+        </div>
+      </template>
 
-        <!-- 装饰节点 -->
-        <template v-if="decoratorTypes.length > 0">
-          <div class="category-title">装饰节点</div>
-          <div class="radio-list">
-            <el-radio
-              v-for="t in decoratorTypes"
-              :key="t.type_name"
-              :value="t.type_name"
-            >
-              {{ t.label }} ({{ t.type_name }})
-            </el-radio>
+      <!-- 装饰节点 -->
+      <template v-if="decoratorTypes.length > 0">
+        <div class="category-label">装饰节点</div>
+        <div class="card-grid">
+          <div
+            v-for="t in decoratorTypes"
+            :key="t.type_name"
+            class="type-card"
+            @click="handleConfirm(t)"
+          >
+            <el-tag type="warning" size="small" effect="light" class="card-tag">decorator</el-tag>
+            <span class="card-name">{{ t.label }}</span>
+            <span class="card-key">{{ t.type_name }}</span>
           </div>
-          <el-divider v-if="leafTypes.length > 0" />
-        </template>
+        </div>
+      </template>
 
-        <!-- 叶子节点 -->
-        <template v-if="leafTypes.length > 0">
-          <div class="category-title">叶子节点</div>
-          <div class="radio-list">
-            <el-radio
-              v-for="t in leafTypes"
-              :key="t.type_name"
-              :value="t.type_name"
-            >
-              {{ t.label }} ({{ t.type_name }})
-            </el-radio>
+      <!-- 叶子节点 -->
+      <template v-if="leafTypes.length > 0">
+        <div class="category-label">叶子节点</div>
+        <div class="card-grid">
+          <div
+            v-for="t in leafTypes"
+            :key="t.type_name"
+            class="type-card"
+            @click="handleConfirm(t)"
+          >
+            <el-tag type="success" size="small" effect="light" class="card-tag">leaf</el-tag>
+            <span class="card-name">{{ t.label }}</span>
+            <span class="card-key">{{ t.type_name }}</span>
           </div>
-        </template>
-      </el-radio-group>
+        </div>
+      </template>
+
+      <el-empty v-if="props.nodeTypes.length === 0" description="暂无可用节点类型" />
     </div>
 
     <template #footer>
       <el-button @click="handleClose">取消</el-button>
-      <el-button type="primary" :disabled="!selectedTypeName" @click="handleConfirm">
-        确认
-      </el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import type { BtNodeTypeMeta } from '@/api/btNodeTypes'
 
 const props = defineProps<{
@@ -78,54 +82,81 @@ const emit = defineEmits<{
   'select': [nodeType: BtNodeTypeMeta]
 }>()
 
-const selectedTypeName = ref<string>('')
-
 const compositeTypes = computed(() =>
-  props.nodeTypes.filter((t) => t.category === 'composite')
+  props.nodeTypes.filter((t) => t.category === 'composite'),
 )
 const decoratorTypes = computed(() =>
-  props.nodeTypes.filter((t) => t.category === 'decorator')
+  props.nodeTypes.filter((t) => t.category === 'decorator'),
 )
 const leafTypes = computed(() =>
-  props.nodeTypes.filter((t) => t.category === 'leaf')
+  props.nodeTypes.filter((t) => t.category === 'leaf'),
 )
 
 function handleClose() {
   emit('update:modelValue', false)
-  selectedTypeName.value = ''
 }
 
-function handleConfirm() {
-  const found = props.nodeTypes.find((t) => t.type_name === selectedTypeName.value)
-  if (!found) return
-  emit('select', found)
+function handleConfirm(t: BtNodeTypeMeta) {
+  emit('select', t)
   emit('update:modelValue', false)
-  selectedTypeName.value = ''
 }
 </script>
 
 <style scoped>
-.node-type-selector-body {
+.selector-body {
   padding: 4px 0;
+  max-height: 480px;
+  overflow-y: auto;
 }
 
-.radio-group {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-}
-
-.category-title {
+.category-label {
   font-size: 12px;
   color: #909399;
-  margin-bottom: 8px;
   font-weight: 500;
+  margin: 12px 0 8px;
 }
 
-.radio-list {
-  display: flex;
-  flex-direction: column;
+.category-label:first-child {
+  margin-top: 0;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
   margin-bottom: 4px;
+}
+
+.type-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.type-card:hover {
+  border-color: #409eff;
+  background-color: #ecf5ff;
+}
+
+.card-tag {
+  align-self: flex-start;
+}
+
+.card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+  line-height: 1.4;
+}
+
+.card-key {
+  font-size: 11px;
+  color: #909399;
+  font-family: monospace;
 }
 </style>

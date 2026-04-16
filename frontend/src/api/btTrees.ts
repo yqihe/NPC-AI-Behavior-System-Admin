@@ -15,7 +15,6 @@ export interface BtNodeInternal {
 // ─── 列表 ───
 
 export interface BtTreeListQuery {
-  name?: string
   display_name?: string
   enabled?: boolean | null
   page: number
