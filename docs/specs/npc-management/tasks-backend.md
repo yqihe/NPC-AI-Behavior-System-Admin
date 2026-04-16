@@ -100,7 +100,7 @@ T8 + T9 + T10 → T11 → T12
 
 ---
 
-## T4：NPC Redis Cache
+## ✅ T4：NPC Redis Cache
 
 **关联需求**：R1、R3、R4、R6（列表/详情缓存）
 

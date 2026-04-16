@@ -34,13 +34,19 @@ const (
 	prefixBtNodeTypeDetail = "bt_node_types:detail:"
 	prefixBtNodeTypeLock   = "bt_node_types:lock:"
 
+	prefixNPCList   = "npcs:list:"
+	prefixNPCDetail = "npcs:detail:"
+	prefixNPCLock   = "npcs:lock:"
+
 	FieldListVersionKey        = "fields:list:version"
 	TemplateListVersionKey     = "templates:list:version"
 	EventTypeListVersionKey    = "event_types:list:version"
 	FsmConfigListVersionKey    = "fsm_configs:list:version"
 	FsmStateDictListVersionKey = "fsm_state_dicts:list:version"
 	BtTreeListVersionKey       = "bt_trees:list:version"
-	BtNodeTypeListVersionKey   = "bt_node_types:list:version"
+	BtNodeTypeListVersionKey = "bt_node_types:list:version"
+
+	NPCListVersionKey = "npcs:list:version"
 )
 
 // ── Dict ──
@@ -106,6 +112,14 @@ func BtNodeTypeListKey(version int64, typeName, category string, enabled *bool, 
 }
 func BtNodeTypeDetailKey(id int64) string { return fmt.Sprintf("%s%d", prefixBtNodeTypeDetail, id) }
 func BtNodeTypeLockKey(id int64) string   { return fmt.Sprintf("%s%d", prefixBtNodeTypeLock, id) }
+
+// ── NPC ──
+
+func NPCListKey(version int64, label, name, templateName string, enabled *bool, page, pageSize int) string {
+	return fmt.Sprintf("%sv%d:%s:%s:%s:%s:%d:%d", prefixNPCList, version, label, name, templateName, boolStr(enabled), page, pageSize)
+}
+func NPCDetailKey(id int64) string { return fmt.Sprintf("%s%d", prefixNPCDetail, id) }
+func NPCLockKey(id int64) string   { return fmt.Sprintf("%s%d", prefixNPCLock, id) }
 
 // boolStr 将 *bool 转为 key 分段
 func boolStr(b *bool) string {
