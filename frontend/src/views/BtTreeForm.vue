@@ -352,7 +352,7 @@ async function handleSubmit() {
 
 <style scoped>
 /* 仅组件私有样式；form-header/form-scroll/form-body-wide/form-card/card-title/
-   title-bar*/title-text/form-footer 均由全局 form-layout.css 提供，此处不重复 */
+   title-bar/title-text/form-footer 均由全局 form-layout.css 提供，此处不重复 */
 
 .field-hint {
   display: flex;
