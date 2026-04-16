@@ -229,13 +229,14 @@ func walkNodes(node map[string]any, visit func(map[string]any)) {
 
 // GetNodeTypeUsages 返回使用指定节点类型的行为树 name 列表。
 //
-// 使用 JSON_SEARCH 扫描 config 列，对配置数量较少的运营平台场景足够高效。
+// 走 bt_node_type_refs.idx_type_name 索引，O(引用数)，替代原 JSON_SEARCH 全表扫。
 func (s *BtTreeStore) GetNodeTypeUsages(ctx context.Context, typeName string) ([]string, error) {
 	names := make([]string, 0)
 	err := s.db.SelectContext(ctx, &names,
-		`SELECT name FROM bt_trees
-		 WHERE deleted = 0
-		   AND JSON_SEARCH(config, 'one', ?, NULL, '$**.type') IS NOT NULL`,
+		`SELECT bt.name
+		 FROM bt_trees bt
+		 INNER JOIN bt_node_type_refs r ON r.bt_tree_id = bt.id
+		 WHERE r.type_name = ? AND bt.deleted = 0`,
 		typeName,
 	)
 	if err != nil {
