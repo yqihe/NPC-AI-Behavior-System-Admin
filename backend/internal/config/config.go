@@ -21,6 +21,8 @@ type Config struct {
 	EventTypeSchema EventTypeSchemaConfig `yaml:"event_type_schema"`
 	FsmConfig       FsmConfigConfig       `yaml:"fsm_config"`
 	FsmStateDict    FsmStateDictConfig    `yaml:"fsm_state_dict"`
+	BtTree          BtTreeConfig          `yaml:"bt_tree"`
+	BtNodeType      BtNodeTypeConfig      `yaml:"bt_node_type"`
 }
 
 // ServerConfig HTTP 服务配置
@@ -134,6 +136,24 @@ type FsmStateDictConfig struct {
 	DisplayNameMaxLength int `yaml:"display_name_max_length"`
 	CategoryMaxLength    int `yaml:"category_max_length"`
 	DescriptionMaxLength int `yaml:"description_max_length"`
+}
+
+// BtTreeConfig 行为树管理配置
+type BtTreeConfig struct {
+	NameMaxLength        int           `yaml:"name_max_length"`
+	DisplayNameMaxLength int           `yaml:"display_name_max_length"`
+	CacheDetailTTL       time.Duration `yaml:"cache_detail_ttl"`
+	CacheListTTL         time.Duration `yaml:"cache_list_ttl"`
+	CacheLockTTL         time.Duration `yaml:"cache_lock_ttl"`
+}
+
+// BtNodeTypeConfig 节点类型管理配置
+type BtNodeTypeConfig struct {
+	NameMaxLength  int           `yaml:"name_max_length"`
+	LabelMaxLength int           `yaml:"label_max_length"`
+	CacheDetailTTL time.Duration `yaml:"cache_detail_ttl"`
+	CacheListTTL   time.Duration `yaml:"cache_list_ttl"`
+	CacheLockTTL   time.Duration `yaml:"cache_lock_ttl"`
 }
 
 // Load 从文件加载配置

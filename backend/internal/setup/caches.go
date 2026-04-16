@@ -11,12 +11,14 @@ import (
 
 // Caches 聚合 Redis 连接 + 所有 cache
 type Caches struct {
-	RDB       *goredis.Client
-	Field     *storeredis.FieldCache
-	Template  *storeredis.TemplateCache
-	EventType *storeredis.EventTypeCache
+	RDB          *goredis.Client
+	Field        *storeredis.FieldCache
+	Template     *storeredis.TemplateCache
+	EventType    *storeredis.EventTypeCache
 	FsmConfig    *storeredis.FsmConfigCache
 	FsmStateDict *storeredis.FsmStateDictCache
+	BtTree       *storeredis.BtTreeCache
+	BtNodeType   *storeredis.BtNodeTypeCache
 }
 
 // NewCaches 连接 Redis + 一次性初始化所有 cache
@@ -35,12 +37,14 @@ func NewCaches(ctx context.Context, cfg *config.RedisConfig) *Caches {
 	}
 
 	return &Caches{
-		RDB:       rdb,
-		Field:     storeredis.NewFieldCache(rdb),
-		Template:  storeredis.NewTemplateCache(rdb),
-		EventType: storeredis.NewEventTypeCache(rdb),
+		RDB:          rdb,
+		Field:        storeredis.NewFieldCache(rdb),
+		Template:     storeredis.NewTemplateCache(rdb),
+		EventType:    storeredis.NewEventTypeCache(rdb),
 		FsmConfig:    storeredis.NewFsmConfigCache(rdb),
 		FsmStateDict: storeredis.NewFsmStateDictCache(rdb),
+		BtTree:       storeredis.NewBtTreeCache(rdb),
+		BtNodeType:   storeredis.NewBtNodeTypeCache(rdb),
 	}
 }
 

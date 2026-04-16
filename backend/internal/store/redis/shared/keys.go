@@ -26,11 +26,21 @@ const (
 	prefixFsmStateDictDetail = "fsm_state_dicts:detail:"
 	prefixFsmStateDictLock   = "fsm_state_dicts:lock:"
 
+	prefixBtTreeList   = "bt_trees:list:"
+	prefixBtTreeDetail = "bt_trees:detail:"
+	prefixBtTreeLock   = "bt_trees:lock:"
+
+	prefixBtNodeTypeList   = "bt_node_types:list:"
+	prefixBtNodeTypeDetail = "bt_node_types:detail:"
+	prefixBtNodeTypeLock   = "bt_node_types:lock:"
+
 	FieldListVersionKey        = "fields:list:version"
 	TemplateListVersionKey     = "templates:list:version"
 	EventTypeListVersionKey    = "event_types:list:version"
 	FsmConfigListVersionKey    = "fsm_configs:list:version"
 	FsmStateDictListVersionKey = "fsm_state_dicts:list:version"
+	BtTreeListVersionKey       = "bt_trees:list:version"
+	BtNodeTypeListVersionKey   = "bt_node_types:list:version"
 )
 
 // ── Dict ──
@@ -80,6 +90,22 @@ func FsmStateDictListKey(version int64, name, category string, enabled *bool, pa
 }
 func FsmStateDictDetailKey(id int64) string { return fmt.Sprintf("%s%d", prefixFsmStateDictDetail, id) }
 func FsmStateDictLockKey(id int64) string   { return fmt.Sprintf("%s%d", prefixFsmStateDictLock, id) }
+
+// ── BtTree ──
+
+func BtTreeListKey(version int64, name, displayName string, enabled *bool, page, pageSize int) string {
+	return fmt.Sprintf("%sv%d:%s:%s:%s:%d:%d", prefixBtTreeList, version, name, displayName, boolStr(enabled), page, pageSize)
+}
+func BtTreeDetailKey(id int64) string { return fmt.Sprintf("%s%d", prefixBtTreeDetail, id) }
+func BtTreeLockKey(id int64) string   { return fmt.Sprintf("%s%d", prefixBtTreeLock, id) }
+
+// ── BtNodeType ──
+
+func BtNodeTypeListKey(version int64, typeName, category string, enabled *bool, page, pageSize int) string {
+	return fmt.Sprintf("%sv%d:%s:%s:%s:%d:%d", prefixBtNodeTypeList, version, typeName, category, boolStr(enabled), page, pageSize)
+}
+func BtNodeTypeDetailKey(id int64) string { return fmt.Sprintf("%s%d", prefixBtNodeTypeDetail, id) }
+func BtNodeTypeLockKey(id int64) string   { return fmt.Sprintf("%s%d", prefixBtNodeTypeLock, id) }
 
 // boolStr 将 *bool 转为 key 分段
 func boolStr(b *bool) string {

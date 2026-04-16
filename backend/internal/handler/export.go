@@ -15,13 +15,19 @@ import (
 type ExportHandler struct {
 	eventTypeService *service.EventTypeService
 	fsmConfigService *service.FsmConfigService
+	btTreeService    *service.BtTreeService
 }
 
 // NewExportHandler 创建 ExportHandler
-func NewExportHandler(eventTypeService *service.EventTypeService, fsmConfigService *service.FsmConfigService) *ExportHandler {
+func NewExportHandler(
+	eventTypeService *service.EventTypeService,
+	fsmConfigService *service.FsmConfigService,
+	btTreeService *service.BtTreeService,
+) *ExportHandler {
 	return &ExportHandler{
 		eventTypeService: eventTypeService,
 		fsmConfigService: fsmConfigService,
+		btTreeService:    btTreeService,
 	}
 }
 
@@ -63,6 +69,29 @@ func (h *ExportHandler) FsmConfigs(c *gin.Context) {
 	items, err := h.fsmConfigService.ExportAll(c.Request.Context())
 	if err != nil {
 		slog.Error("handler.export.fsm_configs.error", "error", err)
+		c.JSON(http.StatusInternalServerError, exportResponse{Items: make([]interface{}, 0)})
+		return
+	}
+
+	// 空数据返回 {"items": []}
+	if len(items) == 0 {
+		c.JSON(http.StatusOK, exportResponse{Items: make([]interface{}, 0)})
+		return
+	}
+
+	c.JSON(http.StatusOK, exportResponse{Items: items})
+}
+
+// BTTrees GET /api/configs/bt_trees
+//
+// 返回所有已启用且未删除的行为树。
+// config 字段直接从 config 列原样展开，不经过 Go struct 中转。
+func (h *ExportHandler) BTTrees(c *gin.Context) {
+	slog.Debug("handler.export.bt_trees")
+
+	items, err := h.btTreeService.ExportAll(c.Request.Context())
+	if err != nil {
+		slog.Error("handler.export.bt_trees.error", "error", err)
 		c.JSON(http.StatusInternalServerError, exportResponse{Items: make([]interface{}, 0)})
 		return
 	}
