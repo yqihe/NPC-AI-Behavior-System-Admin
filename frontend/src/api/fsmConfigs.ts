@@ -130,6 +130,7 @@ export const fsmConfigApi = {
   update: (data: UpdateFsmConfigRequest) =>
     request.post('/fsm-configs/update', data) as Promise<ApiResponse<string>>,
 
+  // 注意：响应中 label 来自后端 DeleteResult.Label（json tag "label"），实为 FSM 的 display_name
   delete: (id: number) =>
     request.post('/fsm-configs/delete', { id }) as Promise<ApiResponse<{ id: number; name: string; label: string }>>,
 

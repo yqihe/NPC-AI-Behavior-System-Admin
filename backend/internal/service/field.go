@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/yqihe/npc-ai-admin/backend/internal/cache"
@@ -17,6 +16,7 @@ import (
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
 	storeredis "github.com/yqihe/npc-ai-admin/backend/internal/store/redis"
+	rcfg "github.com/yqihe/npc-ai-admin/backend/internal/store/redis/shared"
 	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
@@ -211,7 +211,7 @@ func (s *FieldService) GetByID(ctx context.Context, id int64) (*model.Field, err
 	}
 
 	// 2. 分布式锁防缓存击穿
-	lockID, lockErr := s.fieldCache.TryLock(ctx, id, 3*time.Second)
+	lockID, lockErr := s.fieldCache.TryLock(ctx, id, rcfg.LockExpire)
 	if lockErr != nil {
 		slog.Warn("service.获取锁失败，降级直查MySQL", "error", lockErr, "id", id)
 	}
