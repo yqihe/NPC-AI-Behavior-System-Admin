@@ -2,8 +2,8 @@
   <div class="bt-node-type-form">
     <!-- Header -->
     <div class="form-header">
-      <el-icon class="back-icon" @click="$router.push('/bt-node-types')"><ArrowLeft /></el-icon>
-      <span class="back-text" @click="$router.push('/bt-node-types')">返回</span>
+      <el-icon class="back-icon" @click="router.back()"><ArrowLeft /></el-icon>
+      <span class="back-text" @click="router.back()">返回</span>
       <span class="header-sep"></span>
       <span class="header-title">
         {{ isView ? '查看节点类型' : isCreate ? '新建节点类型' : '编辑节点类型' }}
@@ -14,85 +14,80 @@
     <div class="form-scroll">
       <div class="form-body">
 
-        <!-- Builtin warning -->
-        <el-alert
-          v-if="isBuiltin && !isCreate"
-          type="warning"
-          :closable="false"
-          show-icon
-          title="内置节点类型不可编辑或删除"
-          style="margin-bottom: 0"
-        />
-
-        <!-- Basic info card -->
-        <div class="form-card">
+        <!-- Card 1: 基本信息 -->
+        <div class="card">
           <div class="card-title">
             <span class="title-bar title-bar-blue"></span>
             <span class="title-text">基本信息</span>
           </div>
+
+          <!-- Builtin lock alert inside card -->
+          <el-alert
+            v-if="isBuiltinLocked"
+            type="info"
+            :closable="false"
+            title="内置节点类型，只可查看"
+            style="margin-bottom: 16px"
+          />
+
           <el-form
             ref="formRef"
             :model="form"
             :rules="rules"
-            :disabled="isView || isBuiltin"
             label-width="120px"
             label-position="right"
           >
             <!-- type_name -->
-            <el-form-item label="类型标识" prop="type_name">
-              <template v-if="!isCreate || isView">
+            <el-form-item label="节点标识" prop="type_name">
+              <template v-if="!isCreate">
                 <el-input :model-value="form.type_name" disabled style="width: 100%">
                   <template #prefix><el-icon><Lock /></el-icon></template>
                 </el-input>
-                <div class="field-warn">
-                  <el-icon><WarningFilled /></el-icon>
-                  类型标识创建后不可更改
-                </div>
+                <div class="field-hint">创建后不可修改</div>
               </template>
               <template v-else>
                 <el-input
                   v-model="form.type_name"
-                  placeholder="如 check_bb_float（小写字母开头，仅含小写字母、数字、下划线）"
+                  placeholder="如 sequence"
                   style="width: 100%"
                   @blur="checkNameUnique"
                 />
-                <div v-if="nameStatus === 'checking'" class="field-hint">
-                  <el-icon class="is-loading"><Loading /></el-icon> 校验中...
-                </div>
-                <div v-else-if="nameStatus === 'available'" class="field-hint field-hint-success">
-                  <el-icon><CircleCheck /></el-icon> 标识符可用
-                </div>
-                <div v-else-if="nameStatus === 'taken'" class="field-hint field-hint-error">
-                  <el-icon><CircleClose /></el-icon> {{ nameMessage }}
-                </div>
+                <div class="field-hint">格式：小写字母、数字、下划线，以字母开头，如 sequence</div>
+                <div v-if="nameStatus === 'checking'" class="name-status checking">校验中...</div>
+                <div v-else-if="nameStatus === 'available'" class="name-status available">标识符可用</div>
+                <div v-else-if="nameStatus === 'taken'" class="name-status taken">{{ nameMessage }}</div>
               </template>
             </el-form-item>
 
             <!-- category -->
             <el-form-item label="节点分类" prop="category">
-              <template v-if="!isCreate || isView">
-                <el-tag :type="categoryTag(form.category)" size="default">
-                  {{ categoryLabel(form.category) }}
-                </el-tag>
-              </template>
-              <template v-else>
-                <el-radio-group v-model="form.category">
-                  <el-radio value="composite">组合节点（多子节点）</el-radio>
-                  <el-radio value="decorator">装饰节点（单子节点）</el-radio>
-                  <el-radio value="leaf">叶子节点（无子节点）</el-radio>
-                </el-radio-group>
-              </template>
+              <el-select
+                v-model="form.category"
+                :disabled="!isCreate || isView || isBuiltinLocked"
+                style="width: 100%"
+                placeholder="请选择节点分类"
+              >
+                <el-option label="组合节点（composite）" value="composite" />
+                <el-option label="装饰节点（decorator）" value="decorator" />
+                <el-option label="叶子节点（leaf）" value="leaf" />
+              </el-select>
             </el-form-item>
 
             <!-- label -->
-            <el-form-item label="中文标签" prop="label">
-              <el-input v-model="form.label" placeholder="如 序列、取反、检查浮点" style="width: 100%" />
+            <el-form-item label="中文名称" prop="label">
+              <el-input
+                v-model="form.label"
+                :disabled="isView || isBuiltinLocked"
+                placeholder="如 序列节点"
+                style="width: 100%"
+              />
             </el-form-item>
 
             <!-- description -->
             <el-form-item label="描述">
               <el-input
                 v-model="form.description"
+                :disabled="isView || isBuiltinLocked"
                 type="textarea"
                 :rows="3"
                 placeholder="可选描述"
@@ -102,32 +97,33 @@
           </el-form>
         </div>
 
-        <!-- Param schema card -->
-        <div class="form-card">
+        <!-- Card 2: 参数定义 -->
+        <div class="card">
           <div class="card-title">
             <span class="title-bar title-bar-orange"></span>
             <span class="title-text">参数定义</span>
-            <el-tag size="small" type="info" style="margin-left: 8px">
-              {{ form.category === 'leaf' ? '叶子节点可定义参数' : '组合/装饰节点通常无参数' }}
-            </el-tag>
           </div>
           <BtParamSchemaEditor
+            ref="paramSchemaEditorRef"
             v-model="paramDefs"
-            :disabled="isView || isBuiltin"
+            :disabled="isView || isBuiltinLocked"
           />
-          <div v-if="schemaError" class="schema-error">
-            <el-icon><WarningFilled /></el-icon>
-            {{ schemaError }}
-          </div>
         </div>
 
       </div>
     </div>
 
-    <!-- Footer: hidden in view mode or for builtin types -->
-    <div v-if="!isView && !isBuiltin" class="form-footer">
-      <el-button @click="$router.push('/bt-node-types')">取消</el-button>
-      <el-button type="primary" :loading="submitting" @click="handleSubmit">保存</el-button>
+    <!-- Footer -->
+    <div class="form-footer">
+      <el-button @click="router.back()">取消</el-button>
+      <el-button
+        v-if="!isView && !isBuiltinLocked"
+        type="primary"
+        :loading="submitting"
+        @click="handleSubmit"
+      >
+        保存
+      </el-button>
     </div>
   </div>
 </template>
@@ -137,10 +133,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance } from 'element-plus'
-import {
-  ArrowLeft, Lock, WarningFilled, Loading,
-  CircleCheck, CircleClose,
-} from '@element-plus/icons-vue'
+import { ArrowLeft, Lock } from '@element-plus/icons-vue'
 import BtParamSchemaEditor from '@/components/BtParamSchemaEditor.vue'
 import { btNodeTypeApi, BT_NODE_TYPE_ERR } from '@/api/btNodeTypes'
 import type { BtParamDef } from '@/api/btNodeTypes'
@@ -152,12 +145,12 @@ const isCreate = route.meta.isCreate as boolean
 const isView = (route.meta.isView as boolean) || false
 
 const formRef = ref<FormInstance>()
+const paramSchemaEditorRef = ref<InstanceType<typeof BtParamSchemaEditor>>()
 const submitting = ref(false)
 const nameStatus = ref<'' | 'checking' | 'available' | 'taken'>('')
 const nameMessage = ref('')
 const version = ref(0)
-const isBuiltin = ref(false)
-const schemaError = ref('')
+const isBuiltinLocked = ref(false)
 
 const form = reactive({
   type_name: '',
@@ -172,10 +165,10 @@ const namePattern = /^[a-z][a-z0-9_]*$/
 
 const rules = {
   type_name: [
-    { required: true, message: '请输入类型标识', trigger: 'blur' },
+    { required: true, message: '请输入节点标识', trigger: 'blur' },
     {
       pattern: namePattern,
-      message: '小写字母开头，仅含小写字母、数字、下划线',
+      message: '格式：小写字母开头，仅含小写字母、数字、下划线',
       trigger: 'blur',
     },
   ],
@@ -183,26 +176,8 @@ const rules = {
     { required: true, message: '请选择节点分类', trigger: 'change' },
   ],
   label: [
-    { required: true, message: '请输入中文标签', trigger: 'blur' },
+    { required: true, message: '请输入中文名称', trigger: 'blur' },
   ],
-}
-
-function categoryLabel(cat: string): string {
-  const map: Record<string, string> = {
-    composite: '组合节点',
-    decorator: '装饰节点',
-    leaf: '叶子节点',
-  }
-  return map[cat] ?? cat
-}
-
-function categoryTag(cat: string): '' | 'success' | 'warning' | 'info' {
-  const map: Record<string, '' | 'success' | 'warning' | 'info'> = {
-    composite: '',
-    decorator: 'warning',
-    leaf: 'success',
-  }
-  return map[cat] ?? 'info'
 }
 
 // ─── init ───
@@ -221,7 +196,7 @@ async function loadDetail() {
     form.label = data.label
     form.description = data.description ?? ''
     version.value = data.version
-    isBuiltin.value = data.is_builtin
+    isBuiltinLocked.value = data.is_builtin === true
     paramDefs.value = data.param_schema?.params ?? []
   } catch (err: unknown) {
     if ((err as BizError).code === BT_NODE_TYPE_ERR.NOT_FOUND) {
@@ -253,31 +228,15 @@ async function checkNameUnique() {
   }
 }
 
-// ─── param schema validation ───
-
-function validateParamSchema(): boolean {
-  for (const p of paramDefs.value) {
-    if (!p.name) {
-      schemaError.value = '参数名不能为空'
-      return false
-    }
-    if (!p.label) {
-      schemaError.value = `参数 "${p.name}" 的中文标签不能为空`
-      return false
-    }
-    if (p.type === 'select' && (!p.options || p.options.length === 0)) {
-      schemaError.value = `参数 "${p.name}" 为枚举类型，至少需要添加一个选项`
-      return false
-    }
-  }
-  schemaError.value = ''
-  return true
-}
-
 // ─── submit ───
 
 async function handleSubmit() {
-  if (!validateParamSchema()) return
+  // Validate param schema first
+  const schemaErr = paramSchemaEditorRef.value?.validate()
+  if (schemaErr) {
+    ElMessage.error(schemaErr)
+    return
+  }
 
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
@@ -297,7 +256,7 @@ async function handleSubmit() {
         description: form.description,
         param_schema: { params: paramDefs.value },
       })
-      ElMessage.success('创建成功')
+      ElMessage.success('保存成功')
     } else {
       await btNodeTypeApi.update({
         id: Number(route.params.id),
@@ -315,10 +274,7 @@ async function handleSubmit() {
       ElMessageBox.alert('数据已被其他人修改，请刷新后重试。', '版本冲突', { type: 'warning' })
       return
     }
-    if (
-      bizErr.code === BT_NODE_TYPE_ERR.NAME_EXISTS ||
-      bizErr.code === BT_NODE_TYPE_ERR.NAME_INVALID
-    ) {
+    if (bizErr.code === BT_NODE_TYPE_ERR.NAME_EXISTS || bizErr.code === BT_NODE_TYPE_ERR.NAME_INVALID) {
       nameStatus.value = 'taken'
       nameMessage.value = bizErr.message
       return
@@ -328,23 +284,19 @@ async function handleSubmit() {
       router.push('/bt-node-types')
       return
     }
-    if (bizErr.code === BT_NODE_TYPE_ERR.EDIT_NOT_DISABLED) {
-      ElMessage.warning('请先禁用该节点类型后再编辑')
-      return
-    }
     if (bizErr.code === BT_NODE_TYPE_ERR.BUILTIN_EDIT) {
       ElMessage.warning('内置节点类型不可编辑')
       return
     }
     if (bizErr.code === BT_NODE_TYPE_ERR.PARAM_SCHEMA_INVALID) {
-      schemaError.value = bizErr.message
+      ElMessage.error(bizErr.message)
       return
     }
     if (bizErr.code === BT_NODE_TYPE_ERR.CATEGORY_INVALID) {
       ElMessage.error(bizErr.message)
       return
     }
-    // Other errors: global interceptor handles toast
+    // Other errors handled by global interceptor
   } finally {
     submitting.value = false
   }
@@ -359,32 +311,113 @@ async function handleSubmit() {
   overflow: hidden;
 }
 
-.field-hint {
+.form-scroll {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.form-body {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.card-title {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-top: 4px;
+  gap: 8px;
+  margin-bottom: 20px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.title-bar {
+  display: inline-block;
+  width: 4px;
+  height: 16px;
+  border-radius: 2px;
+}
+
+.title-bar-blue {
+  background: #409eff;
+}
+
+.title-bar-orange {
+  background: #e6a23c;
+}
+
+.form-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  background: #fff;
+  border-top: 1px solid #ebeef5;
+  margin-top: 8px;
+}
+
+.field-hint {
   font-size: 12px;
   color: #909399;
-}
-.field-hint-success { color: #67C23A; }
-.field-hint-error   { color: #F56C6C; }
-
-.field-warn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
   margin-top: 4px;
-  font-size: 12px;
-  color: #E6A23C;
 }
 
-.schema-error {
+.name-status {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.name-status.available {
+  color: #67c23a;
+}
+
+.name-status.taken {
+  color: #f56c6c;
+}
+
+.name-status.checking {
+  color: #909399;
+}
+
+.form-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 12px;
-  font-size: 13px;
-  color: #F56C6C;
+  gap: 8px;
+  padding: 16px 24px;
+  background: #fff;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.back-icon,
+.back-text {
+  cursor: pointer;
+  color: #606266;
+}
+
+.back-text:hover,
+.back-icon:hover {
+  color: #409eff;
+}
+
+.header-sep {
+  width: 1px;
+  height: 16px;
+  background: #dcdfe6;
+  margin: 0 4px;
+}
+
+.header-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
 }
 </style>

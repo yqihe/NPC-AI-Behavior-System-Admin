@@ -1,20 +1,20 @@
 <template>
   <div class="bt-tree-form">
-    <!-- Header -->
+    <!-- 顶部导航 -->
     <div class="form-header">
-      <el-icon class="back-icon" @click="$router.push('/bt-trees')"><ArrowLeft /></el-icon>
-      <span class="back-text" @click="$router.push('/bt-trees')">返回</span>
+      <el-icon class="back-icon" @click="router.back()"><ArrowLeft /></el-icon>
+      <span class="back-text" @click="router.back()">返回</span>
       <span class="header-sep"></span>
       <span class="header-title">
         {{ isView ? '查看行为树' : isCreate ? '新建行为树' : '编辑行为树' }}
       </span>
     </div>
 
-    <!-- Scroll area -->
+    <!-- 表单滚动区 -->
     <div class="form-scroll">
       <div class="form-body-wide">
 
-        <!-- Basic info card -->
+        <!-- Card 1: 基本信息 -->
         <div class="form-card">
           <div class="card-title">
             <span class="title-bar title-bar-blue"></span>
@@ -28,46 +28,54 @@
             label-width="120px"
             label-position="right"
           >
-            <!-- name -->
+            <!-- 行为树标识 -->
             <el-form-item label="行为树标识" prop="name">
               <template v-if="!isCreate || isView">
                 <el-input :model-value="form.name" disabled style="width: 100%">
-                  <template #prefix><el-icon><Lock /></el-icon></template>
+                  <template #prefix>
+                    <el-icon><Lock /></el-icon>
+                  </template>
                 </el-input>
                 <div class="field-warn">
                   <el-icon><WarningFilled /></el-icon>
-                  标识符创建后不可更改
+                  创建后不可修改
                 </div>
               </template>
               <template v-else>
                 <el-input
                   v-model="form.name"
-                  placeholder="如 wolf/attack（小写字母开头，仅含小写字母/数字/下划线/斜杠）"
+                  placeholder="如 npc/patrol（小写字母开头，仅含小写字母、数字、下划线、斜线）"
                   style="width: 100%"
                   @blur="checkNameUnique"
                 />
                 <div v-if="nameStatus === 'checking'" class="field-hint">
-                  <el-icon class="is-loading"><Loading /></el-icon> 校验中...
+                  <el-icon class="is-loading"><Loading /></el-icon>
+                  校验中...
                 </div>
                 <div v-else-if="nameStatus === 'available'" class="field-hint field-hint-success">
-                  <el-icon><CircleCheck /></el-icon> 标识符可用
+                  <el-icon><CircleCheck /></el-icon>
+                  标识符可用
                 </div>
                 <div v-else-if="nameStatus === 'taken'" class="field-hint field-hint-error">
-                  <el-icon><CircleClose /></el-icon> {{ nameMessage }}
+                  <el-icon><CircleClose /></el-icon>
+                  {{ nameMessage }}
+                </div>
+                <div class="field-hint field-gray">
+                  格式：小写字母、数字、下划线、斜线，以字母开头，如 npc/patrol
                 </div>
               </template>
             </el-form-item>
 
-            <!-- display_name -->
+            <!-- 中文名称 -->
             <el-form-item label="中文名称" prop="display_name">
               <el-input
                 v-model="form.display_name"
-                placeholder="如 狼 — 攻击行为树"
+                placeholder="如 巡逻行为树"
                 style="width: 100%"
               />
             </el-form-item>
 
-            <!-- description -->
+            <!-- 描述 -->
             <el-form-item label="描述">
               <el-input
                 v-model="form.description"
@@ -80,11 +88,11 @@
           </el-form>
         </div>
 
-        <!-- Tree config card -->
+        <!-- Card 2: 行为树结构 -->
         <div class="form-card">
           <div class="card-title">
             <span class="title-bar title-bar-green"></span>
-            <span class="title-text">树结构</span>
+            <span class="title-text">行为树结构</span>
           </div>
 
           <div v-if="loadingNodeTypes" class="loading-hint">
@@ -93,26 +101,12 @@
           </div>
 
           <template v-else>
-            <!-- No root node -->
-            <template v-if="!rootNode">
-              <div v-if="!isView" class="no-root-area">
-                <span class="no-root-hint">尚未设置根节点</span>
-                <el-button type="primary" size="small" @click="showRootSelector = true">
-                  设置根节点
-                </el-button>
-              </div>
-              <div v-else class="no-root-hint">（空树）</div>
-            </template>
-
-            <!-- Root node editor -->
             <BtNodeEditor
-              v-else
               :model-value="rootNode"
               :node-types="nodeTypeMetas"
               :disabled="isView"
               :depth="0"
               @update:model-value="rootNode = $event"
-              @delete="rootNode = null"
             />
 
             <div v-if="treeError" class="tree-error">
@@ -125,18 +119,11 @@
       </div>
     </div>
 
-    <!-- Footer -->
+    <!-- 底部操作栏（查看模式隐藏） -->
     <div v-if="!isView" class="form-footer">
-      <el-button @click="$router.push('/bt-trees')">取消</el-button>
+      <el-button @click="router.back()">取消</el-button>
       <el-button type="primary" :loading="submitting" @click="handleSubmit">保存</el-button>
     </div>
-
-    <!-- Root node type selector dialog -->
-    <BtNodeTypeSelector
-      v-model="showRootSelector"
-      :node-types="nodeTypeMetas"
-      @select="onRootTypeSelected"
-    />
   </div>
 </template>
 
@@ -150,7 +137,6 @@ import {
   CircleCheck, CircleClose,
 } from '@element-plus/icons-vue'
 import BtNodeEditor from '@/components/BtNodeEditor.vue'
-import BtNodeTypeSelector from '@/components/BtNodeTypeSelector.vue'
 import {
   btTreeApi, BT_TREE_ERR,
   serializeBtNode, deserializeBtNode,
@@ -179,7 +165,6 @@ const form = reactive({
 })
 
 const rootNode = ref<BtNodeInternal | null>(null)
-const showRootSelector = ref(false)
 
 const loadingNodeTypes = ref(false)
 const nodeTypeMetas = ref<BtNodeTypeMeta[]>([])
@@ -191,7 +176,7 @@ const rules = {
     { required: true, message: '请输入行为树标识', trigger: 'blur' },
     {
       pattern: namePattern,
-      message: '小写字母开头，仅含小写字母、数字、下划线、斜杠',
+      message: '小写字母开头，仅含小写字母、数字、下划线、斜线',
       trigger: 'blur',
     },
   ],
@@ -200,7 +185,7 @@ const rules = {
   ],
 }
 
-// ─── init ───
+// ─── 初始化 ───
 
 onMounted(async () => {
   await loadNodeTypes()
@@ -210,10 +195,10 @@ onMounted(async () => {
 async function loadNodeTypes() {
   loadingNodeTypes.value = true
   try {
-    const listRes = await btNodeTypeApi.list({ enabled: true, page: 1, page_size: 1000 })
+    const listRes = await btNodeTypeApi.list({ enabled: true, page: 1, page_size: 200 })
     const items = listRes.data?.items ?? []
 
-    // Fetch all details in parallel to obtain param_schema (not in list response)
+    // 并行拉取详情以获取 param_schema（列表接口不含此字段）
     const detailResults = await Promise.allSettled(
       items.map((item) => btNodeTypeApi.detail(item.id)),
     )
@@ -236,7 +221,7 @@ async function loadNodeTypes() {
     }
     nodeTypeMetas.value = metas
   } catch {
-    // interceptor handles toast
+    // 拦截器已 toast
   } finally {
     loadingNodeTypes.value = false
   }
@@ -267,26 +252,7 @@ async function loadDetail() {
   }
 }
 
-// ─── root node selector ───
-
-function makeDefaultNode(meta: BtNodeTypeMeta): BtNodeInternal {
-  const params: Record<string, unknown> = {}
-  for (const p of meta.params) {
-    if (p.type === 'bool') params[p.name] = false
-    else if (p.type === 'float' || p.type === 'integer') params[p.name] = 0
-    else params[p.name] = ''
-  }
-  const newNode: BtNodeInternal = { type: meta.type_name, category: meta.category, params }
-  if (meta.category === 'composite') newNode.children = []
-  if (meta.category === 'decorator') newNode.child = null
-  return newNode
-}
-
-function onRootTypeSelected(meta: BtNodeTypeMeta) {
-  rootNode.value = makeDefaultNode(meta)
-}
-
-// ─── name check ───
+// ─── 标识符校验 ───
 
 async function checkNameUnique() {
   if (!form.name || !namePattern.test(form.name)) {
@@ -308,11 +274,12 @@ async function checkNameUnique() {
   }
 }
 
-// ─── submit ───
+// ─── 提交 ───
 
 async function handleSubmit() {
   if (!rootNode.value) {
-    treeError.value = '请设置根节点'
+    ElMessage.warning('请先构建行为树结构')
+    treeError.value = '请先构建行为树结构'
     return
   }
   treeError.value = ''
@@ -376,7 +343,7 @@ async function handleSubmit() {
       treeError.value = bizErr.message
       return
     }
-    // Other errors: global interceptor handles toast
+    // 其他错误拦截器已 toast
   } finally {
     submitting.value = false
   }
@@ -384,12 +351,8 @@ async function handleSubmit() {
 </script>
 
 <style scoped>
-.bt-tree-form {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
+/* 仅组件私有样式；form-header/form-scroll/form-body-wide/form-card/card-title/
+   title-bar*/title-text/form-footer 均由全局 form-layout.css 提供，此处不重复 */
 
 .field-hint {
   display: flex;
@@ -401,6 +364,7 @@ async function handleSubmit() {
 }
 .field-hint-success { color: #67C23A; }
 .field-hint-error   { color: #F56C6C; }
+.field-gray         { color: #909399; }
 
 .field-warn {
   display: flex;
@@ -418,18 +382,6 @@ async function handleSubmit() {
   font-size: 13px;
   color: #909399;
   padding: 12px 0;
-}
-
-.no-root-area {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 0;
-}
-
-.no-root-hint {
-  font-size: 13px;
-  color: #909399;
 }
 
 .tree-error {
