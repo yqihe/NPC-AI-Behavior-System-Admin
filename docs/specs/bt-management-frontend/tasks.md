@@ -46,7 +46,7 @@ T1(API层) → T2(路由+GuardDialog) → T3(BtTreeList) → T4(BtNodeTypeSelect
 
 ---
 
-### T3：行为树列表页 BtTreeList.vue (R1, R6, R7)
+### [x] T3：行为树列表页 BtTreeList.vue (R1, R6, R7)
 
 **文件**：
 - `frontend/src/views/BtTreeList.vue`（新建）
@@ -66,7 +66,7 @@ T1(API层) → T2(路由+GuardDialog) → T3(BtTreeList) → T4(BtNodeTypeSelect
 
 ---
 
-### T4：节点类型选择对话框 BtNodeTypeSelector.vue (R15, R16)
+### [x] T4：节点类型选择对话框 BtNodeTypeSelector.vue (R15, R16)
 
 **文件**：
 - `frontend/src/components/BtNodeTypeSelector.vue`（新建）
@@ -126,7 +126,7 @@ T1(API层) → T2(路由+GuardDialog) → T3(BtTreeList) → T4(BtNodeTypeSelect
 
 ---
 
-### T7：节点类型列表页 BtNodeTypeList.vue (R9, R10, R13, R14)
+### [x] T7：节点类型列表页 BtNodeTypeList.vue (R9, R10, R13, R14)
 
 **文件**：
 - `frontend/src/views/BtNodeTypeList.vue`（新建）
