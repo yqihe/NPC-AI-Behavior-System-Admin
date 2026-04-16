@@ -51,7 +51,7 @@
                 <!-- select -->
                 <el-select
                   v-else-if="paramDef.type === 'select'"
-                  :model-value="modelValue.params[paramDef.name]"
+                  :model-value="modelValue.params[paramDef.name] ?? null"
                   :disabled="disabled || !showParams"
                   style="width: 100%"
                   @update:model-value="(v: unknown) => updateParam(paramDef.name, v)"
@@ -66,27 +66,27 @@
                 <!-- float -->
                 <el-input-number
                   v-else-if="paramDef.type === 'float'"
-                  :model-value="(modelValue.params[paramDef.name] as number) ?? undefined"
+                  :model-value="(modelValue.params[paramDef.name] as number | null) ?? null"
                   :disabled="disabled || !showParams"
                   :precision="4"
                   :step="0.1"
                   style="width: 100%"
-                  @update:model-value="(v: number | undefined) => updateParam(paramDef.name, v)"
+                  @update:model-value="(v: number | null) => updateParam(paramDef.name, v)"
                 />
                 <!-- integer -->
                 <el-input-number
                   v-else-if="paramDef.type === 'integer'"
-                  :model-value="(modelValue.params[paramDef.name] as number) ?? undefined"
+                  :model-value="(modelValue.params[paramDef.name] as number | null) ?? null"
                   :disabled="disabled || !showParams"
                   :precision="0"
                   :step="1"
                   style="width: 100%"
-                  @update:model-value="(v: number | undefined) => updateParam(paramDef.name, v)"
+                  @update:model-value="(v: number | null) => updateParam(paramDef.name, v)"
                 />
                 <!-- bool -->
                 <el-select
                   v-else-if="paramDef.type === 'bool'"
-                  :model-value="modelValue.params[paramDef.name]"
+                  :model-value="modelValue.params[paramDef.name] ?? null"
                   :disabled="disabled || !showParams"
                   style="width: 100%"
                   @update:model-value="(v: unknown) => updateParam(paramDef.name, v)"

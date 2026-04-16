@@ -2,8 +2,8 @@
   <div class="bt-tree-form">
     <!-- 顶部导航 -->
     <div class="form-header">
-      <el-icon class="back-icon" @click="router.back()"><ArrowLeft /></el-icon>
-      <span class="back-text" @click="router.back()">返回</span>
+      <el-icon class="back-icon" @click="router.push('/bt-trees')"><ArrowLeft /></el-icon>
+      <span class="back-text" @click="router.push('/bt-trees')">返回</span>
       <span class="header-sep"></span>
       <span class="header-title">
         {{ isView ? '查看行为树' : isCreate ? '新建行为树' : '编辑行为树' }}
@@ -12,7 +12,7 @@
 
     <!-- 表单滚动区 -->
     <div class="form-scroll">
-      <div class="form-body-wide">
+      <div class="form-body">
 
         <!-- Card 1: 基本信息 -->
         <div class="form-card">
@@ -121,7 +121,7 @@
 
     <!-- 底部操作栏（查看模式隐藏） -->
     <div v-if="!isView" class="form-footer">
-      <el-button @click="router.back()">取消</el-button>
+      <el-button @click="router.push('/bt-trees')">取消</el-button>
       <el-button type="primary" :loading="submitting" @click="handleSubmit">保存</el-button>
     </div>
   </div>
@@ -351,7 +351,7 @@ async function handleSubmit() {
 </script>
 
 <style scoped>
-/* 仅组件私有样式；form-header/form-scroll/form-body-wide/form-card/card-title/
+/* 仅组件私有样式；form-header/form-scroll/form-body/form-card/card-title/
    title-bar/title-text/form-footer 均由全局 form-layout.css 提供，此处不重复 */
 
 .field-hint {

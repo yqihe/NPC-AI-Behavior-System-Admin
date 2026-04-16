@@ -100,7 +100,7 @@ func (c *BtTreeCache) getListVersion(ctx context.Context) int64 {
 // GetList 查行为树列表缓存（带版本号，类型安全）
 func (c *BtTreeCache) GetList(ctx context.Context, q *model.BtTreeListQuery) (*model.BtTreeListData, bool, error) {
 	version := c.getListVersion(ctx)
-	key := rcfg.BtTreeListKey(version, q.Name, q.DisplayName, q.Enabled, q.Page, q.PageSize)
+	key := rcfg.BtTreeListKey(version, q.DisplayName, q.Enabled, q.Page, q.PageSize)
 	data, err := c.rdb.Get(ctx, key).Bytes()
 	if err == redis.Nil {
 		slog.Debug("cache.行为树列表未命中", "key", key)
@@ -124,7 +124,7 @@ func (c *BtTreeCache) GetList(ctx context.Context, q *model.BtTreeListQuery) (*m
 // SetList 写行为树列表缓存（带当前版本号）
 func (c *BtTreeCache) SetList(ctx context.Context, q *model.BtTreeListQuery, list *model.BtTreeListData) {
 	version := c.getListVersion(ctx)
-	key := rcfg.BtTreeListKey(version, q.Name, q.DisplayName, q.Enabled, q.Page, q.PageSize)
+	key := rcfg.BtTreeListKey(version, q.DisplayName, q.Enabled, q.Page, q.PageSize)
 	data, err := json.Marshal(list)
 	if err != nil {
 		slog.Error("cache.行为树列表序列化失败", "error", err)

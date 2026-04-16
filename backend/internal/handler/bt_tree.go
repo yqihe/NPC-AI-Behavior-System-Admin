@@ -48,7 +48,7 @@ func checkBtTreeName(name string, maxLen int) *errcode.Error {
 
 // List 行为树列表
 func (h *BtTreeHandler) List(ctx context.Context, req *model.BtTreeListQuery) (*model.ListData, error) {
-	slog.Debug("handler.行为树列表", "name", req.Name, "display_name", req.DisplayName)
+	slog.Debug("handler.行为树列表", "display_name", req.DisplayName)
 	return h.svc.List(ctx, req)
 }
 
@@ -69,8 +69,8 @@ func (h *BtTreeHandler) Create(ctx context.Context, req *model.CreateBtTreeReque
 	return &model.CreateBtTreeResponse{ID: id, Name: req.Name}, nil
 }
 
-// Detail 行为树详情
-func (h *BtTreeHandler) Detail(ctx context.Context, req *model.IDRequest) (*model.BtTree, error) {
+// Get 行为树详情
+func (h *BtTreeHandler) Get(ctx context.Context, req *model.IDRequest) (*model.BtTree, error) {
 	if err := shared.CheckID(req.ID); err != nil {
 		return nil, err
 	}
@@ -98,18 +98,13 @@ func (h *BtTreeHandler) Update(ctx context.Context, req *model.UpdateBtTreeReque
 }
 
 // Delete 删除行为树
-//
-// 请求包含 ID + version（乐观锁）。
-func (h *BtTreeHandler) Delete(ctx context.Context, req *model.IDVersionRequest) (*model.DeleteResult, error) {
+func (h *BtTreeHandler) Delete(ctx context.Context, req *model.IDRequest) (*model.DeleteResult, error) {
 	if err := shared.CheckID(req.ID); err != nil {
-		return nil, err
-	}
-	if err := shared.CheckVersion(req.Version); err != nil {
 		return nil, err
 	}
 	slog.Debug("handler.删除行为树", "id", req.ID)
 
-	if err := h.svc.Delete(ctx, req.ID, req.Version); err != nil {
+	if err := h.svc.Delete(ctx, req.ID); err != nil {
 		return nil, err
 	}
 	return &model.DeleteResult{ID: req.ID}, nil

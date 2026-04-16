@@ -45,6 +45,12 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9821/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
 
   admin-frontend:
     build:
@@ -54,7 +60,8 @@ services:
     ports:
       - "3000:80"
     depends_on:
-      - admin-backend
+      admin-backend:
+        condition: service_healthy
 
 volumes:
   mysql-data:

@@ -2,18 +2,33 @@
   <el-select
     :model-value="modelValue"
     filterable
-    allow-create
     clearable
     :disabled="disabled"
-    placeholder="选择或输入 BB Key"
+    placeholder="选择 BB Key"
     style="width: 100%"
-    @change="handleChange"
+    @update:model-value="handleChange"
   >
+    <el-option-group v-if="npcOptions.length > 0" label="NPC 字段">
+      <el-option
+        v-for="f in npcOptions"
+        :key="f.name"
+        :label="`${f.name} (${f.label})`"
+        :value="f.name"
+      />
+    </el-option-group>
+    <el-option-group v-if="schemaOptions.length > 0" label="事件扩展字段">
+      <el-option
+        v-for="f in schemaOptions"
+        :key="f.name"
+        :label="`${f.name} (${f.label})`"
+        :value="f.name"
+      />
+    </el-option-group>
     <el-option
-      v-for="field in fieldOptions"
-      :key="field.name"
-      :label="`${field.name} (${field.label})`"
-      :value="field.name"
+      v-if="npcOptions.length === 0 && schemaOptions.length === 0"
+      label="暂无可用 BB Key（请先配置字段或事件类型）"
+      value=""
+      disabled
     />
   </el-select>
 </template>
@@ -21,7 +36,15 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { fieldApi } from '@/api/fields'
-import type { FieldListItem } from '@/api/fields'
+import { eventTypeApi } from '@/api/eventTypes'
+
+/** 规范化后的 BB Key 条目，供 FsmConditionEditor 使用 */
+export interface BBKeyField {
+  name: string
+  label: string
+  /** 规范化类型：integer / float / string / bool / select / reference */
+  type: string
+}
 
 const props = defineProps<{
   modelValue: string
@@ -30,21 +53,40 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
-  /** 选中已知字段时携带完整 item（自由输入时为 null） */
-  'field-selected': [field: FieldListItem | null]
+  /** 选中已知字段时携带规范化 BBKeyField；清空时为 null */
+  'field-selected': [field: BBKeyField | null]
 }>()
 
-const fieldOptions = ref<FieldListItem[]>([])
+const npcOptions = ref<BBKeyField[]>([])
+const schemaOptions = ref<BBKeyField[]>([])
+
+/**
+ * 规范化字段类型名：
+ *  - NPC 字段用 'boolean'，条件编辑器期望 'bool'  → 统一为 'bool'
+ *  - 事件扩展字段用 'int'，条件编辑器期望 'integer' → 统一为 'integer'
+ */
+function normalizeType(raw: string): string {
+  if (raw === 'boolean') return 'bool'
+  if (raw === 'int') return 'integer'
+  return raw
+}
 
 onMounted(async () => {
   try {
-    const res = await fieldApi.list({
-      bb_exposed: true,
-      enabled: true,
-      page: 1,
-      page_size: 200,
-    })
-    fieldOptions.value = res.data?.items || []
+    const [fieldRes, schemaRes] = await Promise.all([
+      fieldApi.list({ bb_exposed: true, enabled: true, page: 1, page_size: 200 }),
+      eventTypeApi.schemaList({ enabled: true }),
+    ])
+    npcOptions.value = (fieldRes.data?.items || []).map((f) => ({
+      name: f.name,
+      label: f.label,
+      type: normalizeType(f.type),
+    }))
+    schemaOptions.value = (schemaRes.data?.items || []).map((s) => ({
+      name: s.field_name,
+      label: s.field_label,
+      type: normalizeType(s.field_type),
+    }))
   } catch {
     // 拦截器已 toast
   }
@@ -52,7 +94,8 @@ onMounted(async () => {
 
 function handleChange(val: string) {
   emit('update:modelValue', val || '')
-  const matched = fieldOptions.value.find((f) => f.name === val)
+  const all = [...npcOptions.value, ...schemaOptions.value]
+  const matched = all.find((f) => f.name === val)
   emit('field-selected', matched || null)
 }
 </script>

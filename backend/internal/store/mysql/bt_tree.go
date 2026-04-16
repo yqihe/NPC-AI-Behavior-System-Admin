@@ -47,14 +47,14 @@ func (s *BtTreeStore) Create(ctx context.Context, req *model.CreateBtTreeRequest
 	return id, nil
 }
 
-// GetByID 按主键查询行为树（含 config），未找到返回 errcode.ErrNotFound
+// GetByID 按主键查询行为树（含 config），未找到返回 nil, nil
 func (s *BtTreeStore) GetByID(ctx context.Context, id int64) (*model.BtTree, error) {
 	var bt model.BtTree
 	err := s.db.GetContext(ctx, &bt,
 		`SELECT id, name, display_name, description, config, enabled, version, created_at, updated_at, deleted
 		 FROM bt_trees WHERE id = ? AND deleted = 0`, id)
 	if err == sql.ErrNoRows {
-		return nil, errcode.ErrNotFound
+		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get bt_tree by id: %w", err)
@@ -83,10 +83,6 @@ func (s *BtTreeStore) List(ctx context.Context, q *model.BtTreeListQuery) ([]mod
 	where := []string{"deleted = 0"}
 	args := make([]any, 0, 4)
 
-	if q.Name != "" {
-		where = append(where, "name LIKE ?")
-		args = append(args, shared.EscapeLike(q.Name)+"%")
-	}
 	if q.DisplayName != "" {
 		where = append(where, "display_name LIKE ?")
 		args = append(args, "%"+shared.EscapeLike(q.DisplayName)+"%")
@@ -150,13 +146,11 @@ func (s *BtTreeStore) Update(ctx context.Context, req *model.UpdateBtTreeRequest
 	return nil
 }
 
-// Delete 软删除行为树（乐观锁，按 ID）
-//
-// rows=0 → errcode.ErrVersionConflict（version 不匹配 或 记录已删除）。
-func (s *BtTreeStore) Delete(ctx context.Context, id int64, version int) error {
+// SoftDelete 软删除行为树，0 rows → errcode.ErrNotFound
+func (s *BtTreeStore) SoftDelete(ctx context.Context, id int64) error {
 	result, err := s.db.ExecContext(ctx,
-		`UPDATE bt_trees SET deleted = 1, updated_at = ? WHERE id = ? AND version = ? AND deleted = 0`,
-		time.Now(), id, version,
+		`UPDATE bt_trees SET deleted = 1, updated_at = ? WHERE id = ? AND deleted = 0`,
+		time.Now(), id,
 	)
 	if err != nil {
 		return fmt.Errorf("soft delete bt_tree: %w", err)
@@ -166,7 +160,7 @@ func (s *BtTreeStore) Delete(ctx context.Context, id int64, version int) error {
 		return fmt.Errorf("rows affected: %w", err)
 	}
 	if rows == 0 {
-		return errcode.ErrVersionConflict
+		return errcode.ErrNotFound
 	}
 	return nil
 }
