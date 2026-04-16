@@ -148,6 +148,26 @@ const (
 	ErrBtNodeTypeVersionConflict     = 44026 // 版本冲突（乐观锁）
 )
 
+// --- NPC 管理 450xx ---
+
+const (
+	ErrNPCNameExists        = 45001 // NPC 标识已存在（含软删除）
+	ErrNPCNameInvalid       = 45002 // NPC 标识格式不合法
+	ErrNPCNotFound          = 45003 // NPC 不存在
+	ErrNPCTemplateNotFound  = 45004 // 引用的模板不存在
+	ErrNPCTemplateDisabled  = 45005 // 引用的模板未启用
+	ErrNPCFieldValueInvalid = 45006 // 字段值不符合类型/约束
+	ErrNPCFieldRequired     = 45007 // 必填字段未填
+	ErrNPCFsmNotFound       = 45008 // 引用的状态机不存在
+	ErrNPCFsmDisabled       = 45009 // 引用的状态机未启用
+	ErrNPCBtNotFound        = 45010 // 引用的行为树不存在
+	ErrNPCBtDisabled        = 45011 // 引用的行为树未启用
+	ErrNPCBtStateInvalid    = 45012 // bt_refs 状态名不在 FSM 状态列表中
+	ErrNPCDeleteNotDisabled = 45013 // 删除前必须先停用
+	ErrNPCVersionConflict   = 45014 // 版本冲突（乐观锁）
+	ErrNPCBtWithoutFsm      = 45015 // bt_refs 非空时 fsm_ref 必须设置
+)
+
 // --- 错误消息 ---
 
 var messages = map[int]string{
@@ -254,6 +274,22 @@ var messages = map[int]string{
 	ErrBtNodeTypeBuiltinEdit:        "内置节点类型不可编辑",
 	ErrBtNodeTypeParamSchemaInvalid: "param_schema 格式不合法",
 	ErrBtNodeTypeVersionConflict:    "该节点类型已被其他人修改，请刷新后重试",
+
+	ErrNPCNameExists:        "NPC 标识已存在",
+	ErrNPCNameInvalid:       "NPC 标识格式不合法，需小写字母开头，仅允许 a-z、0-9、下划线",
+	ErrNPCNotFound:          "NPC 不存在",
+	ErrNPCTemplateNotFound:  "引用的模板不存在",
+	ErrNPCTemplateDisabled:  "引用的模板未启用，请先在模板管理中启用",
+	ErrNPCFieldValueInvalid: "字段值不符合约束",
+	ErrNPCFieldRequired:     "必填字段未填写",
+	ErrNPCFsmNotFound:       "引用的状态机不存在",
+	ErrNPCFsmDisabled:       "引用的状态机未启用，请先在状态机管理中启用",
+	ErrNPCBtNotFound:        "引用的行为树不存在",
+	ErrNPCBtDisabled:        "引用的行为树未启用，请先在行为树管理中启用",
+	ErrNPCBtStateInvalid:    "行为树绑定的状态名与所选状态机不匹配",
+	ErrNPCDeleteNotDisabled: "请先停用该 NPC 再删除",
+	ErrNPCVersionConflict:   "该 NPC 已被其他人修改，请刷新后重试",
+	ErrNPCBtWithoutFsm:      "配置行为树前请先选择状态机",
 }
 
 // Msg 获取错误码对应的默认消息
