@@ -117,7 +117,7 @@ T8 + T9 + T10 → T11 → T12
 
 ---
 
-## T5：NPC Service
+## ✅ T5：NPC Service
 
 **关联需求**：R1–R9、R12–R17
 
