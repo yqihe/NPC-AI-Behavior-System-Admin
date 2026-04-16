@@ -32,7 +32,7 @@ T1(API层) → T2(路由+GuardDialog) → T3(BtTreeList) → T4(BtNodeTypeSelect
 
 ---
 
-### T2：路由注册 + EnabledGuardDialog 扩展 (R22)
+### [x] T2：路由注册 + EnabledGuardDialog 扩展 (R22)
 
 **文件**：
 - `frontend/src/router/index.ts`（修改）

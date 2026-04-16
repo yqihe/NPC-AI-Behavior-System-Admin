@@ -63,10 +63,12 @@ import { templateApi, TEMPLATE_ERR } from '@/api/templates'
 import { eventTypeApi, EVENT_TYPE_ERR, EXT_SCHEMA_ERR } from '@/api/eventTypes'
 import { fsmStateDictApi, FSM_STATE_DICT_ERR } from '@/api/fsmStateDicts'
 import { fsmConfigApi, FSM_ERR } from '@/api/fsmConfigs'
+import { btTreeApi, BT_TREE_ERR } from '@/api/btTrees'
+import { btNodeTypeApi, BT_NODE_TYPE_ERR } from '@/api/btNodeTypes'
 import type { BizError } from '@/api/request'
 
 type GuardAction = 'edit' | 'delete'
-type EntityType = 'field' | 'template' | 'event-type' | 'event-type-schema' | 'fsm-state-dict' | 'fsm-config'
+type EntityType = 'field' | 'template' | 'event-type' | 'event-type-schema' | 'fsm-state-dict' | 'fsm-config' | 'bt-tree' | 'bt-node-type'
 
 interface GuardEntity {
   id: number
@@ -87,6 +89,8 @@ const entityTypeLabel = computed(() => {
   if (entityType.value === 'event-type-schema') return '扩展字段'
   if (entityType.value === 'fsm-state-dict') return '状态字典'
   if (entityType.value === 'fsm-config') return '状态机'
+  if (entityType.value === 'bt-tree') return '行为树'
+  if (entityType.value === 'bt-node-type') return '节点类型'
   return '模板'
 })
 
@@ -114,6 +118,12 @@ const reasonText = computed(() => {
     }
     if (entityType.value === 'fsm-config') {
       return '已启用的状态机对游戏服务端可见，任意修改可能导致服务端拉取到不稳定配置。请先禁用，再进入编辑。'
+    }
+    if (entityType.value === 'bt-tree') {
+      return '已启用的行为树对游戏服务端可见，任意修改可能导致服务端拉取到不稳定配置。请先禁用，再进入编辑。'
+    }
+    if (entityType.value === 'bt-node-type') {
+      return '已启用的节点类型被树编辑器使用，修改参数定义可能导致已有行为树节点渲染异常。请先禁用，再进入编辑。'
     }
     return '已启用的模板对 NPC 管理页可见，允许任意修改可能导致策划在配置不稳定时选用。请先禁用，再进入编辑。'
   }
@@ -167,6 +177,12 @@ async function onActOnce() {
     } else if (entityType.value === 'fsm-config') {
       const detail = await fsmConfigApi.detail(id)
       await fsmConfigApi.toggleEnabled(id, false, detail.data.version)
+    } else if (entityType.value === 'bt-tree') {
+      const detail = await btTreeApi.detail(id)
+      await btTreeApi.toggleEnabled(id, false, detail.data.version)
+    } else if (entityType.value === 'bt-node-type') {
+      const detail = await btNodeTypeApi.detail(id)
+      await btNodeTypeApi.toggleEnabled(id, false, detail.data.version)
     } else {
       const detail = await templateApi.detail(id)
       await templateApi.toggleEnabled(id, false, detail.data.version)
@@ -186,6 +202,10 @@ async function onActOnce() {
         path = `/fsm-state-dicts/${id}/edit`
       } else if (entityType.value === 'fsm-config') {
         path = `/fsm-configs/${id}/edit`
+      } else if (entityType.value === 'bt-tree') {
+        path = `/bt-trees/${id}/edit`
+      } else if (entityType.value === 'bt-node-type') {
+        path = `/bt-node-types/${id}/edit`
       } else {
         path = `/templates/${id}/edit`
       }
@@ -208,6 +228,10 @@ async function onActOnce() {
       conflictCode = FSM_STATE_DICT_ERR.VERSION_CONFLICT
     } else if (entityType.value === 'fsm-config') {
       conflictCode = FSM_ERR.VERSION_CONFLICT
+    } else if (entityType.value === 'bt-tree') {
+      conflictCode = BT_TREE_ERR.VERSION_CONFLICT
+    } else if (entityType.value === 'bt-node-type') {
+      conflictCode = BT_NODE_TYPE_ERR.VERSION_CONFLICT
     } else {
       conflictCode = TEMPLATE_ERR.VERSION_CONFLICT
     }
