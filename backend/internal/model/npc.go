@@ -162,13 +162,17 @@ type NPCListQuery struct {
 
 // CreateNPCRequest 创建 NPC 请求
 type CreateNPCRequest struct {
-	Name        string         `json:"name"`
-	Label       string         `json:"label"`
-	Description string         `json:"description"`
-	TemplateID  int64          `json:"template_id"`
-	FieldValues []NPCFieldValue `json:"field_values"` // 按模板字段顺序传入
-	FsmRef      string         `json:"fsm_ref"`       // 空串=无行为配置
-	BtRefs      map[string]string `json:"bt_refs"`   // 空 map=无
+	Name        string            `json:"name"`
+	Label       string            `json:"label"`
+	Description string            `json:"description"`
+	TemplateID  int64             `json:"template_id"`
+	FieldValues []NPCFieldValue   `json:"field_values"` // 按模板字段顺序传入
+	FsmRef      string            `json:"fsm_ref"`       // 空串=无行为配置
+	BtRefs      map[string]string `json:"bt_refs"`       // 空 map=无
+
+	// Handler 层在校验完成后填入（不参与 JSON 反序列化）
+	TemplateName   string         `json:"-"` // 来自 templateService.GetByID
+	FieldsSnapshot []NPCFieldEntry `json:"-"` // 按模板字段顺序组装的快照
 }
 
 // NPCFieldValue 字段值（创建/编辑请求中的单个字段）
@@ -179,13 +183,16 @@ type NPCFieldValue struct {
 
 // UpdateNPCRequest 编辑 NPC 请求（template_id 不可修改）
 type UpdateNPCRequest struct {
-	ID          int64          `json:"id"`
-	Label       string         `json:"label"`
-	Description string         `json:"description"`
-	FieldValues []NPCFieldValue `json:"field_values"` // 全量传入（按快照字段顺序）
-	FsmRef      string         `json:"fsm_ref"`
+	ID          int64             `json:"id"`
+	Label       string            `json:"label"`
+	Description string            `json:"description"`
+	FieldValues []NPCFieldValue   `json:"field_values"` // 全量传入（按快照字段顺序）
+	FsmRef      string            `json:"fsm_ref"`
 	BtRefs      map[string]string `json:"bt_refs"`
-	Version     int            `json:"version"`
+	Version     int               `json:"version"`
+
+	// Handler 层在校验完成后填入（不参与 JSON 反序列化）
+	FieldsSnapshot []NPCFieldEntry `json:"-"` // 重新组装的字段快照
 }
 
 // CreateNPCResponse 创建 NPC 响应

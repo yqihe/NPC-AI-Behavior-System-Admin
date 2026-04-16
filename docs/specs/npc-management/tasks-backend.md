@@ -66,7 +66,7 @@ T8 + T9 + T10 → T11 → T12
 
 ---
 
-## T3：NPC MySQL Store
+## ✅ T3：NPC MySQL Store
 
 **关联需求**：R1–R7、R12–R16
 
