@@ -30,7 +30,7 @@ func NewBtNodeTypeHandler(
 
 // List 节点类型列表
 func (h *BtNodeTypeHandler) List(ctx context.Context, req *model.BtNodeTypeListQuery) (*model.ListData, error) {
-	slog.Debug("handler.节点类型列表", "type_name", req.TypeName, "category", req.Category)
+	slog.Debug("handler.节点类型列表", "label", req.Label, "category", req.Category)
 	return h.svc.List(ctx, req)
 }
 

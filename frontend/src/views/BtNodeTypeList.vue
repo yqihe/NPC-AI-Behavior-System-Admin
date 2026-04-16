@@ -16,8 +16,8 @@
     <!-- 筛选栏 -->
     <div class="filter-bar">
       <el-input
-        v-model="query.type_name"
-        placeholder="搜索节点类型标识"
+        v-model="query.label"
+        placeholder="搜索中文标签"
         clearable
         class="filter-item filter-item-wide"
         @keyup.enter="handleSearch"
@@ -160,7 +160,7 @@ const total = ref(0)
 const guardRef = ref<InstanceType<typeof EnabledGuardDialog> | null>(null)
 
 const query = reactive<BtNodeTypeListQuery>({
-  type_name: '',
+  label: '',
   category: '',
   enabled: null,
   page: 1,
@@ -183,7 +183,7 @@ async function fetchList() {
       page: query.page,
       page_size: query.page_size,
     }
-    if (query.type_name) params.type_name = query.type_name
+    if (query.label) params.label = query.label
     if (query.category) params.category = query.category
     if (query.enabled !== null && query.enabled !== undefined) {
       params.enabled = query.enabled
@@ -210,7 +210,7 @@ function handleSearch() {
 }
 
 function handleReset() {
-  query.type_name = ''
+  query.label = ''
   query.category = ''
   query.enabled = null
   query.page = 1

@@ -101,8 +101,8 @@ func BtTreeLockKey(id int64) string   { return fmt.Sprintf("%s%d", prefixBtTreeL
 
 // ── BtNodeType ──
 
-func BtNodeTypeListKey(version int64, typeName, category string, enabled *bool, page, pageSize int) string {
-	return fmt.Sprintf("%sv%d:%s:%s:%s:%d:%d", prefixBtNodeTypeList, version, typeName, category, boolStr(enabled), page, pageSize)
+func BtNodeTypeListKey(version int64, label, category string, enabled *bool, page, pageSize int) string {
+	return fmt.Sprintf("%sv%d:%s:%s:%s:%d:%d", prefixBtNodeTypeList, version, label, category, boolStr(enabled), page, pageSize)
 }
 func BtNodeTypeDetailKey(id int64) string { return fmt.Sprintf("%s%d", prefixBtNodeTypeDetail, id) }
 func BtNodeTypeLockKey(id int64) string   { return fmt.Sprintf("%s%d", prefixBtNodeTypeLock, id) }

@@ -1,12 +1,11 @@
 <template>
   <el-select
-    :model-value="modelValue"
+    v-model="localValue"
     filterable
     clearable
     :disabled="disabled"
     placeholder="选择 BB Key"
     style="width: 100%"
-    @update:model-value="handleChange"
   >
     <el-option-group v-if="npcOptions.length > 0" label="NPC 字段">
       <el-option
@@ -34,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { fieldApi } from '@/api/fields'
 import { eventTypeApi } from '@/api/eventTypes'
 
@@ -59,6 +58,11 @@ const emit = defineEmits<{
 
 const npcOptions = ref<BBKeyField[]>([])
 const schemaOptions = ref<BBKeyField[]>([])
+
+const localValue = computed({
+  get: () => props.modelValue,
+  set: (v: string) => handleChange(v),
+})
 
 /**
  * 规范化字段类型名：

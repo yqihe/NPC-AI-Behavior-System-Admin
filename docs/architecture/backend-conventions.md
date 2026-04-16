@@ -1,487 +1,185 @@
 # 后端统一约定
 
-本文档描述 ADMIN 项目后端（Go + Gin + MySQL + Redis）的**项目级约定**：分层职责、各层代码模式、错误码体系、乐观锁、软删除、分页。
+本文档描述 ADMIN 后端（Go + Gin + MySQL + Redis）的分层模式与模块内约定。目标是让每一层的每个模块读起来都像同一个人写的——同类操作结构相同，差异只来自业务本身，不来自风格分歧。
 
 通用 Go 规范见 `../development/standards/dev-rules/go.md`，禁止红线见 `../development/standards/red-lines/go.md`，Admin 项目专属规则见 `../development/admin/dev-rules.md`。
 
 ---
 
-## 一、分层职责
+## 一、分层职责边界
 
-```
-handler/        HTTP 入口：JSON 解析 → 请求校验 → 调 service → 写响应
-  shared/         handler 层工具：CheckID / CheckVersion / CheckName / CheckLabel / SuccessMsg
-service/        业务逻辑：分页规范化 → 缓存查询 → MySQL 读写 → 缓存失效
-  shared/         service 层工具：NormalizePagination / ValidateValue / ValidateConstraintsSelf
-store/mysql/    MySQL CRUD：纯 SQL，不含业务判断，返回哨兵错误
-store/redis/    Redis 缓存：Cache-Aside 读写，分布式锁，key 统一管理
-  shared/         Redis key 生成、连接辅助（package shared，import alias rcfg）
-cache/          内存缓存：字典 / Schema 启动全量加载，变更后 Reload()
-model/          数据模型：DB 结构体 + 请求/响应结构体
-errcode/        错误码：业务码（codes.go）+ store 哨兵错误（store_errors.go）
-router/         路由注册：按模块分组，RESTful 路径
-setup/          初始化聚合：DB 连接 → Store → Cache → Service → Handler → Router
-config/         配置加载
-util/const.go   跨层枚举常量（FieldType / RefType / DictGroup 等）
-```
+四层各司其职，单向依赖，不可跨层调用：
 
-**铁律：层之间单向依赖，禁止跨层调用。handler 不直接访问 store，service 不直接写 HTTP 响应。**
+**Handler**：HTTP 入口。唯一职责是格式校验（非空、长度、枚举合法性）+ 跨模块编排 + 响应包装。不含业务规则判断，不直接访问 store。
+
+**Service**：业务逻辑层。负责分页规范化、缓存读写、业务约束校验（启用中不可编辑、被引用不可删除等）、存在性检查、store 哨兵错误翻译。
+
+**Store/MySQL**：单表 CRUD。纯 SQL，不含任何业务判断，不了解"启用"、"软删除以外"等业务概念，只返回哨兵错误（见 `errcode/store_errors.go`）。
+
+**Store/Redis**：Cache-Aside 缓存操作。Key 管理、分布式锁、空标记，不含业务逻辑。
+
+目录结构与初始化链路详见 `CLAUDE.md` 目录结构一节，依赖装配详见 `backend/internal/setup/`。
 
 ---
 
-## 二、Handler 层模式
+## 二、Handler 层
 
-### 2.1 请求包装器
+### 方法命名
 
-所有 handler 方法用 `WrapCtx` 包装，不手写 JSON 解析和响应：
+每个模块的 handler 方法固定为：`List`、`Create`、`Get`、`Update`、`Delete`、`CheckName`、`ToggleEnabled`，有引用查询的加 `GetReferences`。方法名与业务语义一一对应，不使用 `Detail` 或其他别名。
 
-```go
-// router 注册
-r.POST("/api/v1/fields", handler.WrapCtx(h.fieldHandler.Create))
-r.GET("/api/v1/fields", handler.WrapCtx(h.fieldHandler.List))
+### 请求校验顺序
 
-// handler 方法签名统一为：
-func (h *XxxHandler) Create(ctx context.Context, req *model.XxxCreateReq) (*model.XxxCreateResp, error)
-func (h *XxxHandler) List(ctx context.Context, req *model.XxxListQuery) (*model.ListData, error)
-func (h *XxxHandler) Detail(ctx context.Context, req *model.IDRequest) (*model.XxxDetail, error)
-func (h *XxxHandler) Update(ctx context.Context, req *model.XxxUpdateReq) (*string, error)
-func (h *XxxHandler) Delete(ctx context.Context, req *model.IDRequest) (*model.DeleteResult, error)
-func (h *XxxHandler) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) (*string, error)
-func (h *XxxHandler) CheckName(ctx context.Context, req *model.CheckNameRequest) (*model.CheckNameResult, error)
-```
+同一个方法内，校验严格按以下顺序：先校验 ID（`shared.CheckID`），再校验 Version（`shared.CheckVersion`），再校验其余格式字段（名称、标签、枚举），最后才打 `slog.Debug` 并调用 service。Debug 日志必须在所有校验通过之后才记录——如果记在前面，校验失败时也会打出无意义的日志。见 `handler/bt_tree.go` Create 方法的结构。
 
-`WrapCtx` 自动处理：`ShouldBindJSON` → 调 fn → 业务错误写对应 code → 系统错误写 50000 + slog.Error。
+### shared 校验辅助
 
-### 2.2 请求校验顺序
+handler 层不手写格式判断逻辑，统一使用 `handler/shared/validate.go` 提供的 `CheckID`、`CheckVersion`、`CheckName`、`CheckLabel`、`SuccessMsg`。每个辅助函数的错误码语义固定，不同模块传入不同的业务错误码常量。
 
-```go
-func (h *XxxHandler) Update(ctx context.Context, req *model.XxxUpdateReq) (*string, error) {
-    // 1. ID / Version（用 shared helper，不手写 if req.ID <= 0）
-    if err := shared.CheckID(req.ID); err != nil {
-        return nil, err
-    }
-    if err := shared.CheckVersion(req.Version); err != nil {
-        return nil, err
-    }
+### 跨模块编排与事务
 
-    // 2. 格式校验（名称/标签/枚举）
-    if e := shared.CheckName(req.Name, h.cfg.NameMaxLength, errcode.ErrXxxNameInvalid, "字段标识"); e != nil {
-        return nil, e
-    }
-    if e := shared.CheckLabel(req.Label, h.cfg.LabelMaxLength, "中文标签"); e != nil {
-        return nil, e
-    }
+需要同时操作多个模块的写操作（模板写 field_refs、状态机写 BB Key refs），事务由 handler 负责开启和提交，每个 service 提供 `XxxInTx` 变体供 handler 调用。缓存失效必须在 `tx.Commit()` 之前执行，顺序不可颠倒，原因见 `handler/template.go` 和 `handler/fsm_config.go` 的注释。
 
-    // 3. debug 日志（校验通过后再记录）
-    slog.Debug("handler.xxx.update", "id", req.ID)
+单模块内部的事务（如 EventTypeSchema 的约束收紧保护）由 service 层自行开启，handler 不感知事务细节。
 
-    // 4. 调 service
-    if err := h.svc.Update(ctx, req); err != nil {
-        return nil, err
-    }
-    return shared.SuccessMsg("保存成功"), nil
-}
-```
+### Delete 请求类型
 
-### 2.3 shared 辅助函数
-
-| 函数 | 用途 |
-|------|------|
-| `shared.CheckID(id int64)` | id <= 0 返回 40000 |
-| `shared.CheckVersion(v int)` | v <= 0 返回 40000 |
-| `shared.CheckName(name, maxLen, errCode, subject)` | 正则 + 长度，错误码由调用方传入 |
-| `shared.CheckLabel(label, maxLen, subject)` | 非空 + UTF-8 字符数上限，统一返回 40000 |
-| `shared.SuccessMsg(msg)` | 构造 `*string`，Update/ToggleEnabled 返回值用 |
+删除接口统一使用 `model.IDRequest`，不在删除请求中要求客户端传 `version`。删除前 service 通过 `getOrNotFound` 确认记录存在，防并发误删由业务约束（启用中不可删除）而非乐观锁承担。
 
 ---
 
-## 三、Service 层模式
+## 三、Service 层
 
-### 3.1 结构体与构造函数
+### `getOrNotFound` 模式
 
-```go
-type XxxService struct {
-    store    *storemysql.XxxStore
-    cache    *storeredis.XxxCache   // Redis 缓存（可选）
-    pagCfg   *config.PaginationConfig
-    xxxCfg   *config.XxxConfig     // 模块专属配置
-}
+所有需要先查记录再操作的方法，统一通过私有方法 `getOrNotFound` 封装存在性检查，其实现如下逻辑：调 `s.store.GetByID`，若 `err != nil` 直接透传；若 `d == nil` 返回模块专属的 NotFound 错误。这个约定来自 store 层 `GetByID` 返回 `(nil, nil)` 表示不存在，而不是返回哨兵错误。见 `service/fsm_state_dict.go` 和 `service/bt_node_type.go`。
 
-func NewXxxService(store *storemysql.XxxStore, cache *storeredis.XxxCache,
-    pagCfg *config.PaginationConfig, xxxCfg *config.XxxConfig) *XxxService {
-    return &XxxService{store: store, cache: cache, pagCfg: pagCfg, xxxCfg: xxxCfg}
-}
-```
+### List 方法结构
 
-### 3.2 List 方法
+List 的执行顺序固定：① 调 `shared.NormalizePagination` 规范化分页参数（必须是第一步，store 层直接使用这些参数，不做二次规范化）；② 查 Redis，命中则直接返回；③ 查 MySQL；④ 写 Redis。Redis 故障时静默跳过，不阻断主流程。见 `service/bt_tree.go` List 方法。
 
-```go
-func (s *XxxService) List(ctx context.Context, q *model.XxxListQuery) (*model.ListData, error) {
-    // 1. 分页规范化（必须第一步）
-    shared.NormalizePagination(&q.Page, &q.PageSize,
-        s.pagCfg.DefaultPage, s.pagCfg.DefaultPageSize, s.pagCfg.MaxPageSize)
+### GetByID 方法结构
 
-    // 2. 查 Redis（挂了跳过，降级直查 MySQL）
-    if cached, hit, err := s.cache.GetList(ctx, q); err == nil && hit {
-        return cached.ToListData(), nil
-    }
+遵循 Cache-Aside + 分布式锁 + 空标记三层防护：先查缓存，缺失时加分布式锁（防击穿），加锁后 double-check，然后查 MySQL，结果（含 nil）写入缓存。MySQL 返回 `nil` 时缓存空标记，同样返回 NotFound，防止下次再穿透到 MySQL。见 `service/fsm_state_dict.go` GetByID 方法。
 
-    // 3. 查 MySQL
-    items, total, err := s.store.List(ctx, q)
-    if err != nil {
-        return nil, err
-    }
+### 缓存失效时机
 
-    // 4. 写 Redis
-    listData := &model.XxxListData{Items: items, Total: total, Page: q.Page, PageSize: q.PageSize}
-    s.cache.SetList(ctx, q, listData)
+写操作的缓存失效时机有两种情况：
 
-    return listData.ToListData(), nil
-}
-```
+有事务的路径，缓存失效必须在 `tx.Commit()` 之前调用。原因：Commit 前失效，若 Commit 失败缓存已清空，下次请求会穿透到 MySQL 读到一致的旧数据，安全；若 Commit 后才失效，Commit 成功与失效之间存在窗口期，其他协程可能读到旧值并写回缓存，造成脏数据存活。
 
-### 3.3 store 哨兵错误翻译
+无事务的路径，MySQL 写成功后立即失效缓存。
 
-store 层只返回哨兵错误，service 层 `errors.Is()` 捕获后翻译为模块业务码：
+所有写操作同时失效 List 缓存（`InvalidateList`）和 Detail 缓存（`DelDetail`）。
 
-```go
-// store 返回哨兵错误（errcode/store_errors.go）：
-// errcode.ErrNotFound / errcode.ErrVersionConflict / errcode.ErrDuplicate
+### store 哨兵错误翻译
 
-// service 翻译：
-if errors.Is(err, errcode.ErrVersionConflict) {
-    return errcode.New(errcode.ErrXxxVersionConflict)
-}
-if errors.Is(err, errcode.ErrDuplicate) {
-    return errcode.Newf(errcode.ErrXxxNameExists, "标识 '%s' 已存在", req.Name)
-}
-```
-
-### 3.4 乐观锁写操作
-
-```go
-func (s *XxxService) Update(ctx context.Context, req *model.XxxUpdateReq) error {
-    // 1. 存在性校验（也可内联）
-    if _, err := s.getOrNotFound(ctx, req.ID); err != nil {
-        return err
-    }
-
-    // 2. 业务规则校验（启用中不可编辑等）
-
-    // 3. 写 MySQL（store 层做乐观锁：WHERE id=? AND version=?，0 rows → ErrVersionConflict）
-    if err := s.store.Update(ctx, req); err != nil {
-        if errors.Is(err, errcode.ErrVersionConflict) {
-            return errcode.New(errcode.ErrXxxVersionConflict)
-        }
-        return err
-    }
-
-    // 4. 缓存失效（Commit 成功后）
-    s.cache.DelDetail(ctx, req.ID)
-    s.cache.InvalidateList(ctx)
-
-    return nil
-}
-```
-
-### 3.5 事务写操作
-
-需要跨表原子操作时开事务，统一用 defer Rollback：
-
-```go
-tx, err := s.store.DB().BeginTxx(ctx, nil)
-if err != nil {
-    return fmt.Errorf("begin tx: %w", err)
-}
-defer func() {
-    if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
-        slog.Warn("service.xxx事务回滚失败", "error", rbErr)
-    }
-}()
-
-// ... 事务内操作 ...
-
-if err := tx.Commit(); err != nil {
-    return fmt.Errorf("commit: %w", err)
-}
-
-// 缓存失效必须在 Commit 成功后
-s.cache.Reload(ctx)  // 或 DelDetail + InvalidateList
-```
-
-### 3.6 shared 辅助函数
-
-| 函数 | 用途 |
-|------|------|
-| `shared.NormalizePagination(page, pageSize, ...)` | 修正负数/超限分页参数 |
-| `shared.ValidateValue(fieldType, constraints, value)` | 字段值是否符合 constraints |
-| `shared.ValidateConstraintsSelf(fieldType, constraints, errCode)` | constraints 内部自洽校验 |
+store 层只返回三种哨兵错误：`ErrNotFound`、`ErrVersionConflict`、`ErrDuplicate`（均定义在 `errcode/store_errors.go`）。service 层用 `errors.Is` 捕获后翻译为模块专属业务码，例如 `ErrVersionConflict` → `ErrXxxVersionConflict`。业务码携带中文描述，供前端展示。
 
 ---
 
-## 四、Store/MySQL 层模式
+## 四、Store/MySQL 层
 
-### 4.1 List 方法（带分页）
+### `GetByID` 返回约定
 
-```go
-func (s *XxxStore) List(ctx context.Context, q *model.XxxListQuery) ([]model.XxxListItem, int64, error) {
-    where := []string{"deleted = 0"}
-    args := make([]any, 0, 4)
+未找到记录时返回 `(nil, nil)`，不返回哨兵错误。调用方（service 层）通过检查 `d == nil` 判断不存在。这是全库统一约定，见 `store/mysql/field.go`、`store/mysql/fsm_state_dict.go`、`store/mysql/bt_node_type.go` 等所有模块。
 
-    if q.Name != "" {
-        where = append(where, "name LIKE ?")
-        args = append(args, shared.EscapeLike(q.Name)+"%")
-    }
-    if q.Enabled != nil {
-        where = append(where, "enabled = ?")
-        args = append(args, *q.Enabled)
-    }
-    whereClause := strings.Join(where, " AND ")
+### List WHERE 构建
 
-    // COUNT
-    var total int64
-    if err := s.db.GetContext(ctx, &total,
-        "SELECT COUNT(*) FROM xxx WHERE "+whereClause, args...); err != nil {
-        return nil, 0, fmt.Errorf("count xxx: %w", err)
-    }
+WHERE 条件统一用 `[]string` slice 积累，最后 `strings.Join(where, " AND ")` 拼接。不使用字符串直接拼接（容易漏空格、难以阅读）。初始元素始终是 `"deleted = 0"`，其余条件按查询参数按需追加。见 `store/mysql/bt_node_type.go` List 方法。
 
-    // LIST
-    listSQL := fmt.Sprintf(
-        `SELECT id, name, ... FROM xxx WHERE %s ORDER BY id DESC LIMIT ? OFFSET ?`,
-        whereClause,
-    )
-    offset := (q.Page - 1) * q.PageSize
-    items := make([]model.XxxListItem, 0)
-    if err := s.db.SelectContext(ctx, &items, listSQL, append(args, q.PageSize, offset)...); err != nil {
-        return nil, 0, fmt.Errorf("list xxx: %w", err)
-    }
-    return items, total, nil
-}
-```
+### 分页参数
 
-### 4.2 乐观锁 Update
+store 的 List 方法直接使用 `q.Page` 和 `q.PageSize` 计算 OFFSET，不在 store 层做默认值 fallback。service 层的 `NormalizePagination` 已经保证进入 store 的分页参数合法，store 层不重复处理。
 
-```go
-func (s *XxxStore) Update(ctx context.Context, req *model.XxxUpdateReq) error {
-    result, err := s.db.ExecContext(ctx,
-        `UPDATE xxx SET col=?, version=version+1, updated_at=? WHERE id=? AND version=? AND deleted=0`,
-        req.Col, time.Now(), req.ID, req.Version,
-    )
-    if err != nil {
-        return fmt.Errorf("update xxx: %w", err)
-    }
-    rows, _ := result.RowsAffected()
-    if rows == 0 {
-        return errcode.ErrVersionConflict  // 哨兵错误，service 层翻译
-    }
-    return nil
-}
-```
+### 软删除
 
-### 4.3 软删除
+所有实体软删除：`UPDATE xxx SET deleted=1, updated_at=? WHERE id=? AND deleted=0`，0 rows 时返回 `ErrNotFound`。方法名统一为 `SoftDelete(ctx context.Context, id int64) error`，不带 version 参数。所有查询语句加 `AND deleted=0` 过滤。唯一性检查（`ExistsByName`）不加 `deleted=0`，保证已删除的标识不可复用。
 
-所有配置实体用软删除，不物理删除：
+### `ToggleEnabled` 签名
 
-```go
-// 软删除
-UPDATE xxx SET deleted=1, updated_at=? WHERE id=? AND deleted=0
+所有模块的 `ToggleEnabled` 方法统一接受 `*model.ToggleEnabledRequest` 结构体，不拆散为 `(id, enabled, version)` 散参数。这与 Update、Delete 等其他操作的风格一致。见 `store/mysql/bt_node_type.go` 和 `store/mysql/fsm_state_dict.go`。
 
-// 所有查询加 AND deleted=0
-SELECT ... FROM xxx WHERE deleted = 0 AND ...
+### `Update` 乐观锁
 
-// 唯一索引包含软删除行（含 field_name + deleted）避免标识复用问题时使用全量检查：
-SELECT COUNT(*) FROM xxx WHERE name = ?  // 不加 deleted=0
-```
+所有 Update 语句带版本条件：`WHERE id=? AND version=? AND deleted=0`，同时 `SET version=version+1`。0 rows 时返回 `ErrVersionConflict`。
 
-### 4.4 store 层只返回哨兵错误
+### List 列选择
 
-```
-errcode.ErrNotFound        // GetByID 返回 nil 时调用方判断，或 soft-delete 0 rows 时
-errcode.ErrVersionConflict // Update 0 rows 时
-errcode.ErrDuplicate       // 捕获 MySQL 1062（shared.Is1062(err)）
-```
+List 查询只返回列表展示需要的核心列（通常是 id、name、label、enabled、created_at），不返回大字段（config、properties、fields 等 JSON 列）。GetByID 返回完整列。这是性能约定，不是风格约定。
+
+### Tx 变体
+
+需要在事务内被 handler 调用的方法提供 Tx 版本，命名为 `CreateInTx`、`UpdateInTx`、`SoftDeleteTx`，接受 `*sqlx.Tx` 作为第二参数。非事务版本和事务版本逻辑相同，区别只是使用 `s.db` 还是传入的 `tx`。
 
 ---
 
-## 五、Store/Redis 层模式（Cache-Aside）
+## 五、Redis 缓存层
 
-### 5.1 读：先查缓存，缺失穿透到 MySQL
+### 缓存适用范围
 
-```go
-// service 层
-if cached, hit, err := s.cache.GetDetail(ctx, id); err == nil && hit {
-    return cached, nil
-}
-// 查 MySQL，写缓存
-```
+除 EventTypeSchema 外，所有主要业务模块（字段、模板、事件类型、状态机、状态字典、行为树、节点类型）都使用 Redis Cache-Aside。EventTypeSchema 是全局小表，启动时全量加载到内存缓存（`cache/event_type_schema_cache.go`），每次写操作后调 `Reload()` 重建，不走 Redis。
 
-### 5.2 写：先更新 MySQL，Commit 成功后失效缓存
+### Key 管理
 
-```go
-// 顺序不可颠倒：Commit 前失效 → 其他协程穿透到旧数据写入缓存 → 更新丢失
-if err := tx.Commit(); err != nil { ... }
-s.cache.DelDetail(ctx, id)
-s.cache.InvalidateList(ctx)
-```
+所有 Redis key 通过 `store/redis/config/keys.go` 中的函数生成，不在业务代码里拼字符串。List key 基于查询参数的哈希生成，Detail key 基于 ID。
 
-### 5.3 Key 统一管理
+### 分布式锁
 
-所有 Redis key 通过 `store/redis/config/keys.go` 中的函数生成，不在业务代码里拼字符串：
-
-```go
-// keys.go
-func FieldDetailKey(id int64) string { return fmt.Sprintf("field:detail:%d", id) }
-func FieldListKey(hash string) string { return fmt.Sprintf("field:list:%s", hash) }
-```
-
-### 5.4 Redis 故障降级
-
-cache 方法遇到 Redis 故障（`err != nil`）时静默跳过，不阻断主流程：
-
-```go
-if cached, hit, err := s.cache.GetList(ctx, q); err == nil && hit {
-    // 命中
-}
-// err != nil 或 !hit：直接走 MySQL，不 return err
-```
+`GetByID` 的缓存穿透防护使用分布式锁，锁的 TTL 通过 `store/redis/shared/common.go` 中的 `LockExpire` 常量统一配置，不在各模块硬编码。
 
 ---
 
-## 六、Model 层模式
+## 六、Model 层
 
-### 6.1 DB 结构体公共字段
+### DB 结构体公共字段
 
-```go
-type Xxx struct {
-    ID        int64     `json:"id"         db:"id"`
-    Name      string    `json:"name"       db:"name"`
-    // ... 业务字段 ...
-    Enabled   bool      `json:"enabled"    db:"enabled"`
-    Version   int       `json:"version"    db:"version"`
-    CreatedAt time.Time `json:"created_at" db:"created_at"`
-    UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
-    Deleted   bool      `json:"-"          db:"deleted"`   // 软删除，json 不暴露
-}
-```
+所有持久化实体包含：`id`（int64）、`enabled`（bool）、`version`（int）、`created_at`、`updated_at`、`deleted`（bool，json tag 为 `"-"` 不对外暴露）。
 
-### 6.2 请求结构体命名
+### 列表 vs 详情结构体
 
-| 用途 | 命名 |
-|------|------|
-| 列表查询 | `XxxListQuery` |
-| 详情查询 | 直接用 `model.IDRequest` |
-| 创建请求 | `CreateXxxRequest` |
-| 更新请求 | `UpdateXxxRequest`（含 ID + Version） |
-| 启用切换 | 共用 `model.ToggleEnabledRequest`（id + enabled + version） |
-| 名称检查 | 共用 `model.CheckNameRequest` |
+List 查询返回专用的轻量结构体（`XxxListItem`），只含列表展示需要的字段。GetByID 返回完整实体结构体。两者分开定义，不共用。
 
-### 6.3 通用响应结构体
+### 通用请求/响应结构体
 
-```go
-// 列表响应（所有 List 接口统一）
-type ListData struct {
-    Items    any   `json:"items"`
-    Total    int64 `json:"total"`
-    Page     int   `json:"page"`
-    PageSize int   `json:"page_size"`
-}
-
-// 删除响应
-type DeleteResult struct {
-    ID    int64  `json:"id"`
-    Name  string `json:"name"`
-    Label string `json:"label"`
-}
-
-// 名称可用性检查响应
-type CheckNameResult struct {
-    Available bool   `json:"available"`
-    Message   string `json:"message"`
-}
-```
+以下结构体所有模块共用，不各自重复定义：`IDRequest`、`ToggleEnabledRequest`、`CheckNameRequest`、`CheckNameResult`、`DeleteResult`、`ListData`。仅当某模块的删除响应需要携带额外信息（如 `ReferencedBy` 列表）时才定义专属结构体，见 `model/bt_node_type.go` 的 `BtNodeTypeDeleteResult`。
 
 ---
 
 ## 七、错误码体系
 
-### 7.1 分层错误
+错误分三层流动：store 只返回哨兵错误，service 翻译为模块业务码，handler 的 `WrapCtx` 将 `*errcode.Error` 写入 HTTP 响应。
 
-```
-store 层  →  哨兵错误（errors.New，不含业务含义）
-service 层 →  errcode.New(ErrXxxVersionConflict) 翻译为业务码
-handler 层 →  WrapCtx 将 *errcode.Error 的 code 写入响应
-```
+所有错误码定义在 `errcode/codes.go`，按模块分段，每段包含固定含义的几类错误：NameExists、NotFound、VersionConflict、DeleteNotDisabled、EditNotDisabled，以及各模块特有的业务约束错误。每个错误码在 `messages` map 中对应一条中文提示。
 
-### 7.2 错误码分段
-
-| 模块 | 范围 |
-|------|------|
-| 通用 | 40000 / 50000 |
-| 字段管理 | 400xx（40001–40017） |
-| 模板管理 | 410xx（41001–41012） |
-| 事件类型 | 420xx（42001–42015） |
-| 扩展字段 Schema | 420[20-39]（42020–42031） |
-| 状态机配置 | 430xx（43001–43012） |
-| 状态字典 | 430[13-24]（43013–43020） |
-
-### 7.3 错误码定义要求
-
-每个新模块在 `errcode/codes.go` 中声明自己的分段，并同步在 `messages` map 里写中文提示：
-
-```go
-const (
-    ErrXxxNameExists       = 4yyyy1
-    ErrXxxNotFound         = 4yyyy2
-    ErrXxxVersionConflict  = 4yyyy3
-    ErrXxxDeleteNotDisabled = 4yyyy4
-    ErrXxxEditNotDisabled  = 4yyyy5
-    // ...
-)
-```
+store 哨兵错误定义在 `errcode/store_errors.go`，与业务码隔离。
 
 ---
 
-## 八、路由约定
+## 八、日志规范
 
-```
-POST   /api/v1/xxx           → Create
-GET    /api/v1/xxx           → List（query 参数用 ShouldBindJSON 从 body 读）
-POST   /api/v1/xxx/detail    → Detail（body: {id}）
-POST   /api/v1/xxx/update    → Update
-POST   /api/v1/xxx/delete    → Delete
-POST   /api/v1/xxx/toggle-enabled → ToggleEnabled
-POST   /api/v1/xxx/check-name    → CheckName
-```
+**Debug**：记录每次请求的关键入参，在所有格式校验通过之后、调用 service 之前打印。handler 层和 service 层都可以有 Debug 日志，分别标注来源前缀（`handler.xxx` / `service.xxx`）。
 
-GET 的 query 参数统一从 JSON body 读（通过 `ShouldBindJSON`），不用 URL query string，保持前后端一致。
+**Info**：记录成功的写操作，包含操作结果的关键字段（id、name 等）。仅在写操作成功后记录，不在读操作上记录。
+
+**Warn**：记录非致命异常，包括 Redis 故障、跨模块补全失败、事务回滚失败。这类情况不阻断请求，但需要留痕。
+
+**Error**：记录系统级错误，包括 MySQL 写失败、事务 commit 失败、无法解释的业务异常。出现 Error 日志意味着请求大概率失败。
 
 ---
 
-## 九、日志规范
+## 九、参考实现
 
-```go
-// debug：入参（校验通过后记录，不记录敏感字段）
-slog.Debug("handler.xxx.create", "name", req.Name)
+以下模块覆盖了所有模式的典型用法，开发新模块时以这些为对照：
 
-// info：成功写操作
-slog.Info("service.xxx创建成功", "id", id, "name", req.Name)
+**字段管理**（`handler/field.go` + `service/field.go` + `store/mysql/field.go`）：标准单模块 CRUD，包含 properties JSON 校验、BB Key 引用、GetByID 完整 Cache-Aside 流程。
 
-// warn：非致命异常（缓存失败、跨模块补字段失败）
-slog.Warn("service.xxx缓存失败", "error", err)
+**模板管理**（`handler/template.go` + `service/template.go` + `store/mysql/template.go`）：跨模块事务编排范本，handler 层开事务、调多个 service、commit 前失效多模块缓存。
 
-// error：系统错误（DB 写失败、事务失败）
-slog.Error("service.xxx写DB失败", "error", err)
-```
+**状态机配置**（`handler/fsm_config.go` + `service/fsm_config.go`）：跨模块事务 + BB Key diff 追踪，与模板管理并列作为跨模块编排的参考。
 
----
+**状态字典**（`handler/fsm_state_dict.go` + `service/fsm_state_dict.go`）：Delete 带引用检查并返回 `ReferencedBy` 列表的模式，以及 `getOrNotFound` 的 `d==nil` 判断模式。
 
-## 十、已实现模块参考
+**节点类型**（`handler/bt_node_type.go` + `service/bt_node_type.go`）：同上，Delete 被引用时返回携带引用列表的专属结构体，结合 `WrapCtx` 的错误携带 data 机制。
 
-| 模块 | handler | service | store/mysql |
-|------|---------|---------|-------------|
-| 字段管理 | `handler/field.go` | `service/field.go` | `store/mysql/field.go` |
-| 模板管理 | `handler/template.go` | `service/template.go` | `store/mysql/template.go` |
-| 事件类型 | `handler/event_type.go` | `service/event_type.go` | `store/mysql/event_type.go` |
-| 扩展字段 Schema | `handler/event_type_schema.go` | `service/event_type_schema.go` | `store/mysql/event_type_schema.go` |
-| 状态机配置 | `handler/fsm_config.go` | `service/fsm_config.go` | `store/mysql/fsm_config.go` |
-| 状态字典 | `handler/fsm_state_dict.go` | `service/fsm_state_dict.go` | `store/mysql/fsm_state_dict.go` |
+**扩展字段 Schema**（`handler/event_type_schema.go` + `service/event_type_schema.go`）：内存缓存（非 Redis）模式、service 层内部事务、约束收紧保护（Update 带 FOR SHARE 锁）。

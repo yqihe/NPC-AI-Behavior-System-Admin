@@ -25,7 +25,7 @@ export interface BtNodeTypeMeta {
 // ─── 列表 ───
 
 export interface BtNodeTypeListQuery {
-  type_name?: string
+  label?: string      // 中文标签，前缀匹配
   category?: string   // '' | 'composite' | 'decorator' | 'leaf'
   enabled?: boolean | null
   page: number

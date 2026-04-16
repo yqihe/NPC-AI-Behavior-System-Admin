@@ -54,7 +54,7 @@
                   :model-value="modelValue.params[paramDef.name] ?? null"
                   :disabled="disabled || !showParams"
                   style="width: 100%"
-                  @update:model-value="(v: unknown) => updateParam(paramDef.name, v)"
+                  @change="(v: unknown) => updateParam(paramDef.name, v)"
                 >
                   <el-option
                     v-for="opt in (paramDef.options || [])"
@@ -71,7 +71,7 @@
                   :precision="4"
                   :step="0.1"
                   style="width: 100%"
-                  @update:model-value="(v: number | null) => updateParam(paramDef.name, v)"
+                  @change="(v: number | null) => updateParam(paramDef.name, v)"
                 />
                 <!-- integer -->
                 <el-input-number
@@ -81,7 +81,7 @@
                   :precision="0"
                   :step="1"
                   style="width: 100%"
-                  @update:model-value="(v: number | null) => updateParam(paramDef.name, v)"
+                  @change="(v: number | null) => updateParam(paramDef.name, v)"
                 />
                 <!-- bool -->
                 <el-select
@@ -89,7 +89,7 @@
                   :model-value="modelValue.params[paramDef.name] ?? null"
                   :disabled="disabled || !showParams"
                   style="width: 100%"
-                  @update:model-value="(v: unknown) => updateParam(paramDef.name, v)"
+                  @change="(v: unknown) => updateParam(paramDef.name, v)"
                 >
                   <el-option :value="true" label="true" />
                   <el-option :value="false" label="false" />
@@ -261,6 +261,12 @@ function categoryLabel(cat: string): string {
   return cat
 }
 
+// ─── 深拷贝（JSON 克隆，兼容 Vue reactive proxy，避免 structuredClone DataCloneError）───
+
+function cloneNode(node: BtNodeInternal): BtNodeInternal {
+  return JSON.parse(JSON.stringify(node)) as BtNodeInternal
+}
+
 // ─── Node factory ───
 
 function createNode(meta: BtNodeTypeMeta): BtNodeInternal {
@@ -291,7 +297,7 @@ function handleSelectorSelect(meta: BtNodeTypeMeta) {
 
   if (purpose === 'addChild') {
     if (!props.modelValue) return
-    const cloned = structuredClone(props.modelValue)
+    const cloned = cloneNode(props.modelValue)
     if (!cloned.children) cloned.children = []
     cloned.children.push(createNode(meta))
     emit('update:modelValue', cloned)
@@ -300,7 +306,7 @@ function handleSelectorSelect(meta: BtNodeTypeMeta) {
 
   if (purpose === 'setChild') {
     if (!props.modelValue) return
-    const cloned = structuredClone(props.modelValue)
+    const cloned = cloneNode(props.modelValue)
     cloned.child = createNode(meta)
     emit('update:modelValue', cloned)
     return
@@ -317,7 +323,7 @@ function handleDeleteSelf() {
 
 function handleChildUpdate(idx: number, value: BtNodeInternal | null) {
   if (!props.modelValue) return
-  const cloned = structuredClone(props.modelValue)
+  const cloned = cloneNode(props.modelValue)
   if (!cloned.children) cloned.children = []
   if (value === null) {
     cloned.children.splice(idx, 1)
@@ -331,7 +337,7 @@ function handleChildUpdate(idx: number, value: BtNodeInternal | null) {
 
 function handleDecoratorChildUpdate(value: BtNodeInternal | null) {
   if (!props.modelValue) return
-  const cloned = structuredClone(props.modelValue)
+  const cloned = cloneNode(props.modelValue)
   cloned.child = value
   emit('update:modelValue', cloned)
 }
@@ -340,7 +346,7 @@ function handleDecoratorChildUpdate(value: BtNodeInternal | null) {
 
 function updateParam(name: string, value: unknown) {
   if (!props.modelValue) return
-  const cloned = structuredClone(props.modelValue)
+  const cloned = cloneNode(props.modelValue)
   cloned.params[name] = value
   emit('update:modelValue', cloned)
 }

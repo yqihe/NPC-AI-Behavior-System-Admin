@@ -421,28 +421,37 @@ function serializeCondition(c: FsmCondition): Record<string, unknown> {
 
 ### 7.4 BB Key 选择（`BBKeySelector`）
 
-条件树的 `key` 和 `ref_key` 都是 BB Key 标识。`BBKeySelector` 提供如下能力：
+**已实现**。条件树的 `key` 和 `ref_key` 都是 BB Key 标识，`BBKeySelector` 同时从两个数据源加载选项：
 
-| 来源 | 获取方式 | 说明 |
-|------|----------|------|
-| 字段表中「标记为 BB 暴露」的字段 | `fieldApi.list({ bb_exposed: true, enabled: true })`（待后端确认接口形态） | 主要来源；下拉显示 `name (display_name)` |
-| 运行时 Key 表 | 暂无专属接口 | **待实现**；临时方案允许自由输入 |
-| 历史使用过的 Key（编辑场景） | 从当前 `transitions` 中提取 | 始终可选，避免列表外的值被意外覆盖 |
+| 来源 | 获取方式 | 分组标签 |
+|------|----------|---------|
+| 字段管理中「标记为 BB 暴露」的字段 | `fieldApi.list({ bb_exposed: true, enabled: true, page_size: 200 })` | `NPC 字段` |
+| 事件扩展字段 Schema | `eventTypeApi.schemaList({ enabled: true })` | `事件扩展字段` |
 
-**组件契约**：
+两类在下拉中用 `el-option-group` 分组区分。允许自由输入（`allow-create`），支持运行时 Key 手动填写。
 
-```vue
-<BBKeySelector
-  v-model="leaf.key"
-  placeholder="选择 BB Key"
-  allow-create
-  :readonly="isView"
-/>
+**类型系统**（`BBKeyField` 接口，由 `BBKeySelector.vue` 导出）：
+
+```ts
+export interface BBKeyField {
+  name: string
+  label: string
+  /** 规范化类型：integer / float / string / bool / select / reference */
+  type: string
+}
 ```
 
-- `allow-create` 打开时允许自由输入新 Key（运行时 Key 场景）
-- 下拉项分组：「字段」/「运行时」/「历史」
-- 输入提示：「BB Key 对应字段标识或运行时 Key；引用字段时，保存后会自动登记反向引用」
+`field-selected` 事件 emit `BBKeyField | null`（自由输入时为 `null`，降级为文本框）。
+
+**类型名规范化**：两类来源的原始类型名不一致，`BBKeySelector` 内部统一转换后再 emit：
+
+| 原始值 | 来源 | 规范化为 |
+|--------|------|---------|
+| `boolean` | NPC 字段 | `bool` |
+| `int` | 事件扩展字段 | `integer` |
+| 其他 | 任意 | 保持原值 |
+
+`FsmConditionEditor` 根据 `selectedFieldType` 渲染值输入控件（`bool` → el-select，`integer` → 整数输入框，`float` → 浮点输入框，其余 → 文本框）。
 
 **后端写入 `field_refs`**：保存时后端自动扫描 condition 中所有 `key` / `ref_key`，命中字段表的写入 `field_refs(ref_type='fsm', source_id=fsm_id)`。前端无需手动组装引用列表。
 
@@ -526,7 +535,7 @@ const isEdit = computed(() => !isCreate.value && !isView.value)
 | `FsmTransitionListEditor.vue` | 转换规则列表编辑器 |
 | `FsmConditionTreeEditor.vue` | 递归条件树编辑器 |
 | `FsmConditionLeafRow.vue` | 叶节点行组件 |
-| `BBKeySelector.vue` | BB Key 下拉选择（依赖字段 BB 暴露接口 + 运行时 Key 表接口，后者待规划） |
+| `BBKeySelector.vue` | ✅ 已实现。双数据源（NPC 字段 + 事件扩展字段），el-option-group 分组，类型名规范化，支持自由输入运行时 Key |
 | `api/fsmConfigs.ts` | REST 调用 + 类型 + `FSM_ENT_ERR` |
 | `router/index.ts` 追加 `/fsm-configs/*` 四条路由 | — |
 | `EnabledGuardDialog.vue` 追加 `entityType='fsm-config'` 分支 | 新增分支 + FSM_ERR 导入 |

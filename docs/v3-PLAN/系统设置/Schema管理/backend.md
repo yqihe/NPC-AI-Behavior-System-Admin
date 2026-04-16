@@ -207,6 +207,12 @@ type EventTypeSchemaService struct {
 | `GetReferences` | `(ctx, id) (*SchemaReferenceDetail, error)` | 引用详情 |
 | `FillHasRefs` | `(ctx, []EventTypeSchema)` | 为列表填充 has_refs |
 
+### EventTypeSchemaStore（新增方法）
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `GetIDByFieldNameTx` | `(ctx, tx, fieldName) (int64, error)` | 事务内按 field_name 查 ID，**含禁用、排除软删除**。专供事件类型 `attachSchemaRefs`/`syncSchemaRefs` 使用，不能用 schemaCache 替代（cache 只含 enabled=1）。返回 0 表示 schema 不存在。 |
+
 ### SchemaRefStore
 
 ```go
@@ -244,7 +250,9 @@ type EventTypeSchemaCache struct {
 | `Load(ctx)` | 全量拉 `WHERE deleted=0 AND enabled=1 ORDER BY sort_order ASC, id ASC`，启动时调用 |
 | `Reload(ctx)` | 写操作后同步调用，重新全量加载 |
 | `ListEnabled()` | 返回所有启用 Schema 的副本（sort_order 已排序） |
-| `GetByFieldName(name)` | 按 field_name 查找，返回副本。只返回 enabled=1 的，找不到返回 nil, false |
+| `GetByFieldName(name)` | 按 field_name 查找，返回副本。⚠️ 只返回 enabled=1 的，找不到返回 nil, false |
+
+> **cache 的适用限制**：`GetByFieldName` 只包含启用的 Schema。若需要查找禁用中的 Schema（例如事件类型的 `attachSchemaRefs` / `syncSchemaRefs` 需要记录被禁用 Schema 的引用关系），**必须走 DB 查**，不能依赖此缓存，否则会导致引用关系漏写、删除保护失效。
 
 **生命周期：**
 - 启动时 `setup.InitMemCaches` 调用 `Load`

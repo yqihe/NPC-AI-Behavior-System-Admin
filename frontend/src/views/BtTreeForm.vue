@@ -354,6 +354,12 @@ async function handleSubmit() {
 /* 仅组件私有样式；form-header/form-scroll/form-body/form-card/card-title/
    title-bar/title-text/form-footer 均由全局 form-layout.css 提供，此处不重复 */
 
+.bt-tree-form {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
 .field-hint {
   display: flex;
   align-items: center;

@@ -34,6 +34,10 @@
 
 ## Phase 2：设计方案
 
+**前置阅读（写 design.md 前必须读完）**：
+- 后端 spec：`docs/architecture/backend-conventions.md`（分层模式、handler/service/store 代码结构、错误码体系、路由约定）
+- 前端 spec：`docs/architecture/frontend-conventions.md`（API 层模式、列表页/表单页代码结构、布局 CSS、通用组件）
+
 产出 `design.md`，必须包含：
 
 - **方案描述**：技术方案、数据结构、接口定义

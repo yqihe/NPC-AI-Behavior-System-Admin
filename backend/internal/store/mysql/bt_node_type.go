@@ -71,14 +71,14 @@ func (s *BtNodeTypeStore) ExistsByTypeName(ctx context.Context, typeName string)
 	return count > 0, nil
 }
 
-// List 分页列表，支持 type_name 前缀匹配、category 精确匹配、enabled 筛选
+// List 分页列表，支持 label 前缀匹配、category 精确匹配、enabled 筛选
 func (s *BtNodeTypeStore) List(ctx context.Context, q *model.BtNodeTypeListQuery) ([]model.BtNodeTypeListItem, int64, error) {
 	where := []string{"deleted = 0"}
 	args := make([]any, 0, 5)
 
-	if q.TypeName != "" {
-		escaped := shared.EscapeLike(q.TypeName)
-		where = append(where, "type_name LIKE ?")
+	if q.Label != "" {
+		escaped := shared.EscapeLike(q.Label)
+		where = append(where, "label LIKE ?")
 		args = append(args, escaped+"%")
 	}
 	if q.Category != "" {
