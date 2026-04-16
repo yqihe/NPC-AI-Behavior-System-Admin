@@ -18,6 +18,10 @@
             <el-icon class="group-icon"><User /></el-icon>
             <span class="group-title">NPC 配置管理</span>
           </template>
+          <el-menu-item index="/npcs">
+            <el-icon><Grid /></el-icon>
+            <span>NPC 管理</span>
+          </el-menu-item>
           <el-menu-item index="/templates">
             <el-icon><Files /></el-icon>
             <span>模板管理</span>

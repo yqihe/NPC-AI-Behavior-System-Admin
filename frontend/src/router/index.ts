@@ -32,6 +32,33 @@ const router = createRouter({
       meta: { title: '编辑字段', isCreate: false },
     },
     {
+      path: '/npcs',
+      name: 'npc-list',
+      component: () => import('@/views/NPCList.vue'),
+      meta: { title: 'NPC 管理' },
+    },
+    {
+      path: '/npcs/create',
+      name: 'npc-create',
+      component: () => import('@/views/NPCForm.vue'),
+      props: { mode: 'create' },
+      meta: { title: '新建 NPC' },
+    },
+    {
+      path: '/npcs/:id/view',
+      name: 'npc-view',
+      component: () => import('@/views/NPCForm.vue'),
+      props: (route) => ({ mode: 'view', id: Number(route.params.id) }),
+      meta: { title: '查看 NPC' },
+    },
+    {
+      path: '/npcs/:id/edit',
+      name: 'npc-edit',
+      component: () => import('@/views/NPCForm.vue'),
+      props: (route) => ({ mode: 'edit', id: Number(route.params.id) }),
+      meta: { title: '编辑 NPC' },
+    },
+    {
       path: '/templates',
       name: 'template-list',
       component: () => import('@/views/TemplateList.vue'),

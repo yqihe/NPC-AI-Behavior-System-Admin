@@ -7,6 +7,7 @@ package shared
 
 import (
 	"encoding/json"
+	"math"
 	"unicode/utf8"
 
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
@@ -63,6 +64,9 @@ func validateInt(cm map[string]json.RawMessage, value json.RawMessage) *errcode.
 	v, ok := GetFloat(value)
 	if !ok {
 		return errcode.Newf(errcode.ErrBadRequest, "值必须是数字")
+	}
+	if v != math.Trunc(v) {
+		return errcode.Newf(errcode.ErrBadRequest, "整数字段不能传入小数")
 	}
 	if min, ok := GetFloat(cm["min"]); ok && v < min {
 		return errcode.Newf(errcode.ErrBadRequest, "值 %v 小于最小值 %v", v, min)

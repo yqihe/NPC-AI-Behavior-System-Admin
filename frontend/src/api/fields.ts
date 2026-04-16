@@ -77,6 +77,12 @@ export interface CheckNameResult {
   message: string
 }
 
+export interface DeleteResult {
+  id: number
+  name: string
+  label: string
+}
+
 // 字段管理段错误码（40001-40017，与 backend/internal/errcode/codes.go 保持一致）
 export const FIELD_ERR = {
   NAME_EXISTS:         40001,

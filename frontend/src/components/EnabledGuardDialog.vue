@@ -65,10 +65,11 @@ import { fsmStateDictApi, FSM_STATE_DICT_ERR } from '@/api/fsmStateDicts'
 import { fsmConfigApi, FSM_ERR } from '@/api/fsmConfigs'
 import { btTreeApi, BT_TREE_ERR } from '@/api/btTrees'
 import { btNodeTypeApi, BT_NODE_TYPE_ERR } from '@/api/btNodeTypes'
+import { npcApi, NPC_ERRORS } from '@/api/npc'
 import type { BizError } from '@/api/request'
 
 type GuardAction = 'edit' | 'delete'
-type EntityType = 'field' | 'template' | 'event-type' | 'event-type-schema' | 'fsm-state-dict' | 'fsm-config' | 'bt-tree' | 'bt-node-type'
+type EntityType = 'field' | 'template' | 'event-type' | 'event-type-schema' | 'fsm-state-dict' | 'fsm-config' | 'bt-tree' | 'bt-node-type' | 'npc'
 
 interface GuardEntity {
   id: number
@@ -91,6 +92,7 @@ const entityTypeLabel = computed(() => {
   if (entityType.value === 'fsm-config') return '状态机'
   if (entityType.value === 'bt-tree') return '行为树'
   if (entityType.value === 'bt-node-type') return '节点类型'
+  if (entityType.value === 'npc') return 'NPC'
   return '模板'
 })
 
@@ -124,6 +126,9 @@ const reasonText = computed(() => {
     }
     if (entityType.value === 'bt-node-type') {
       return '已启用的节点类型被树编辑器使用，修改参数定义可能导致已有行为树节点渲染异常。请先禁用，再进入编辑。'
+    }
+    if (entityType.value === 'npc') {
+      return '已启用的 NPC 会被游戏服务端导出接口返回，修改期间可能导致服务端拉取到不稳定配置。请先禁用，再进入编辑。'
     }
     return '已启用的模板对 NPC 管理页可见，允许任意修改可能导致策划在配置不稳定时选用。请先禁用，再进入编辑。'
   }
@@ -183,6 +188,9 @@ async function onActOnce() {
     } else if (entityType.value === 'bt-node-type') {
       const detail = await btNodeTypeApi.detail(id)
       await btNodeTypeApi.toggleEnabled(id, false, detail.data.version)
+    } else if (entityType.value === 'npc') {
+      const detail = await npcApi.detail(id)
+      await npcApi.toggleEnabled(id, false, detail.data.version)
     } else {
       const detail = await templateApi.detail(id)
       await templateApi.toggleEnabled(id, false, detail.data.version)
@@ -206,6 +214,8 @@ async function onActOnce() {
         path = `/bt-trees/${id}/edit`
       } else if (entityType.value === 'bt-node-type') {
         path = `/bt-node-types/${id}/edit`
+      } else if (entityType.value === 'npc') {
+        path = `/npcs/${id}/edit`
       } else {
         path = `/templates/${id}/edit`
       }
@@ -232,6 +242,8 @@ async function onActOnce() {
       conflictCode = BT_TREE_ERR.VERSION_CONFLICT
     } else if (entityType.value === 'bt-node-type') {
       conflictCode = BT_NODE_TYPE_ERR.VERSION_CONFLICT
+    } else if (entityType.value === 'npc') {
+      conflictCode = NPC_ERRORS.VERSION_CONFLICT
     } else {
       conflictCode = TEMPLATE_ERR.VERSION_CONFLICT
     }

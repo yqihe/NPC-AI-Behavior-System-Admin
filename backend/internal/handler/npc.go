@@ -5,6 +5,7 @@ import (
 	svcshared "github.com/yqihe/npc-ai-admin/backend/internal/service/shared"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"unicode/utf8"
@@ -250,10 +251,11 @@ func (h *NpcHandler) Create(ctx context.Context, req *model.CreateNPCRequest) (*
 	// 2. 校验模板
 	tpl, err := h.templateService.GetByID(ctx, req.TemplateID)
 	if err != nil {
+		var ecErr *errcode.Error
+		if errors.As(err, &ecErr) && ecErr.Code == errcode.ErrTemplateNotFound {
+			return nil, errcode.New(errcode.ErrNPCTemplateNotFound)
+		}
 		return nil, err
-	}
-	if tpl == nil {
-		return nil, errcode.New(errcode.ErrNPCTemplateNotFound)
 	}
 	if !tpl.Enabled {
 		return nil, errcode.New(errcode.ErrNPCTemplateDisabled)
