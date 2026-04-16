@@ -41,7 +41,7 @@
             <span>事件字段管理</span>
           </el-menu-item>
         </el-sub-menu>
-        <el-sub-menu index="group-fsm">
+        <el-sub-menu index="group-behavior">
           <template #title>
             <el-icon class="group-icon"><Cpu /></el-icon>
             <span class="group-title">行为配置管理</span>
@@ -53,6 +53,14 @@
           <el-menu-item index="/fsm-state-dicts">
             <el-icon><Collection /></el-icon>
             <span>状态字典管理</span>
+          </el-menu-item>
+          <el-menu-item index="/bt-trees">
+            <el-icon><Share /></el-icon>
+            <span>行为树管理</span>
+          </el-menu-item>
+          <el-menu-item index="/bt-node-types">
+            <el-icon><Grid /></el-icon>
+            <span>节点类型管理</span>
           </el-menu-item>
         </el-sub-menu>
       </el-menu>
@@ -66,7 +74,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { List, Files, Lightning, Tickets, User, Cpu, Collection, Operation } from '@element-plus/icons-vue'
+import { List, Files, Lightning, Tickets, User, Cpu, Collection, Operation, Share, Grid } from '@element-plus/icons-vue'
 
 const route = useRoute()
 
@@ -77,7 +85,7 @@ const activeMenu = computed(() => {
 })
 
 // 哪些分组默认展开（所有一级分组 index）
-const defaultOpeneds = ['group-npc', 'group-event', 'group-fsm']
+const defaultOpeneds = ['group-npc', 'group-event', 'group-behavior']
 </script>
 
 <style scoped>
