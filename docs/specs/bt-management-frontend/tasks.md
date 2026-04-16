@@ -82,7 +82,7 @@ T1(API层) → T2(路由+GuardDialog) → T3(BtTreeList) → T4(BtNodeTypeSelect
 
 ---
 
-### T5：树编辑器核心组件 BtNodeEditor.vue (R15–R21)
+### [x] T5：树编辑器核心组件 BtNodeEditor.vue (R15–R21)
 
 **文件**：
 - `frontend/src/components/BtNodeEditor.vue`（新建）
@@ -103,7 +103,7 @@ T1(API层) → T2(路由+GuardDialog) → T3(BtTreeList) → T4(BtNodeTypeSelect
 
 ---
 
-### T6：行为树表单页 BtTreeForm.vue (R2–R5, R8)
+### [x] T6：行为树表单页 BtTreeForm.vue (R2–R5, R8)
 
 **文件**：
 - `frontend/src/views/BtTreeForm.vue`（新建）
@@ -144,7 +144,7 @@ T1(API层) → T2(路由+GuardDialog) → T3(BtTreeList) → T4(BtNodeTypeSelect
 
 ---
 
-### T8：param_schema 行编辑器 BtParamSchemaEditor.vue (R11, R12)
+### [x] T8：param_schema 行编辑器 BtParamSchemaEditor.vue (R11, R12)
 
 **文件**：
 - `frontend/src/components/BtParamSchemaEditor.vue`（新建）
@@ -161,7 +161,7 @@ T1(API层) → T2(路由+GuardDialog) → T3(BtTreeList) → T4(BtNodeTypeSelect
 
 ---
 
-### T9：节点类型表单页 BtNodeTypeForm.vue (R10, R11, R12, R14)
+### [x] T9：节点类型表单页 BtNodeTypeForm.vue (R10, R11, R12, R14)
 
 **文件**：
 - `frontend/src/views/BtNodeTypeForm.vue`（新建）
