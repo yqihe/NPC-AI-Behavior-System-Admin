@@ -36,6 +36,7 @@ export interface FsmTransition {
 
 /** 列表查询参数 */
 export interface FsmConfigListQuery {
+  name?: string
   label?: string
   enabled?: boolean | null
   page: number
@@ -113,6 +114,7 @@ export const FSM_ERR = {
   DELETE_NOT_DISABLED: 43009,
   EDIT_NOT_DISABLED:   43010,
   VERSION_CONFLICT:    43011,
+  REF_DELETE:          43012,
 } as const
 
 // ─── API 函数 ───
@@ -139,4 +141,19 @@ export const fsmConfigApi = {
 
   toggleEnabled: (id: number, enabled: boolean, version: number) =>
     request.post('/fsm-configs/toggle-enabled', { id, enabled, version }) as Promise<ApiResponse<string>>,
+
+  references: (id: number) =>
+    request.post('/fsm-configs/references', { id }) as Promise<ApiResponse<FsmConfigReferenceDetail>>,
+}
+
+export interface FsmConfigReferenceNPC {
+  npc_id: number
+  npc_name: string
+  npc_label: string
+}
+
+export interface FsmConfigReferenceDetail {
+  fsm_config_id: number
+  fsm_config_label: string
+  npcs: FsmConfigReferenceNPC[]
 }

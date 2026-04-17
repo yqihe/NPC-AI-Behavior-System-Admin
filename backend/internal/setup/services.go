@@ -21,7 +21,7 @@ type Services struct {
 // NewServices 一次性初始化所有 service
 func NewServices(st *Stores, rc *Caches, mc *MemCaches, cfg *config.Config) *Services {
 	return &Services{
-		Field:           service.NewFieldService(st.Field, st.FieldRef, rc.Field, mc.Dict, &cfg.Pagination, st.BtTree, st.BtNodeType),
+		Field:           service.NewFieldService(st.Field, st.FieldRef, rc.Field, mc.Dict, &cfg.Pagination),
 		Template:        service.NewTemplateService(st.Template, rc.Template, &cfg.Pagination),
 		EventType:       service.NewEventTypeService(st.EventType, st.EventTypeSchema, st.SchemaRef, rc.EventType, mc.EventTypeSchema, &cfg.Pagination, &cfg.EventType),
 		EventTypeSchema: service.NewEventTypeSchemaService(st.EventTypeSchema, st.SchemaRef, mc.EventTypeSchema, &cfg.EventTypeSchema, &cfg.Pagination),

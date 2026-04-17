@@ -1,5 +1,5 @@
 <template>
-  <div class="bt-tree-list">
+  <div class="list-root">
     <!-- 顶部标题栏 -->
     <div class="page-header">
       <div class="header-left">
@@ -16,10 +16,17 @@
     <!-- 筛选栏 -->
     <div class="filter-bar">
       <el-input
+        v-model="query.name"
+        placeholder="搜索英文标识"
+        clearable
+        class="filter-item"
+        @keyup.enter="handleSearch"
+      />
+      <el-input
         v-model="query.display_name"
         placeholder="搜索中文标签"
         clearable
-        class="filter-item filter-item-wide"
+        class="filter-item"
         @keyup.enter="handleSearch"
       />
       <el-select
@@ -93,6 +100,31 @@
 
     <!-- 启用守卫弹窗 -->
     <EnabledGuardDialog ref="guardRef" @refresh="fetchList" />
+
+    <!-- 引用详情弹窗 -->
+    <el-dialog
+      v-model="refDialog.visible"
+      :title="`引用详情 — ${refDialog.label} (${refDialog.name})`"
+      width="500px"
+      @close="resetRefDialog"
+    >
+      <div v-loading="refDialog.loading">
+        <div class="ref-section">
+          <p class="ref-subtitle">
+            NPC 引用（{{ refDialog.npcs.length }} 个 NPC 使用了该行为树）：
+          </p>
+          <el-table
+            v-if="refDialog.npcs.length > 0"
+            :data="refDialog.npcs"
+            size="small"
+          >
+            <el-table-column prop="npc_name" label="NPC 标识" />
+            <el-table-column prop="npc_label" label="中文标签" />
+          </el-table>
+          <p v-else class="ref-empty">暂无 NPC 引用</p>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -103,7 +135,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
 import EnabledGuardDialog from '@/components/EnabledGuardDialog.vue'
 import { btTreeApi, BT_TREE_ERR } from '@/api/btTrees'
-import type { BtTreeListItem, BtTreeListQuery } from '@/api/btTrees'
+import type { BtTreeListItem, BtTreeListQuery, BtTreeReferenceNPC } from '@/api/btTrees'
 import type { BizError } from '@/api/request'
 import { formatTime } from '@/utils/format'
 
@@ -114,7 +146,16 @@ const tableData = ref<BtTreeListItem[]>([])
 const total = ref(0)
 const guardRef = ref<InstanceType<typeof EnabledGuardDialog> | null>(null)
 
+const refDialog = reactive({
+  visible: false,
+  loading: false,
+  name: '',
+  label: '',
+  npcs: [] as BtTreeReferenceNPC[],
+})
+
 const query = reactive<BtTreeListQuery>({
+  name: '',
   display_name: '',
   enabled: null,
   page: 1,
@@ -130,6 +171,7 @@ async function fetchList() {
       page: query.page,
       page_size: query.page_size,
     }
+    if (query.name) params.name = query.name
     if (query.display_name) params.display_name = query.display_name
     if (query.enabled !== null && query.enabled !== undefined) {
       params.enabled = query.enabled
@@ -156,6 +198,7 @@ function handleSearch() {
 }
 
 function handleReset() {
+  query.name = ''
   query.display_name = ''
   query.enabled = null
   query.page = 1
@@ -211,6 +254,19 @@ async function handleDelete(row: BtTreeListItem) {
     })
     return
   }
+  // 已禁用：先查引用，有引用弹详情阻止，无引用确认删除
+  try {
+    const res = await btTreeApi.references(row.id)
+    const npcs = res.data?.npcs || []
+    if (npcs.length > 0) {
+      showRefDialog(row, npcs)
+      ElMessage.warning(`该行为树被 ${npcs.length} 个 NPC 引用，无法删除。请先移除引用关系。`)
+      return
+    }
+  } catch {
+    return
+  }
+  // 无引用：确认删除
   try {
     await ElMessageBox.confirm(
       `确认删除行为树「${row.display_name}」（${row.name}）？删除后无法恢复。`,
@@ -222,13 +278,51 @@ async function handleDelete(row: BtTreeListItem) {
     fetchList()
   } catch (err: unknown) {
     if (err === 'cancel') return
-    if ((err as BizError).code === BT_TREE_ERR.VERSION_CONFLICT) {
-      ElMessage.warning('数据已更新，请重新操作')
+    const code = (err as BizError).code
+    if (code === BT_TREE_ERR.REF_DELETE) {
+      await loadAndShowRefs(row)
+      return
+    }
+    if (code === BT_TREE_ERR.VERSION_CONFLICT) {
+      ElMessageBox.alert('数据已被其他用户修改，请刷新页面后重试。', '版本冲突', { type: 'warning' })
       fetchList()
       return
     }
     // 其他错误拦截器已 toast
   }
+}
+
+// ---------- 引用弹窗 ----------
+
+function showRefDialog(row: BtTreeListItem, npcs: BtTreeReferenceNPC[]) {
+  refDialog.visible = true
+  refDialog.loading = false
+  refDialog.name = row.name
+  refDialog.label = row.display_name
+  refDialog.npcs = npcs
+}
+
+async function loadAndShowRefs(row: BtTreeListItem) {
+  refDialog.visible = true
+  refDialog.loading = true
+  refDialog.name = row.name
+  refDialog.label = row.display_name
+  refDialog.npcs = []
+  try {
+    const res = await btTreeApi.references(row.id)
+    refDialog.npcs = res.data?.npcs || []
+  } catch {
+    // 拦截器已 toast
+  } finally {
+    refDialog.loading = false
+  }
+}
+
+function resetRefDialog() {
+  refDialog.loading = false
+  refDialog.name = ''
+  refDialog.label = ''
+  refDialog.npcs = []
 }
 
 // ---------- 辅助 ----------
@@ -237,16 +331,3 @@ function rowClassName({ row }: { row: BtTreeListItem }) {
   return row.enabled ? '' : 'row-disabled'
 }
 </script>
-
-<style scoped>
-.bt-tree-list {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-:deep(.row-disabled td:not(:nth-last-child(-n+3))) {
-  opacity: 0.5;
-}
-</style>

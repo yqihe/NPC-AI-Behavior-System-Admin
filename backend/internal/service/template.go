@@ -289,11 +289,11 @@ func (s *TemplateService) UpdateTx(
 	}
 
 	// diff fields
-	fieldsChanged = isFieldsChanged(oldEntries, req.Fields)
+	fieldsChanged = s.IsFieldsChanged(oldEntries, req.Fields)
 
 	// 计算 toAdd / toRemove（仅字段集合维度，required-only 变化也归到 fieldsChanged 但不会有 add/remove）
 	if fieldsChanged {
-		toAdd, toRemove = diffFieldIDs(oldEntries, req.Fields)
+		toAdd, toRemove = s.DiffFieldIDs(oldEntries, req.Fields)
 	}
 
 	// 序列化新 fields JSON
@@ -314,10 +314,16 @@ func (s *TemplateService) UpdateTx(
 	return fieldsChanged, toAdd, toRemove, nil
 }
 
-// SoftDeleteTx 事务内软删除模板
-//
-// 调用方（handler）必须先调 GetByID 校验存在 + enabled=0。
+// SoftDeleteTx 事务内软删除模板（前置校验 + store 写入，不清缓存）
 func (s *TemplateService) SoftDeleteTx(ctx context.Context, tx *sqlx.Tx, id int64) error {
+	tpl, err := s.getTemplateOrNotFound(ctx, id)
+	if err != nil {
+		return err
+	}
+	if tpl.Enabled {
+		return errcode.New(errcode.ErrTemplateDeleteNotDisabled)
+	}
+
 	if err := s.store.SoftDeleteTx(ctx, tx, id); err != nil {
 		if errors.Is(err, errcode.ErrNotFound) {
 			return errcode.Newf(errcode.ErrTemplateNotFound, "模板 ID=%d 不存在", id)
@@ -352,10 +358,10 @@ func (s *TemplateService) GetByIDsLite(ctx context.Context, ids []int64) ([]mode
 
 // ---- 内部 diff 算法 ----
 
-// isFieldsChanged 模板 fields 是否变更
+// IsFieldsChanged 模板 fields 是否变更
 //
 // 集合 + 顺序 + required 任一不同都视为变更。
-func isFieldsChanged(old, new []model.TemplateFieldEntry) bool {
+func (s *TemplateService) IsFieldsChanged(old, new []model.TemplateFieldEntry) bool {
 	if len(old) != len(new) {
 		return true
 	}
@@ -370,8 +376,8 @@ func isFieldsChanged(old, new []model.TemplateFieldEntry) bool {
 	return false
 }
 
-// diffFieldIDs 计算字段集合的增删（顺序变化但集合相同时返回空切片）
-func diffFieldIDs(old, new []model.TemplateFieldEntry) (toAdd, toRemove []int64) {
+// DiffFieldIDs 计算字段集合的增删（顺序变化但集合相同时返回空切片）
+func (s *TemplateService) DiffFieldIDs(old, new []model.TemplateFieldEntry) (toAdd, toRemove []int64) {
 	oldSet := make(map[int64]bool, len(old))
 	for _, e := range old {
 		oldSet[e.FieldID] = true

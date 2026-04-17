@@ -1,5 +1,5 @@
 <template>
-  <div class="template-list">
+  <div class="list-root">
     <!-- 顶部标题栏 -->
     <div class="page-header">
       <div class="header-left">
@@ -16,10 +16,17 @@
     <!-- 筛选栏 -->
     <div class="filter-bar">
       <el-input
+        v-model="query.name"
+        placeholder="搜索英文标识"
+        clearable
+        class="filter-item"
+        @keyup.enter="handleSearch"
+      />
+      <el-input
         v-model="query.label"
         placeholder="搜索中文标签"
         clearable
-        class="filter-item filter-item-wide"
+        class="filter-item"
         @keyup.enter="handleSearch"
       />
       <el-select
@@ -93,6 +100,30 @@
 
     <!-- 启用守卫弹窗 -->
     <EnabledGuardDialog ref="guardRef" @refresh="fetchList" />
+
+    <!-- 引用详情弹窗 -->
+    <el-dialog
+      v-model="refDialog.visible"
+      :title="`引用详情 — ${refDialog.label} (${refDialog.name})`"
+      width="500px"
+      @close="resetRefDialog"
+    >
+      <div v-loading="refDialog.loading">
+        <div class="ref-section">
+          <p class="ref-subtitle">
+            NPC 引用（{{ refDialog.npcs.length }} 个 NPC 使用了该模板）：
+          </p>
+          <el-table
+            v-if="refDialog.npcs.length > 0"
+            :data="refDialog.npcs"
+            size="small"
+          >
+            <el-table-column prop="npc_name" label="NPC 标识" />
+          </el-table>
+          <p v-else class="ref-empty">暂无 NPC 引用</p>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -103,7 +134,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
 import EnabledGuardDialog from '@/components/EnabledGuardDialog.vue'
 import { templateApi, TEMPLATE_ERR } from '@/api/templates'
-import type { TemplateListItem, TemplateListQuery } from '@/api/templates'
+import type { TemplateListItem, TemplateListQuery, TemplateReferenceItem } from '@/api/templates'
 import type { BizError } from '@/api/request'
 import { formatTime } from '@/utils/format'
 
@@ -114,7 +145,16 @@ const tableData = ref<TemplateListItem[]>([])
 const total = ref(0)
 const guardRef = ref<InstanceType<typeof EnabledGuardDialog> | null>(null)
 
+const refDialog = reactive({
+  visible: false,
+  loading: false,
+  name: '',
+  label: '',
+  npcs: [] as TemplateReferenceItem[],
+})
+
 const query = reactive<TemplateListQuery>({
+  name: '',
   label: '',
   enabled: null,
   page: 1,
@@ -130,6 +170,7 @@ async function fetchList() {
       page: query.page,
       page_size: query.page_size,
     }
+    if (query.name) params.name = query.name
     if (query.label) params.label = query.label
     if (query.enabled !== null && query.enabled !== undefined) {
       params.enabled = query.enabled
@@ -156,6 +197,7 @@ function handleSearch() {
 }
 
 function handleReset() {
+  query.name = ''
   query.label = ''
   query.enabled = null
   query.page = 1
@@ -183,11 +225,7 @@ async function handleToggle(row: TemplateListItem, val: boolean) {
   } catch (err) {
     if (err === 'cancel') return
     if ((err as BizError).code === TEMPLATE_ERR.VERSION_CONFLICT) {
-      ElMessageBox.alert(
-        '该模板已被其他人修改，请刷新后重试。',
-        '版本冲突',
-        { type: 'warning' },
-      )
+      ElMessageBox.alert('数据已被其他用户修改，请刷新页面后重试。', '版本冲突', { type: 'warning' })
       fetchList()
     }
     // 其他错误拦截器已 toast
@@ -207,29 +245,68 @@ async function handleDelete(row: TemplateListItem) {
     guardRef.value?.open({ action: 'delete', entityType: 'template', entity: row })
     return
   }
+  // 已禁用：先查引用，有引用弹详情阻止，无引用确认删除
+  try {
+    const res = await templateApi.references(row.id)
+    const npcs = res.data?.npcs || []
+    if (npcs.length > 0) {
+      showRefDialog(row, npcs)
+      ElMessage.warning(`该模板被 ${npcs.length} 个 NPC 引用，无法删除。请先移除引用关系。`)
+      return
+    }
+  } catch {
+    // references API 失败拦截器已 toast；为安全起见不继续删除
+    return
+  }
+  // 无引用：确认删除
   try {
     await ElMessageBox.confirm(
-      `确认删除模板「${row.label}」（${row.name}）？删除后无法恢复，模板标识也不可再复用。`,
+      `确认删除模板「${row.label}」（${row.name}）？删除后无法恢复。`,
       '删除确认',
-      {
-        confirmButtonText: '确认删除',
-        cancelButtonText: '取消',
-        type: 'warning',
-      },
+      { confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'warning' },
     )
     await templateApi.delete(row.id)
     ElMessage.success('删除成功')
     fetchList()
   } catch (err: unknown) {
     if (err === 'cancel') return
-    if ((err as BizError).code === TEMPLATE_ERR.VERSION_CONFLICT) {
-      ElMessage.warning('数据已更新，请重新操作')
-      fetchList()
-      return
+    // 后端兜底：REF_DELETE 时重新拉引用详情展示
+    if ((err as BizError).code === TEMPLATE_ERR.REF_DELETE) {
+      await loadAndShowRefs(row)
     }
-    // REF_DELETE(41007) 占位：NPC 上线后启用
     // 其他错误拦截器已 toast
   }
+}
+
+function showRefDialog(row: TemplateListItem, npcs: TemplateReferenceItem[]) {
+  refDialog.visible = true
+  refDialog.loading = false
+  refDialog.name = row.name
+  refDialog.label = row.label
+  refDialog.npcs = npcs
+}
+
+async function loadAndShowRefs(row: TemplateListItem) {
+  refDialog.visible = true
+  refDialog.loading = true
+  refDialog.name = row.name
+  refDialog.label = row.label
+  refDialog.npcs = []
+  try {
+    const res = await templateApi.references(row.id)
+    refDialog.npcs = res.data?.npcs || []
+  } catch {
+    // 拦截器已 toast
+  } finally {
+    refDialog.loading = false
+  }
+}
+
+function resetRefDialog() {
+  refDialog.loading = false
+  refDialog.name = ''
+  refDialog.label = ''
+  refDialog.npcs = []
 }
 
 // ---------- 辅助 ----------
@@ -240,16 +317,3 @@ function rowClassName({ row }: { row: TemplateListItem }) {
 
 </script>
 
-<style scoped>
-.template-list {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* 禁用行整行 opacity 0.5，但启用开关 + 创建时间 + 操作列保持高亮 */
-:deep(.row-disabled td:not(:nth-last-child(-n+3))) {
-  opacity: 0.5;
-}
-</style>

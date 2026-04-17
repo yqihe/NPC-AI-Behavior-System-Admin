@@ -112,7 +112,8 @@ type BtNodeTypeDeleteResult struct {
 
 // BtNodeTypeListQuery 列表查询参数
 type BtNodeTypeListQuery struct {
-	TypeName string `json:"type_name"` // 前缀匹配
+	TypeName string `json:"type_name"` // 英文标识模糊搜索
+	Label    string `json:"label"`     // 中文标签模糊搜索
 	Category string `json:"category"`  // 精确匹配
 	Enabled  *bool  `json:"enabled"`   // nil=全部
 	Page     int    `json:"page"`

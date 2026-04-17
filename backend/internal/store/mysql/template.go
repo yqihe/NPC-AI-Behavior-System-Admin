@@ -89,8 +89,12 @@ func (s *TemplateStore) ExistsByName(ctx context.Context, name string) (bool, er
 // 返回 TemplateListItem（不含 fields/description，减小网络传输）。
 func (s *TemplateStore) List(ctx context.Context, q *model.TemplateListQuery) ([]model.TemplateListItem, int64, error) {
 	where := []string{"deleted = 0"}
-	args := make([]any, 0, 2)
+	args := make([]any, 0, 3)
 
+	if q.Name != "" {
+		where = append(where, "name LIKE ?")
+		args = append(args, "%"+shared.EscapeLike(q.Name)+"%")
+	}
 	if q.Label != "" {
 		where = append(where, "label LIKE ?")
 		args = append(args, "%"+shared.EscapeLike(q.Label)+"%")

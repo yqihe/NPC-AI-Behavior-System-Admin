@@ -3,7 +3,6 @@ package handler
 import (
 	shared "github.com/yqihe/npc-ai-admin/backend/internal/handler/shared"
 	"context"
-	"encoding/json"
 	"log/slog"
 
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
@@ -15,21 +14,18 @@ import (
 
 // EventTypeHandler 事件类型管理 HTTP handler
 type EventTypeHandler struct {
-	eventTypeService       *service.EventTypeService
-	eventTypeSchemaService *service.EventTypeSchemaService
-	etCfg                  *config.EventTypeConfig
+	eventTypeService *service.EventTypeService
+	etCfg            *config.EventTypeConfig
 }
 
 // NewEventTypeHandler 创建 EventTypeHandler
 func NewEventTypeHandler(
 	eventTypeService *service.EventTypeService,
-	eventTypeSchemaService *service.EventTypeSchemaService,
 	etCfg *config.EventTypeConfig,
 ) *EventTypeHandler {
 	return &EventTypeHandler{
-		eventTypeService:       eventTypeService,
-		eventTypeSchemaService: eventTypeSchemaService,
-		etCfg:                  etCfg,
+		eventTypeService: eventTypeService,
+		etCfg:            etCfg,
 	}
 }
 
@@ -78,7 +74,7 @@ func checkExtensionsShape(extensions map[string]interface{}) *errcode.Error {
 
 // List 事件类型列表
 func (h *EventTypeHandler) List(ctx context.Context, req *model.EventTypeListQuery) (*model.ListData, error) {
-	slog.Debug("handler.事件类型列表", "label", req.Label, "mode", req.PerceptionMode)
+	slog.Debug("handler.事件类型列表", "name", req.Name, "label", req.Label, "mode", req.PerceptionMode)
 	return h.eventTypeService.List(ctx, req)
 }
 
@@ -121,83 +117,13 @@ func (h *EventTypeHandler) Create(ctx context.Context, req *model.CreateEventTyp
 	return &model.CreateEventTypeResponse{ID: id, Name: req.Name}, nil
 }
 
-// Get 事件类型详情（跨模块拼装：事件类型 + 扩展字段 schema）
+// Get 事件类型详情
 func (h *EventTypeHandler) Get(ctx context.Context, req *model.IDRequest) (*model.EventTypeDetail, error) {
 	if err := shared.CheckID(req.ID); err != nil {
 		return nil, err
 	}
-
 	slog.Debug("handler.事件类型详情", "id", req.ID)
-
-	et, err := h.eventTypeService.GetByID(ctx, req.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	// unmarshal config_json
-	var config map[string]interface{}
-	if et.ConfigJSON != nil {
-		if err := json.Unmarshal(et.ConfigJSON, &config); err != nil {
-			slog.Error("handler.event_type.get.unmarshal_config", "error", err, "id", req.ID)
-			config = make(map[string]interface{})
-		}
-	}
-	if config == nil {
-		config = make(map[string]interface{})
-	}
-
-	// 拿扩展字段 schema：启用的 + 虽然禁用但 config 里有值的
-	schemas := h.eventTypeSchemaService.ListEnabled()
-	enabledNames := make(map[string]bool, len(schemas))
-	for _, s := range schemas {
-		enabledNames[s.FieldName] = true
-	}
-
-	// 系统字段集合（不是扩展字段）
-	systemKeys := map[string]bool{
-		"display_name": true, "default_severity": true,
-		"default_ttl": true, "perception_mode": true, "range": true,
-	}
-
-	// 检查 config 中是否有禁用 schema 的值
-	var missingNames []string
-	for k := range config {
-		if !systemKeys[k] && !enabledNames[k] {
-			missingNames = append(missingNames, k)
-		}
-	}
-	if len(missingNames) > 0 {
-		// 拉全量 schema（含禁用），补上缺失的
-		allSchemas, err := h.eventTypeSchemaService.ListAllLite(ctx)
-		if err != nil {
-			slog.Error("handler.event_type.get.list_all_schemas", "error", err)
-		} else {
-			missingSet := make(map[string]bool, len(missingNames))
-			for _, n := range missingNames {
-				missingSet[n] = true
-			}
-			for _, s := range allSchemas {
-				if missingSet[s.FieldName] {
-					schemas = append(schemas, s)
-				}
-			}
-		}
-	}
-
-	detail := &model.EventTypeDetail{
-		ID:              et.ID,
-		Name:            et.Name,
-		DisplayName:     et.DisplayName,
-		PerceptionMode:  et.PerceptionMode,
-		Enabled:         et.Enabled,
-		Version:         et.Version,
-		CreatedAt:       et.CreatedAt,
-		UpdatedAt:       et.UpdatedAt,
-		Config:          config,
-		ExtensionSchema: schemas,
-	}
-
-	return detail, nil
+	return h.eventTypeService.GetDetail(ctx, req.ID)
 }
 
 // Update 编辑事件类型

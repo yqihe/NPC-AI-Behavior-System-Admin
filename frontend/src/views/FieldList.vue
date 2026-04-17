@@ -1,5 +1,5 @@
 <template>
-  <div class="field-list">
+  <div class="list-root">
     <!-- 顶部标题栏 -->
     <div class="page-header">
       <div class="header-left">
@@ -16,10 +16,17 @@
     <!-- 筛选栏 -->
     <div class="filter-bar">
       <el-input
+        v-model="query.name"
+        placeholder="搜索英文标识"
+        clearable
+        class="filter-item"
+        @keyup.enter="handleSearch"
+      />
+      <el-input
         v-model="query.label"
         placeholder="搜索中文标签"
         clearable
-        class="filter-item filter-item-wide"
+        class="filter-item"
         @keyup.enter="handleSearch"
       />
       <el-select
@@ -217,6 +224,7 @@ const categoryOptions = ref<DictionaryItem[]>([])
 const guardRef = ref<InstanceType<typeof EnabledGuardDialog> | null>(null)
 
 const query = reactive<FieldListQuery>({
+  name: '',
   label: '',
   type: '',
   category: '',
@@ -244,6 +252,7 @@ async function fetchList() {
       page: query.page,
       page_size: query.page_size,
     }
+    if (query.name) params.name = query.name
     if (query.label) params.label = query.label
     if (query.type) params.type = query.type
     if (query.category) params.category = query.category
@@ -286,6 +295,7 @@ function handleSearch() {
 }
 
 function handleReset() {
+  query.name = ''
   query.label = ''
   query.type = ''
   query.category = ''
@@ -437,34 +447,7 @@ function typeBadgeType(type: string) {
 </script>
 
 <style scoped>
-.field-list {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
 .ref-zero {
   color: #C0C4CC;
-}
-
-:deep(.row-disabled td:not(:nth-last-child(-n+3))) {
-  opacity: 0.5;
-}
-
-.ref-section {
-  margin-bottom: 8px;
-}
-
-.ref-subtitle {
-  font-size: 13px;
-  color: #909399;
-  margin: 0 0 8px 0;
-}
-
-.ref-empty {
-  font-size: 13px;
-  color: #C0C4CC;
-  margin: 4px 0;
 }
 </style>

@@ -6,6 +6,7 @@ import type { ListData, CheckNameResult } from './fields'
 
 /** 列表查询参数 */
 export interface EventTypeListQuery {
+  name?: string
   label?: string
   perception_mode?: string
   enabled?: boolean | null
@@ -131,6 +132,8 @@ export interface UpdateExtSchemaRequest {
 
 /** Schema 列表查询参数 */
 export interface ExtSchemaListQuery {
+  field_name?: string
+  field_label?: string
   enabled?: boolean
 }
 
@@ -163,6 +166,8 @@ export interface SchemaReferenceDetail {
   schema_id: number
   field_label: string
   event_types: SchemaReferenceItem[]
+  fsm_configs: SchemaReferenceItem[]
+  bt_trees: SchemaReferenceItem[]
 }
 
 // ─── API 函数 ───

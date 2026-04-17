@@ -6,6 +6,7 @@ import type { ListData, CheckNameResult } from './fields'
 
 /** 列表查询参数 */
 export interface FsmStateDictListQuery {
+  name?: string
   display_name?: string
   category?: string
   enabled?: boolean | null
@@ -107,4 +108,20 @@ export const fsmStateDictApi = {
 
   toggleEnabled: (id: number, enabled: boolean, version: number) =>
     request.post('/fsm-state-dicts/toggle-enabled', { id, enabled, version }) as Promise<ApiResponse<string>>,
+
+  references: (id: number) =>
+    request.post('/fsm-state-dicts/references', { id }) as Promise<ApiResponse<FsmStateDictReferenceDetail>>,
+}
+
+export interface FsmStateDictReferenceDetail {
+  state_dict_id: number
+  state_dict_label: string
+  fsm_configs: FsmStateDictRefConfigItem[]
+}
+
+export interface FsmStateDictRefConfigItem {
+  id: number
+  name: string
+  display_name: string
+  enabled: boolean
 }

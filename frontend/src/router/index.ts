@@ -205,30 +205,31 @@ const router = createRouter({
       component: () => import('@/views/BtTreeForm.vue'),
       meta: { title: '编辑行为树', isCreate: false, isView: false },
     },
-    {
-      path: '/bt-node-types',
-      name: 'bt-node-type-list',
-      component: () => import('@/views/BtNodeTypeList.vue'),
-      meta: { title: '节点类型管理' },
-    },
-    {
-      path: '/bt-node-types/create',
-      name: 'bt-node-type-create',
-      component: () => import('@/views/BtNodeTypeForm.vue'),
-      meta: { title: '新建节点类型', isCreate: true, isView: false },
-    },
-    {
-      path: '/bt-node-types/:id/view',
-      name: 'bt-node-type-view',
-      component: () => import('@/views/BtNodeTypeForm.vue'),
-      meta: { title: '查看节点类型', isCreate: false, isView: true },
-    },
-    {
-      path: '/bt-node-types/:id/edit',
-      name: 'bt-node-type-edit',
-      component: () => import('@/views/BtNodeTypeForm.vue'),
-      meta: { title: '编辑节点类型', isCreate: false, isView: false },
-    },
+    // ── 节点类型管理（已隐藏，内置节点由 seed 管理，无需前端页面）──
+    // {
+    //   path: '/bt-node-types',
+    //   name: 'bt-node-type-list',
+    //   component: () => import('@/views/BtNodeTypeList.vue'),
+    //   meta: { title: '节点类型管理' },
+    // },
+    // {
+    //   path: '/bt-node-types/create',
+    //   name: 'bt-node-type-create',
+    //   component: () => import('@/views/BtNodeTypeForm.vue'),
+    //   meta: { title: '新建节点类型', isCreate: true, isView: false },
+    // },
+    // {
+    //   path: '/bt-node-types/:id/view',
+    //   name: 'bt-node-type-view',
+    //   component: () => import('@/views/BtNodeTypeForm.vue'),
+    //   meta: { title: '查看节点类型', isCreate: false, isView: true },
+    // },
+    // {
+    //   path: '/bt-node-types/:id/edit',
+    //   name: 'bt-node-type-edit',
+    //   component: () => import('@/views/BtNodeTypeForm.vue'),
+    //   meta: { title: '编辑节点类型', isCreate: false, isView: false },
+    // },
     {
       path: '/:pathMatch(.*)*',
       name: 'not-found',

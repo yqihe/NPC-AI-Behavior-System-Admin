@@ -51,7 +51,7 @@ func ValidateValue(fieldType string, constraints json.RawMessage, value json.Raw
 		return validateFloat(cm, value)
 	case "string":
 		return validateString(cm, value)
-	case "bool":
+	case "bool", "boolean":
 		return validateBool(value)
 	case "select":
 		return validateSelect(cm, value)

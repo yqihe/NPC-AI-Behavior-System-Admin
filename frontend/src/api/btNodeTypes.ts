@@ -26,6 +26,7 @@ export interface BtNodeTypeMeta {
 
 export interface BtNodeTypeListQuery {
   type_name?: string
+  label?: string
   category?: string   // '' | 'composite' | 'decorator' | 'leaf'
   enabled?: boolean | null
   page: number

@@ -1,5 +1,12 @@
 /* 表单页公共布局样式，供各模块 Form 页（新建/编辑/查看）共用 */
 
+/* ── 表单页根容器：撑满 el-main 并管理内部滚动 ── */
+[class$="-form"] {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
 /* ── 顶部导航栏 ── */
 .form-header {
   display: flex;

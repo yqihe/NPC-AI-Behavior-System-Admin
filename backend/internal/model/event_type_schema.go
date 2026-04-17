@@ -48,9 +48,11 @@ type EventTypeSchemaLite struct {
 
 // EventTypeSchemaListQuery 列表查询参数
 type EventTypeSchemaListQuery struct {
-	Enabled  *bool `json:"enabled,omitempty"` // nil=不筛选
-	Page     int   `json:"page"`
-	PageSize int   `json:"page_size"`
+	FieldName  string `json:"field_name"`        // 字段标识模糊搜索
+	FieldLabel string `json:"field_label"`       // 中文标签模糊搜索
+	Enabled    *bool  `json:"enabled,omitempty"` // nil=不筛选
+	Page       int    `json:"page"`
+	PageSize   int    `json:"page_size"`
 }
 
 // CreateEventTypeSchemaRequest 创建扩展字段 Schema 请求
@@ -99,7 +101,9 @@ type SchemaReferenceItem struct {
 
 // SchemaReferenceDetail 扩展字段引用详情
 type SchemaReferenceDetail struct {
-	SchemaID   int64                  `json:"schema_id"`
-	FieldLabel string                 `json:"field_label"`
-	EventTypes []SchemaReferenceItem  `json:"event_types"`
+	SchemaID   int64                 `json:"schema_id"`
+	FieldLabel string                `json:"field_label"`
+	EventTypes []SchemaReferenceItem `json:"event_types"`
+	FsmConfigs []SchemaReferenceItem `json:"fsm_configs"`
+	BtTrees    []SchemaReferenceItem `json:"bt_trees"`
 }

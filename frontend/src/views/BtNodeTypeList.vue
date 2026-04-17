@@ -1,5 +1,5 @@
 <template>
-  <div class="bt-node-type-list">
+  <div class="list-root">
     <!-- 顶部标题栏 -->
     <div class="page-header">
       <div class="header-left">
@@ -17,9 +17,16 @@
     <div class="filter-bar">
       <el-input
         v-model="query.type_name"
-        placeholder="搜索节点类型标识"
+        placeholder="搜索英文标识"
         clearable
-        class="filter-item filter-item-wide"
+        class="filter-item"
+        @keyup.enter="handleSearch"
+      />
+      <el-input
+        v-model="query.label"
+        placeholder="搜索中文标签"
+        clearable
+        class="filter-item"
         @keyup.enter="handleSearch"
       />
       <el-select
@@ -161,6 +168,7 @@ const guardRef = ref<InstanceType<typeof EnabledGuardDialog> | null>(null)
 
 const query = reactive<BtNodeTypeListQuery>({
   type_name: '',
+  label: '',
   category: '',
   enabled: null,
   page: 1,
@@ -184,6 +192,7 @@ async function fetchList() {
       page_size: query.page_size,
     }
     if (query.type_name) params.type_name = query.type_name
+    if (query.label) params.label = query.label
     if (query.category) params.category = query.category
     if (query.enabled !== null && query.enabled !== undefined) {
       params.enabled = query.enabled
@@ -211,6 +220,7 @@ function handleSearch() {
 
 function handleReset() {
   query.type_name = ''
+  query.label = ''
   query.category = ''
   query.enabled = null
   query.page = 1
@@ -275,10 +285,16 @@ async function handleDelete(row: BtNodeTypeListItem) {
     return
   }
   try {
+    await ElMessageBox.confirm(
+      `确认删除节点类型「${row.label}」（${row.type_name}）？删除后无法恢复。`,
+      '删除确认',
+      { confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'warning' },
+    )
     await btNodeTypeApi.delete(row.id)
     ElMessage.success('删除成功')
     fetchList()
   } catch (err: unknown) {
+    if (err === 'cancel') return
     const bizErr = err as BizError
     if (bizErr.code === BT_NODE_TYPE_ERR.REF_DELETE) {
       refDialog.typeName = row.type_name
@@ -317,23 +333,3 @@ function rowClassName({ row }: { row: BtNodeTypeListItem }) {
   return row.enabled ? '' : 'row-disabled'
 }
 </script>
-
-<style scoped>
-.bt-node-type-list {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-:deep(.row-disabled td:not(:nth-last-child(-n+3))) {
-  opacity: 0.5;
-}
-
-.ref-subtitle {
-  font-size: 13px;
-  color: #606266;
-  margin: 0 0 12px;
-  line-height: 1.6;
-}
-</style>

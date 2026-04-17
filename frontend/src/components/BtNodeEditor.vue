@@ -186,7 +186,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, toRaw } from 'vue'
 import type { BtNodeInternal } from '@/api/btTrees'
 import type { BtNodeTypeMeta } from '@/api/btNodeTypes'
 import BBKeySelector from '@/components/BBKeySelector.vue'
@@ -291,7 +291,7 @@ function handleSelectorSelect(meta: BtNodeTypeMeta) {
 
   if (purpose === 'addChild') {
     if (!props.modelValue) return
-    const cloned = structuredClone(props.modelValue)
+    const cloned = structuredClone(toRaw(props.modelValue))
     if (!cloned.children) cloned.children = []
     cloned.children.push(createNode(meta))
     emit('update:modelValue', cloned)
@@ -300,7 +300,7 @@ function handleSelectorSelect(meta: BtNodeTypeMeta) {
 
   if (purpose === 'setChild') {
     if (!props.modelValue) return
-    const cloned = structuredClone(props.modelValue)
+    const cloned = structuredClone(toRaw(props.modelValue))
     cloned.child = createNode(meta)
     emit('update:modelValue', cloned)
     return
@@ -317,7 +317,7 @@ function handleDeleteSelf() {
 
 function handleChildUpdate(idx: number, value: BtNodeInternal | null) {
   if (!props.modelValue) return
-  const cloned = structuredClone(props.modelValue)
+  const cloned = structuredClone(toRaw(props.modelValue))
   if (!cloned.children) cloned.children = []
   if (value === null) {
     cloned.children.splice(idx, 1)
@@ -331,7 +331,7 @@ function handleChildUpdate(idx: number, value: BtNodeInternal | null) {
 
 function handleDecoratorChildUpdate(value: BtNodeInternal | null) {
   if (!props.modelValue) return
-  const cloned = structuredClone(props.modelValue)
+  const cloned = structuredClone(toRaw(props.modelValue))
   cloned.child = value
   emit('update:modelValue', cloned)
 }
@@ -340,7 +340,7 @@ function handleDecoratorChildUpdate(value: BtNodeInternal | null) {
 
 function updateParam(name: string, value: unknown) {
   if (!props.modelValue) return
-  const cloned = structuredClone(props.modelValue)
+  const cloned = structuredClone(toRaw(props.modelValue))
   cloned.params[name] = value
   emit('update:modelValue', cloned)
 }

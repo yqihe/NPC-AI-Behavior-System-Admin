@@ -33,7 +33,7 @@ func NewFsmStateDictHandler(
 
 // List 状态字典列表
 func (h *FsmStateDictHandler) List(ctx context.Context, req *model.FsmStateDictListQuery) (*model.ListData, error) {
-	slog.Debug("handler.状态字典列表", "display_name", req.DisplayName, "category", req.Category)
+	slog.Debug("handler.状态字典列表", "name", req.Name, "display_name", req.DisplayName, "category", req.Category)
 	return h.dictService.List(ctx, req)
 }
 
@@ -103,6 +103,15 @@ func (h *FsmStateDictHandler) Delete(ctx context.Context, req *model.IDRequest) 
 	}
 	slog.Debug("handler.删除状态字典", "id", req.ID)
 	return h.dictService.Delete(ctx, req.ID)
+}
+
+// GetReferences 状态字典引用详情（列出引用该状态的 FSM 配置，最多 50 条）
+func (h *FsmStateDictHandler) GetReferences(ctx context.Context, req *model.IDRequest) (*model.FsmStateDictReferenceDetail, error) {
+	if err := shared.CheckID(req.ID); err != nil {
+		return nil, err
+	}
+	slog.Debug("handler.状态字典引用详情", "id", req.ID)
+	return h.dictService.GetReferences(ctx, req.ID)
 }
 
 // CheckName 标识唯一性校验

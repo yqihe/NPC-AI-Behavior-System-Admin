@@ -87,6 +87,12 @@ onMounted(async () => {
       label: s.field_label,
       type: normalizeType(s.field_type),
     }))
+    // 初始值已有 key 时，补发 field-selected 让父组件获知字段类型
+    if (props.modelValue) {
+      const all = [...npcOptions.value, ...schemaOptions.value]
+      const matched = all.find((f) => f.name === props.modelValue)
+      emit('field-selected', matched || null)
+    }
   } catch {
     // 拦截器已 toast
   }

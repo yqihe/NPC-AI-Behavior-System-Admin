@@ -3,12 +3,12 @@ package service
 import (
 	shared "github.com/yqihe/npc-ai-admin/backend/internal/service/shared"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
@@ -51,7 +51,7 @@ func (s *BtTreeService) getOrNotFound(ctx context.Context, id int64) (*model.BtT
 		return nil, fmt.Errorf("get bt_tree %d: %w", id, err)
 	}
 	if d == nil {
-		return nil, errcode.New(errcode.ErrBtTreeNotFound)
+		return nil, errcode.Newf(errcode.ErrBtTreeNotFound, "行为树 ID=%d 不存在", id)
 	}
 	return d, nil
 }
@@ -177,7 +177,7 @@ func (s *BtTreeService) GetByID(ctx context.Context, id int64) (*model.BtTree, e
 	// 1. 查缓存
 	if cached, hit, err := s.cache.GetDetail(ctx, id); err == nil && hit {
 		if cached == nil {
-			return nil, errcode.New(errcode.ErrBtTreeNotFound)
+			return nil, errcode.Newf(errcode.ErrBtTreeNotFound, "行为树 ID=%d 不存在", id)
 		}
 		return cached, nil
 	}
@@ -192,7 +192,7 @@ func (s *BtTreeService) GetByID(ctx context.Context, id int64) (*model.BtTree, e
 		// double-check
 		if cached, hit, err := s.cache.GetDetail(ctx, id); err == nil && hit {
 			if cached == nil {
-				return nil, errcode.New(errcode.ErrBtTreeNotFound)
+				return nil, errcode.Newf(errcode.ErrBtTreeNotFound, "行为树 ID=%d 不存在", id)
 			}
 			return cached, nil
 		}
@@ -208,15 +208,15 @@ func (s *BtTreeService) GetByID(ctx context.Context, id int64) (*model.BtTree, e
 	s.cache.SetDetail(ctx, id, d)
 
 	if d == nil {
-		return nil, errcode.New(errcode.ErrBtTreeNotFound)
+		return nil, errcode.Newf(errcode.ErrBtTreeNotFound, "行为树 ID=%d 不存在", id)
 	}
 	return d, nil
 }
 
-// Create 创建行为树
-//
-// 事务内同时写 bt_trees + bt_node_type_refs，保证节点类型引用表与 config 一致。
-func (s *BtTreeService) Create(ctx context.Context, req *model.CreateBtTreeRequest) (int64, error) {
+// ---- 事务版方法（handler 跨模块编排用）----
+
+// CreateInTx 事务内创建行为树（校验 + store 写入 + 节点类型引用同步，不清缓存）
+func (s *BtTreeService) CreateInTx(ctx context.Context, tx *sqlx.Tx, req *model.CreateBtTreeRequest) (int64, error) {
 	slog.Debug("service.创建行为树", "name", req.Name)
 
 	// 校验节点树结构
@@ -234,17 +234,6 @@ func (s *BtTreeService) Create(ctx context.Context, req *model.CreateBtTreeReque
 		return 0, errcode.Newf(errcode.ErrBtTreeNameExists, "行为树标识 '%s' 已存在", req.Name)
 	}
 
-	// 事务：写 bt_trees + bt_node_type_refs
-	tx, err := s.store.DB().BeginTxx(ctx, nil)
-	if err != nil {
-		return 0, fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() {
-		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
-			slog.Warn("service.创建行为树事务回滚失败", "error", rbErr)
-		}
-	}()
-
 	id, err := s.store.CreateInTx(ctx, tx, req)
 	if err != nil {
 		if errors.Is(err, errcode.ErrDuplicate) {
@@ -259,124 +248,99 @@ func (s *BtTreeService) Create(ctx context.Context, req *model.CreateBtTreeReque
 		return 0, fmt.Errorf("sync node type refs: %w", err)
 	}
 
-	// 先清缓存再 Commit
-	s.cache.InvalidateList(ctx)
-
-	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("commit: %w", err)
-	}
-
-	slog.Info("service.创建行为树成功", "id", id, "name", req.Name)
+	slog.Info("service.创建行为树成功(tx)", "id", id, "name", req.Name)
 	return id, nil
 }
 
-// Update 编辑行为树（启用中禁止编辑）
+// UpdateInTx 事务内编辑行为树（校验 + store 写入 + 节点类型引用同步，不清缓存）
 //
-// 事务内同时更新 bt_trees + bt_node_type_refs。
-func (s *BtTreeService) Update(ctx context.Context, req *model.UpdateBtTreeRequest) error {
+// 返回旧 config（handler 用于提取旧 BB Keys diff）。
+func (s *BtTreeService) UpdateInTx(ctx context.Context, tx *sqlx.Tx, req *model.UpdateBtTreeRequest) (*model.BtTree, error) {
 	slog.Debug("service.编辑行为树", "id", req.ID)
 
 	d, err := s.getOrNotFound(ctx, req.ID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// 启用中禁止编辑
 	if d.Enabled {
-		return errcode.New(errcode.ErrBtTreeEditNotDisabled)
+		return nil, errcode.New(errcode.ErrBtTreeEditNotDisabled)
 	}
 
 	// 校验节点树结构
 	if err := s.validateConfig(ctx, req.Config); err != nil {
-		return err
+		return nil, err
 	}
-
-	// 事务：更新 bt_trees + bt_node_type_refs
-	tx, err := s.store.DB().BeginTxx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() {
-		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
-			slog.Warn("service.编辑行为树事务回滚失败", "error", rbErr)
-		}
-	}()
 
 	if err := s.store.UpdateInTx(ctx, tx, req); err != nil {
 		if errors.Is(err, errcode.ErrVersionConflict) {
-			return errcode.New(errcode.ErrBtTreeVersionConflict)
+			return nil, errcode.New(errcode.ErrBtTreeVersionConflict)
 		}
 		slog.Error("service.编辑行为树失败", "error", err, "id", req.ID)
-		return fmt.Errorf("update bt_tree: %w", err)
+		return nil, fmt.Errorf("update bt_tree: %w", err)
 	}
 
 	if err := s.store.SyncNodeTypeRefsTx(ctx, tx, req.ID, req.Config); err != nil {
 		slog.Error("service.编辑行为树-同步节点类型引用失败", "error", err, "id", req.ID)
-		return fmt.Errorf("sync node type refs: %w", err)
+		return nil, fmt.Errorf("sync node type refs: %w", err)
 	}
 
-	// 先清缓存再 Commit
-	s.cache.DelDetail(ctx, req.ID)
-	s.cache.InvalidateList(ctx)
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit: %w", err)
-	}
-
-	slog.Info("service.编辑行为树成功", "id", req.ID)
-	return nil
+	slog.Info("service.编辑行为树成功(tx)", "id", req.ID)
+	return d, nil // 返回旧数据，handler 用于 BB Key diff
 }
 
-// Delete 软删除行为树（启用中禁止删除）
-//
-// 事务内同时软删 bt_trees + 清理 bt_node_type_refs。
-func (s *BtTreeService) Delete(ctx context.Context, id int64) error {
+// SoftDeleteInTx 事务内软删除行为树（前置校验 + store 写入 + 节点类型引用清理，不清缓存）
+func (s *BtTreeService) SoftDeleteInTx(ctx context.Context, tx *sqlx.Tx, id int64) (*model.BtTree, error) {
 	slog.Debug("service.删除行为树", "id", id)
 
 	d, err := s.getOrNotFound(ctx, id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// 启用中禁止删除
 	if d.Enabled {
-		return errcode.New(errcode.ErrBtTreeDeleteNotDisabled)
+		return nil, errcode.New(errcode.ErrBtTreeDeleteNotDisabled)
 	}
-
-	// 事务：软删 bt_trees + 清理 bt_node_type_refs
-	tx, err := s.store.DB().BeginTxx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() {
-		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
-			slog.Warn("service.删除行为树事务回滚失败", "error", rbErr)
-		}
-	}()
 
 	if err := s.store.SoftDeleteInTx(ctx, tx, id); err != nil {
 		if errors.Is(err, errcode.ErrNotFound) {
-			return errcode.New(errcode.ErrBtTreeNotFound)
+			return nil, errcode.Newf(errcode.ErrBtTreeNotFound, "行为树 ID=%d 不存在", id)
 		}
 		slog.Error("service.删除行为树失败", "error", err, "id", id)
-		return fmt.Errorf("soft delete bt_tree: %w", err)
+		return nil, fmt.Errorf("soft delete bt_tree: %w", err)
 	}
 
 	if err := s.store.DeleteNodeTypeRefsTx(ctx, tx, id); err != nil {
 		slog.Error("service.删除行为树-清理节点类型引用失败", "error", err, "id", id)
-		return fmt.Errorf("delete node type refs: %w", err)
+		return nil, fmt.Errorf("delete node type refs: %w", err)
 	}
 
-	// 先清缓存再 Commit
+	slog.Info("service.删除行为树成功(tx)", "id", id, "name", d.Name)
+	return d, nil
+}
+
+// InvalidateDetail 清单条缓存（handler commit 前调用）
+func (s *BtTreeService) InvalidateDetail(ctx context.Context, id int64) {
 	s.cache.DelDetail(ctx, id)
+}
+
+// InvalidateList 清列表缓存（handler commit 前调用）
+func (s *BtTreeService) InvalidateList(ctx context.Context) {
 	s.cache.InvalidateList(ctx)
+}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit: %w", err)
+// ExtractBBKeys 从行为树 config JSON 中提取所有 BB Key 名（去重），供 handler 层用于引用同步。
+//
+// 内部预加载节点类型 bb_key 参数名，再解析 config 提取值。
+// 返回 map[keyName → true]。
+func (s *BtTreeService) ExtractBBKeys(ctx context.Context, config json.RawMessage) (map[string]bool, error) {
+	nodeParamTypes, err := s.nodeTypeStore.ListBBKeyParamNames(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list bb key param names: %w", err)
 	}
-
-	slog.Info("service.删除行为树成功", "id", id, "name", d.Name)
-	return nil
+	return storemysql.ExtractBBKeysFromConfig(config, nodeParamTypes)
 }
 
 // ToggleEnabled 切换启用/停用

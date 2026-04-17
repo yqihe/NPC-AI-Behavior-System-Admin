@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/yqihe/npc-ai-admin/backend/internal/cache"
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
@@ -303,13 +304,18 @@ func (s *EventTypeSchemaService) GetReferences(ctx context.Context, id int64) (*
 		return nil, fmt.Errorf("get schema refs: %w", err)
 	}
 
-	eventTypes := make([]model.SchemaReferenceItem, 0, len(refs))
+	eventTypes := make([]model.SchemaReferenceItem, 0)
+	fsmConfigs := make([]model.SchemaReferenceItem, 0)
+	btTrees := make([]model.SchemaReferenceItem, 0)
 	for _, r := range refs {
-		if r.RefType == util.RefTypeEventType {
-			eventTypes = append(eventTypes, model.SchemaReferenceItem{
-				RefType: r.RefType,
-				RefID:   r.RefID,
-			})
+		item := model.SchemaReferenceItem{RefType: r.RefType, RefID: r.RefID}
+		switch r.RefType {
+		case util.RefTypeEventType:
+			eventTypes = append(eventTypes, item)
+		case util.RefTypeFsm:
+			fsmConfigs = append(fsmConfigs, item)
+		case util.RefTypeBt:
+			btTrees = append(btTrees, item)
 		}
 	}
 
@@ -317,6 +323,8 @@ func (s *EventTypeSchemaService) GetReferences(ctx context.Context, id int64) (*
 		SchemaID:   id,
 		FieldLabel: ets.FieldLabel,
 		EventTypes: eventTypes,
+		FsmConfigs: fsmConfigs,
+		BtTrees:    btTrees,
 	}, nil
 }
 
@@ -330,4 +338,71 @@ func (s *EventTypeSchemaService) FillHasRefs(ctx context.Context, items []model.
 		}
 		items[i].HasRefs = hasRefs
 	}
+}
+
+// ---- FSM/BT BB Key → schema_refs 维护 ----
+
+// SyncFsmSchemaRefs 同步 FSM 条件中 BB Key 对事件扩展字段的引用关系（事务内）
+//
+// 对称 FieldService.SyncFsmBBKeyRefs：同一组 BB Key name，
+// 来自 fields 表的写 field_refs，来自 event_type_schema 表的写 schema_refs。
+// 返回 affected schema IDs（用于清缓存）。
+func (s *EventTypeSchemaService) SyncFsmSchemaRefs(ctx context.Context, tx *sqlx.Tx, fsmID int64, oldKeys, newKeys map[string]bool) ([]int64, error) {
+	return s.syncSchemaRefs(ctx, tx, util.RefTypeFsm, fsmID, oldKeys, newKeys)
+}
+
+// CleanFsmSchemaRefs 清理 FSM 删除时的所有扩展字段引用（事务内）
+func (s *EventTypeSchemaService) CleanFsmSchemaRefs(ctx context.Context, tx *sqlx.Tx, fsmID int64) ([]int64, error) {
+	return s.schemaRefStore.RemoveByRef(ctx, tx, util.RefTypeFsm, fsmID)
+}
+
+// SyncBtSchemaRefs 同步行为树节点中 BB Key 对事件扩展字段的引用关系（事务内）
+func (s *EventTypeSchemaService) SyncBtSchemaRefs(ctx context.Context, tx *sqlx.Tx, btTreeID int64, oldKeys, newKeys map[string]bool) ([]int64, error) {
+	return s.syncSchemaRefs(ctx, tx, util.RefTypeBt, btTreeID, oldKeys, newKeys)
+}
+
+// CleanBtSchemaRefs 清理行为树删除时的所有扩展字段引用（事务内）
+func (s *EventTypeSchemaService) CleanBtSchemaRefs(ctx context.Context, tx *sqlx.Tx, btTreeID int64) ([]int64, error) {
+	return s.schemaRefStore.RemoveByRef(ctx, tx, util.RefTypeBt, btTreeID)
+}
+
+// syncSchemaRefs 通用 diff 同步，对齐 EventTypeService.syncSchemaRefs 模式
+func (s *EventTypeSchemaService) syncSchemaRefs(ctx context.Context, tx *sqlx.Tx, refType string, refID int64, oldKeys, newKeys map[string]bool) ([]int64, error) {
+	affected := make([]int64, 0)
+
+	// toAdd: newKeys 中有但 oldKeys 没有
+	for key := range newKeys {
+		if !oldKeys[key] {
+			id, err := s.store.GetIDByFieldNameTx(ctx, tx, key)
+			if err != nil {
+				return nil, fmt.Errorf("lookup schema id for %q: %w", key, err)
+			}
+			if id == 0 {
+				continue // 不是扩展字段（可能是 NPC 字段或运行时 Key），跳过
+			}
+			if err := s.schemaRefStore.Add(ctx, tx, id, refType, refID); err != nil {
+				return nil, fmt.Errorf("add schema ref %s → %s %d: %w", key, refType, refID, err)
+			}
+			affected = append(affected, id)
+		}
+	}
+
+	// toRemove: oldKeys 中有但 newKeys 没有
+	for key := range oldKeys {
+		if !newKeys[key] {
+			id, err := s.store.GetIDByFieldNameTx(ctx, tx, key)
+			if err != nil {
+				slog.Warn("service.查schema_id失败", "key", key, "error", err)
+				continue
+			}
+			if id > 0 {
+				if err := s.schemaRefStore.Remove(ctx, tx, id, refType, refID); err != nil {
+					return nil, fmt.Errorf("remove schema ref %s: %w", key, err)
+				}
+				affected = append(affected, id)
+			}
+		}
+	}
+
+	return affected, nil
 }

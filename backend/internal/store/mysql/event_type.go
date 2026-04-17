@@ -87,8 +87,12 @@ func (s *EventTypeStore) ExistsByName(ctx context.Context, name string) (bool, e
 // 列表返回核心列 + config_json（service 层会 unmarshal 抽取展示字段）。
 func (s *EventTypeStore) List(ctx context.Context, q *model.EventTypeListQuery) ([]model.EventType, int64, error) {
 	where := []string{"deleted = 0"}
-	args := make([]any, 0, 4)
+	args := make([]any, 0, 5)
 
+	if q.Name != "" {
+		where = append(where, "name LIKE ?")
+		args = append(args, "%"+shared.EscapeLike(q.Name)+"%")
+	}
 	if q.Label != "" {
 		where = append(where, "display_name LIKE ?")
 		args = append(args, "%"+shared.EscapeLike(q.Label)+"%")

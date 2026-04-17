@@ -52,7 +52,7 @@ func (s *NpcService) getOrNotFound(ctx context.Context, id int64) (*model.NPC, e
 		return nil, fmt.Errorf("get npc %d: %w", id, err)
 	}
 	if n == nil {
-		return nil, errcode.New(errcode.ErrNPCNotFound)
+		return nil, errcode.Newf(errcode.ErrNPCNotFound, "NPC ID=%d 不存在", id)
 	}
 	return n, nil
 }
@@ -96,7 +96,7 @@ func (s *NpcService) GetByID(ctx context.Context, id int64) (*model.NPC, error) 
 	// 1. 查缓存
 	if cached, hit, err := s.cache.GetDetail(ctx, id); err == nil && hit {
 		if cached == nil {
-			return nil, errcode.New(errcode.ErrNPCNotFound)
+			return nil, errcode.Newf(errcode.ErrNPCNotFound, "NPC ID=%d 不存在", id)
 		}
 		return cached, nil
 	}
@@ -111,7 +111,7 @@ func (s *NpcService) GetByID(ctx context.Context, id int64) (*model.NPC, error) 
 		// double-check
 		if cached, hit, err := s.cache.GetDetail(ctx, id); err == nil && hit {
 			if cached == nil {
-				return nil, errcode.New(errcode.ErrNPCNotFound)
+				return nil, errcode.Newf(errcode.ErrNPCNotFound, "NPC ID=%d 不存在", id)
 			}
 			return cached, nil
 		}
@@ -127,7 +127,7 @@ func (s *NpcService) GetByID(ctx context.Context, id int64) (*model.NPC, error) 
 	s.cache.SetDetail(ctx, id, n)
 
 	if n == nil {
-		return nil, errcode.New(errcode.ErrNPCNotFound)
+		return nil, errcode.Newf(errcode.ErrNPCNotFound, "NPC ID=%d 不存在", id)
 	}
 	return n, nil
 }
@@ -290,7 +290,7 @@ func (s *NpcService) SoftDelete(ctx context.Context, id int64) (*model.DeleteRes
 
 	if err := s.store.SoftDeleteInTx(ctx, tx, id); err != nil {
 		if errors.Is(err, errcode.ErrNotFound) {
-			return nil, errcode.New(errcode.ErrNPCNotFound)
+			return nil, errcode.Newf(errcode.ErrNPCNotFound, "NPC ID=%d 不存在", id)
 		}
 		slog.Error("service.删除NPC失败", "error", err, "id", id)
 		return nil, fmt.Errorf("soft delete npc: %w", err)
@@ -351,6 +351,207 @@ func (s *NpcService) CheckName(ctx context.Context, name string) (*model.CheckNa
 }
 
 // ──────────────────────────────────────────────
+// 业务校验 + 数据组装（handler 拿到跨模块数据后调用，纯业务逻辑不查其他模块）
+// ──────────────────────────────────────────────
+
+// BuildFieldSnapshot 按模板字段顺序校验字段值并组装快照
+//
+// templateEntries: 模板字段顺序（field_id, required）
+// fieldLites:      字段元数据（handler 从 fieldService 批量拿到）
+// fieldValues:     前端传入的字段值列表
+//
+// 纯业务逻辑：构建 map → 校验必填/类型/约束 → 返回快照。不访问任何外部服务。
+func (s *NpcService) BuildFieldSnapshot(
+	templateEntries []model.TemplateFieldEntry,
+	fieldLites []model.FieldLite,
+	fieldValues []model.NPCFieldValue,
+) ([]model.NPCFieldEntry, *errcode.Error) {
+	// 构建 fieldMap
+	fieldMap := make(map[int64]model.FieldLite, len(fieldLites))
+	for _, fl := range fieldLites {
+		if fl.ID > 0 {
+			fieldMap[fl.ID] = fl
+		}
+	}
+
+	// 构建 valueMap
+	valueMap := make(map[int64]json.RawMessage, len(fieldValues))
+	for _, fv := range fieldValues {
+		valueMap[fv.FieldID] = fv.Value
+	}
+
+	snapshot := make([]model.NPCFieldEntry, 0, len(templateEntries))
+	for _, entry := range templateEntries {
+		field, ok := fieldMap[entry.FieldID]
+		if !ok {
+			slog.Warn("service.NPC字段校验-字段元数据缺失", "field_id", entry.FieldID)
+			snapshot = append(snapshot, model.NPCFieldEntry{
+				FieldID:  entry.FieldID,
+				Required: entry.Required,
+				Value:    json.RawMessage("null"),
+			})
+			continue
+		}
+
+		value := valueMap[entry.FieldID]
+
+		if shared.IsJSONNull(value) {
+			if entry.Required {
+				return nil, errcode.Newf(errcode.ErrNPCFieldRequired,
+					"字段 '%s' 为必填项，值不能为空", field.Name)
+			}
+			value = json.RawMessage("null")
+		} else {
+			var props model.FieldProperties
+			if len(field.Properties) > 0 {
+				_ = json.Unmarshal(field.Properties, &props)
+			}
+			if verr := shared.ValidateValue(field.Type, props.Constraints, value); verr != nil {
+				return nil, errcode.Newf(errcode.ErrNPCFieldValueInvalid,
+					"字段 '%s' 值不符合约束: %s", field.Name, verr.Message)
+			}
+		}
+
+		snapshot = append(snapshot, model.NPCFieldEntry{
+			FieldID:  entry.FieldID,
+			Name:     field.Name,
+			Required: entry.Required,
+			Value:    value,
+		})
+	}
+	return snapshot, nil
+}
+
+// ValidateBehaviorRefs 校验 bt_refs 的状态键在 FSM states 中存在
+//
+// 纯业务规则校验，不访问外部服务。
+// fsmStates: handler 从 FsmConfigService 获取的状态名集合。
+// btRefs:    前端传入的 {state_name → bt_tree_name} 映射。
+// fsmRef:    用于错误提示。
+func (s *NpcService) ValidateBehaviorRefs(fsmRef string, btRefs map[string]string, fsmStates map[string]bool) *errcode.Error {
+	if len(btRefs) > 0 && fsmRef == "" {
+		return errcode.New(errcode.ErrNPCBtWithoutFsm)
+	}
+	for stateName, btName := range btRefs {
+		if btName == "" {
+			continue
+		}
+		if !fsmStates[stateName] {
+			return errcode.Newf(errcode.ErrNPCBtStateInvalid,
+				"行为树绑定的状态名 '%s' 不在状态机 '%s' 的状态列表中", stateName, fsmRef)
+		}
+	}
+	return nil
+}
+
+// BuildDetail 组装 NPC 详情响应
+//
+// 解析 JSON 快照 + 拼装字段元数据 + bt_refs 反序列化。
+// fieldLites/templateLabel 由 handler 从对应 service 获取后传入。
+func (s *NpcService) BuildDetail(npc *model.NPC, fieldLites []model.FieldLite, templateLabel string) (*model.NPCDetail, error) {
+	// 解析字段快照
+	var fieldEntries []model.NPCFieldEntry
+	if err := json.Unmarshal(npc.Fields, &fieldEntries); err != nil {
+		return nil, fmt.Errorf("parse npc fields: %w", err)
+	}
+
+	// 构建 fieldLiteMap
+	fieldLiteMap := make(map[int64]model.FieldLite, len(fieldLites))
+	for _, fl := range fieldLites {
+		if fl.ID > 0 {
+			fieldLiteMap[fl.ID] = fl
+		}
+	}
+
+	// 拼装 []NPCDetailField
+	detailFields := make([]model.NPCDetailField, 0, len(fieldEntries))
+	for _, entry := range fieldEntries {
+		fl, ok := fieldLiteMap[entry.FieldID]
+		if !ok {
+			slog.Warn("service.NPC详情-字段元数据缺失", "field_id", entry.FieldID)
+			continue
+		}
+		detailFields = append(detailFields, model.NPCDetailField{
+			FieldID:       entry.FieldID,
+			Name:          entry.Name,
+			Label:         fl.Label,
+			Type:          fl.Type,
+			Category:      fl.Category,
+			CategoryLabel: fl.CategoryLabel,
+			Enabled:       fl.Enabled,
+			Required:      entry.Required,
+			Value:         entry.Value,
+		})
+	}
+
+	// 解析 bt_refs
+	var btRefs map[string]string
+	if len(npc.BtRefs) > 0 {
+		_ = json.Unmarshal(npc.BtRefs, &btRefs)
+	}
+	if btRefs == nil {
+		btRefs = make(map[string]string)
+	}
+
+	return &model.NPCDetail{
+		ID:            npc.ID,
+		Name:          npc.Name,
+		Label:         npc.Label,
+		Description:   npc.Description,
+		TemplateID:    npc.TemplateID,
+		TemplateName:  npc.TemplateName,
+		TemplateLabel: templateLabel,
+		Enabled:       npc.Enabled,
+		Version:       npc.Version,
+		Fields:        detailFields,
+		FsmRef:        npc.FsmRef,
+		BtRefs:        btRefs,
+	}, nil
+}
+
+// ExtractFieldIDsFromNPC 从 NPC fields JSON 中提取 field_id 列表（handler 跨模块拿 FieldLite 用）
+func (s *NpcService) ExtractFieldIDsFromNPC(fieldsJSON json.RawMessage) ([]int64, error) {
+	var entries []model.NPCFieldEntry
+	if err := json.Unmarshal(fieldsJSON, &entries); err != nil {
+		return nil, fmt.Errorf("parse npc fields: %w", err)
+	}
+	ids := make([]int64, len(entries))
+	for i, e := range entries {
+		ids[i] = e.FieldID
+	}
+	return ids, nil
+}
+
+// ParseNPCFieldEntries 解析 NPC fields JSON 为快照条目 + 模板字段条目（Update 重建快照用）
+func (s *NpcService) ParseNPCFieldEntries(fieldsJSON json.RawMessage) ([]model.NPCFieldEntry, []model.TemplateFieldEntry, error) {
+	var entries []model.NPCFieldEntry
+	if err := json.Unmarshal(fieldsJSON, &entries); err != nil {
+		return nil, nil, fmt.Errorf("parse npc fields: %w", err)
+	}
+	templateEntries := make([]model.TemplateFieldEntry, len(entries))
+	for i, e := range entries {
+		templateEntries[i] = model.TemplateFieldEntry{
+			FieldID:  e.FieldID,
+			Required: e.Required,
+		}
+	}
+	return entries, templateEntries, nil
+}
+
+// FillSnapshotNames 用旧快照的 Name 回填新快照（Update 时字段 name 从旧快照保留）
+func (s *NpcService) FillSnapshotNames(snapshot []model.NPCFieldEntry, oldEntries []model.NPCFieldEntry) {
+	oldMap := make(map[int64]string, len(oldEntries))
+	for _, e := range oldEntries {
+		oldMap[e.FieldID] = e.Name
+	}
+	for i := range snapshot {
+		if name, ok := oldMap[snapshot[i].FieldID]; ok {
+			snapshot[i].Name = name
+		}
+	}
+}
+
+// ──────────────────────────────────────────────
 // 跨模块对外接口（供其他 handler 调用，不暴露 store 细节）
 // ──────────────────────────────────────────────
 
@@ -372,6 +573,16 @@ func (s *NpcService) CountByFsmRef(ctx context.Context, fsmName string) (int64, 
 // ListByTemplateID 分页查询引用了指定模板的 NPC 精简列表（供 TemplateHandler GetReferences）
 func (s *NpcService) ListByTemplateID(ctx context.Context, templateID int64, page, pageSize int) ([]model.NPCLite, int64, error) {
 	return s.store.ListByTemplateID(ctx, templateID, page, pageSize)
+}
+
+// ListByFsmRef 分页查询引用了指定状态机的 NPC 精简列表（供 FsmConfigHandler GetReferences）
+func (s *NpcService) ListByFsmRef(ctx context.Context, fsmName string, page, pageSize int) ([]model.NPCLite, int64, error) {
+	return s.store.ListByFsmRef(ctx, fsmName, page, pageSize)
+}
+
+// ListByBtTreeName 分页查询引用了指定行为树的 NPC 精简列表（供 BtTreeHandler GetReferences）
+func (s *NpcService) ListByBtTreeName(ctx context.Context, btName string, page, pageSize int) ([]model.NPCLite, int64, error) {
+	return s.store.ListByBtTreeName(ctx, btName, page, pageSize)
 }
 
 // ExportAll 导出所有已启用且未删除的 NPC，组装 NPCExportItem

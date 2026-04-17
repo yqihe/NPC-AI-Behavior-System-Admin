@@ -103,6 +103,7 @@ type EventTypeExportItem struct {
 
 // EventTypeListQuery 列表查询参数
 type EventTypeListQuery struct {
+	Name           string `json:"name"`                      // 英文标识模糊搜索
 	Label          string `json:"label"`                     // display_name 模糊搜索
 	PerceptionMode string `json:"perception_mode,omitempty"` // 精确筛选
 	Enabled        *bool  `json:"enabled,omitempty"`         // nil=不筛选，true=仅启用，false=仅停用

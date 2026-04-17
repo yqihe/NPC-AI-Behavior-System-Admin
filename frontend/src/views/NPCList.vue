@@ -1,5 +1,5 @@
 <template>
-  <div class="npc-list">
+  <div class="list-root">
     <!-- 顶部标题栏 -->
     <div class="page-header">
       <div class="header-left">
@@ -16,26 +16,33 @@
     <!-- 筛选栏 -->
     <div class="filter-bar">
       <el-input
+        v-model="query.name"
+        placeholder="搜索英文标识"
+        clearable
+        class="filter-item"
+        @keyup.enter="handleSearch"
+      />
+      <el-input
         v-model="query.label"
         placeholder="搜索中文标签"
         clearable
-        class="filter-item filter-item-wide"
-        @keyup.enter="handleSearch"
-      />
-      <el-input
-        v-model="query.name"
-        placeholder="搜索 NPC 标识"
-        clearable
         class="filter-item"
         @keyup.enter="handleSearch"
       />
-      <el-input
+      <el-select
         v-model="query.template_name"
-        placeholder="所用模板标识（精确）"
+        placeholder="所用模板"
         clearable
+        filterable
         class="filter-item"
-        @keyup.enter="handleSearch"
-      />
+      >
+        <el-option
+          v-for="tpl in templateOptions"
+          :key="tpl.name"
+          :label="`${tpl.label} (${tpl.name})`"
+          :value="tpl.name"
+        />
+      </el-select>
       <el-select
         v-model="query.enabled"
         placeholder="启用状态"
@@ -60,12 +67,8 @@
         :row-class-name="rowClassName"
         style="width: 100%"
       >
-        <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column label="NPC 标识" width="160">
-          <template #default="{ row }">
-            <span class="mono">{{ row.name }}</span>
-          </template>
-        </el-table-column>
+        <el-table-column prop="id" label="ID" width="70" />
+        <el-table-column prop="name" label="NPC 标识" min-width="160" />
         <el-table-column prop="label" label="中文标签" min-width="140" />
         <el-table-column label="所用模板" width="160">
           <template #default="{ row }">
@@ -75,7 +78,7 @@
         </el-table-column>
         <el-table-column label="行为状态机" width="140">
           <template #default="{ row }">
-            <span v-if="row.fsm_ref" class="mono">{{ row.fsm_ref }}</span>
+            <span v-if="row.fsm_ref">{{ row.fsm_ref }}</span>
             <span v-else class="text-muted">—</span>
           </template>
         </el-table-column>
@@ -94,7 +97,8 @@
         </el-table-column>
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
-            <el-link type="primary" :underline="false" @click="handleEdit(row)">编辑</el-link>
+            <el-link type="primary" :underline="false" @click="router.push(`/npcs/${row.id}/view`)">查看</el-link>
+            <el-link type="primary" :underline="false" style="margin-left: 12px" @click="handleEdit(row)">编辑</el-link>
             <el-link type="danger" :underline="false" style="margin-left: 12px" @click="handleDelete(row)">删除</el-link>
           </template>
         </el-table-column>
@@ -133,6 +137,8 @@ import { Plus, Search } from '@element-plus/icons-vue'
 import EnabledGuardDialog from '@/components/EnabledGuardDialog.vue'
 import { npcApi, NPC_ERRORS } from '@/api/npc'
 import type { NPCListItem, NPCListQuery } from '@/api/npc'
+import { templateApi } from '@/api/templates'
+import type { TemplateListItem } from '@/api/templates'
 import type { BizError } from '@/api/request'
 import { formatTime } from '@/utils/format'
 
@@ -142,10 +148,11 @@ const loading = ref(false)
 const tableData = ref<NPCListItem[]>([])
 const total = ref(0)
 const guardRef = ref<InstanceType<typeof EnabledGuardDialog> | null>(null)
+const templateOptions = ref<TemplateListItem[]>([])
 
 const query = reactive<NPCListQuery>({
-  label: '',
   name: '',
+  label: '',
   template_name: '',
   enabled: null,
   page: 1,
@@ -161,8 +168,8 @@ async function fetchList() {
       page: query.page,
       page_size: query.page_size,
     }
-    if (query.label) params.label = query.label
     if (query.name) params.name = query.name
+    if (query.label) params.label = query.label
     if (query.template_name) params.template_name = query.template_name
     if (query.enabled !== null && query.enabled !== undefined) {
       params.enabled = query.enabled
@@ -177,7 +184,9 @@ async function fetchList() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  const tplRes = await templateApi.list({ page: 1, page_size: 1000 })
+  templateOptions.value = tplRes.data?.items || []
   fetchList()
 })
 
@@ -189,8 +198,8 @@ function handleSearch() {
 }
 
 function handleReset() {
-  query.label = ''
   query.name = ''
+  query.label = ''
   query.template_name = ''
   query.enabled = null
   query.page = 1
@@ -218,11 +227,7 @@ async function handleToggle(row: NPCListItem, val: boolean) {
   } catch (err) {
     if (err === 'cancel') return
     if ((err as BizError).code === NPC_ERRORS.VERSION_CONFLICT) {
-      ElMessageBox.alert(
-        '该 NPC 已被其他人修改，请刷新后重试。',
-        '版本冲突',
-        { type: 'warning' },
-      )
+      ElMessageBox.alert('数据已被其他用户修改，请刷新页面后重试。', '版本冲突', { type: 'warning' })
       fetchList()
     }
     // 其他错误拦截器已 toast
@@ -273,26 +278,3 @@ function rowClassName({ row }: { row: NPCListItem }) {
   return row.enabled ? '' : 'row-disabled'
 }
 </script>
-
-<style scoped>
-.npc-list {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* 禁用行整行 opacity 0.5，但启用开关 + 创建时间 + 操作列保持高亮 */
-:deep(.row-disabled td:not(:nth-last-child(-n+3))) {
-  opacity: 0.5;
-}
-
-.mono {
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 13px;
-}
-
-.text-muted {
-  color: #C0C4CC;
-}
-</style>

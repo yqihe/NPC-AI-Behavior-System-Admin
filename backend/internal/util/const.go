@@ -59,6 +59,7 @@ const (
 	RefTypeField     = "field"      // reference 字段引用字段
 	RefTypeEventType = "event_type" // 事件类型引用扩展字段（schema_refs）
 	RefTypeFsm       = "fsm"        // FSM 条件引用字段 BB Key（field_refs）
+	RefTypeBt        = "bt"         // 行为树节点引用字段 BB Key（field_refs）
 )
 
 // ──────────────────────────────────────────────

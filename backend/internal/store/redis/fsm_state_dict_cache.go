@@ -100,7 +100,7 @@ func (c *FsmStateDictCache) getListVersion(ctx context.Context) int64 {
 // GetList 查状态字典列表缓存（带版本号，类型安全）
 func (c *FsmStateDictCache) GetList(ctx context.Context, q *model.FsmStateDictListQuery) (*model.FsmStateDictListData, bool, error) {
 	version := c.getListVersion(ctx)
-	key := rcfg.FsmStateDictListKey(version, q.DisplayName, q.Category, q.Enabled, q.Page, q.PageSize)
+	key := rcfg.FsmStateDictListKey(version, q.Name, q.DisplayName, q.Category, q.Enabled, q.Page, q.PageSize)
 	data, err := c.rdb.Get(ctx, key).Bytes()
 	if err == redis.Nil {
 		slog.Debug("cache.状态字典列表未命中", "key", key)
@@ -124,7 +124,7 @@ func (c *FsmStateDictCache) GetList(ctx context.Context, q *model.FsmStateDictLi
 // SetList 写状态字典列表缓存（带当前版本号）
 func (c *FsmStateDictCache) SetList(ctx context.Context, q *model.FsmStateDictListQuery, list *model.FsmStateDictListData) {
 	version := c.getListVersion(ctx)
-	key := rcfg.FsmStateDictListKey(version, q.DisplayName, q.Category, q.Enabled, q.Page, q.PageSize)
+	key := rcfg.FsmStateDictListKey(version, q.Name, q.DisplayName, q.Category, q.Enabled, q.Page, q.PageSize)
 	data, err := json.Marshal(list)
 	if err != nil {
 		slog.Error("cache.状态字典列表序列化失败", "error", err)

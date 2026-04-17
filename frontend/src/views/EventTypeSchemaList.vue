@@ -1,5 +1,5 @@
 <template>
-  <div class="schema-list">
+  <div class="list-root">
     <!-- 顶部标题栏 -->
     <div class="page-header">
       <div class="header-left">
@@ -15,6 +15,20 @@
 
     <!-- 筛选栏 -->
     <div class="filter-bar">
+      <el-input
+        v-model="query.field_name"
+        placeholder="搜索英文标识"
+        clearable
+        class="filter-item"
+        @keyup.enter="handleSearch"
+      />
+      <el-input
+        v-model="query.field_label"
+        placeholder="搜索中文标签"
+        clearable
+        class="filter-item"
+        @keyup.enter="handleSearch"
+      />
       <el-select
         v-model="query.enabled"
         placeholder="启用状态"
@@ -108,19 +122,35 @@
       @close="resetRefDialog"
     >
       <div v-loading="refDialog.loading">
+        <!-- 事件类型引用 -->
         <div class="ref-section">
           <p class="ref-subtitle">
             事件类型引用（{{ refDialog.eventTypes.length }} 个事件类型使用了该扩展字段）：
           </p>
-          <el-table
-            v-if="refDialog.eventTypes.length > 0"
-            :data="refDialog.eventTypes"
-            size="small"
-          >
+          <el-table v-if="refDialog.eventTypes.length > 0" :data="refDialog.eventTypes" size="small">
             <el-table-column prop="label" label="事件类型名称" />
-            <el-table-column prop="ref_type" label="类型" width="120" />
           </el-table>
           <p v-else class="ref-empty">暂无事件类型引用</p>
+        </div>
+        <!-- 状态机引用 -->
+        <div class="ref-section" style="margin-top: 16px">
+          <p class="ref-subtitle">
+            状态机引用（{{ refDialog.fsmConfigs.length }} 个状态机使用了该扩展字段 BB Key）：
+          </p>
+          <el-table v-if="refDialog.fsmConfigs.length > 0" :data="refDialog.fsmConfigs" size="small">
+            <el-table-column prop="label" label="状态机名称" />
+          </el-table>
+          <p v-else class="ref-empty">暂无状态机引用</p>
+        </div>
+        <!-- 行为树引用 -->
+        <div class="ref-section" style="margin-top: 16px">
+          <p class="ref-subtitle">
+            行为树引用（{{ refDialog.btTrees.length }} 个行为树使用了该扩展字段 BB Key）：
+          </p>
+          <el-table v-if="refDialog.btTrees.length > 0" :data="refDialog.btTrees" size="small">
+            <el-table-column prop="label" label="行为树名称" />
+          </el-table>
+          <p v-else class="ref-empty">暂无行为树引用</p>
         </div>
       </div>
     </el-dialog>
@@ -148,6 +178,8 @@ type SortMode = 'id_desc' | 'sort_asc'
 const sortMode = ref<SortMode>('id_desc')
 
 const query = reactive<ExtSchemaListQuery>({
+  field_name: '',
+  field_label: '',
   enabled: undefined,
 })
 
@@ -156,12 +188,16 @@ const refDialog = reactive({
   loading: false,
   fieldLabel: '',
   eventTypes: [] as SchemaReferenceItem[],
+  fsmConfigs: [] as SchemaReferenceItem[],
+  btTrees: [] as SchemaReferenceItem[],
 })
 
 function resetRefDialog() {
   refDialog.loading = false
   refDialog.fieldLabel = ''
   refDialog.eventTypes = []
+  refDialog.fsmConfigs = []
+  refDialog.btTrees = []
 }
 
 // ---------- 数据加载 ----------
@@ -170,6 +206,8 @@ async function fetchList() {
   loading.value = true
   try {
     const params: ExtSchemaListQuery = {}
+    if (query.field_name) params.field_name = query.field_name
+    if (query.field_label) params.field_label = query.field_label
     if (query.enabled !== null && query.enabled !== undefined) {
       params.enabled = query.enabled
     }
@@ -195,6 +233,8 @@ function handleSearch() {
 }
 
 function handleReset() {
+  query.field_name = ''
+  query.field_label = ''
   query.enabled = undefined
   fetchList()
 }
@@ -272,9 +312,12 @@ async function handleDelete(row: EventTypeSchemaFull) {
   try {
     const res = await eventTypeApi.schemaReferences(row.id)
     const ets = res.data?.event_types || []
-    if (ets.length > 0) {
-      showRefDialog(row, ets)
-      ElMessage.warning(`该扩展字段被 ${ets.length} 个事件类型使用，无法删除。请先移除引用关系。`)
+    const fsms = res.data?.fsm_configs || []
+    const bts = res.data?.bt_trees || []
+    const total = ets.length + fsms.length + bts.length
+    if (total > 0) {
+      showRefDialog(row, ets, fsms, bts)
+      ElMessage.warning(`该扩展字段被 ${total} 处引用，无法删除。请先移除引用关系。`)
       return
     }
   } catch {
@@ -307,11 +350,13 @@ async function handleDelete(row: EventTypeSchemaFull) {
   }
 }
 
-function showRefDialog(row: EventTypeSchemaFull, eventTypes: SchemaReferenceItem[]) {
+function showRefDialog(row: EventTypeSchemaFull, eventTypes: SchemaReferenceItem[], fsmConfigs: SchemaReferenceItem[], btTrees: SchemaReferenceItem[]) {
   refDialog.visible = true
   refDialog.loading = false
   refDialog.fieldLabel = row.field_label
   refDialog.eventTypes = eventTypes
+  refDialog.fsmConfigs = fsmConfigs
+  refDialog.btTrees = btTrees
 }
 
 async function loadAndShowRefs(row: EventTypeSchemaFull) {
@@ -319,9 +364,13 @@ async function loadAndShowRefs(row: EventTypeSchemaFull) {
   refDialog.loading = true
   refDialog.fieldLabel = row.field_label
   refDialog.eventTypes = []
+  refDialog.fsmConfigs = []
+  refDialog.btTrees = []
   try {
     const res = await eventTypeApi.schemaReferences(row.id)
     refDialog.eventTypes = res.data?.event_types || []
+    refDialog.fsmConfigs = res.data?.fsm_configs || []
+    refDialog.btTrees = res.data?.bt_trees || []
   } catch {
     // 拦截器已 toast
   } finally {
@@ -360,38 +409,11 @@ function typeLabel(type: string) {
 </script>
 
 <style scoped>
-.schema-list {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
 .filter-spacer {
   flex: 1;
 }
 
 .sort-toggle {
   flex-shrink: 0;
-}
-
-:deep(.row-disabled td:not(:nth-last-child(-n+3))) {
-  opacity: 0.5;
-}
-
-.ref-section {
-  margin-bottom: 8px;
-}
-
-.ref-subtitle {
-  font-size: 13px;
-  color: #909399;
-  margin: 0 0 8px 0;
-}
-
-.ref-empty {
-  font-size: 13px;
-  color: #C0C4CC;
-  margin: 4px 0;
 }
 </style>

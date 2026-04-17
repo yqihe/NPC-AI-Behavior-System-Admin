@@ -97,8 +97,12 @@ func (s *FieldStore) ExistsByName(ctx context.Context, name string) (bool, error
 // List 分页列表查询（覆盖索引，不回表）
 func (s *FieldStore) List(ctx context.Context, q *model.FieldListQuery) ([]model.FieldListItem, int64, error) {
 	where := []string{"deleted = 0"}
-	args := make([]any, 0, 4)
+	args := make([]any, 0, 5)
 
+	if q.Name != "" {
+		where = append(where, "name LIKE ?")
+		args = append(args, "%"+shared.EscapeLike(q.Name)+"%")
+	}
 	if q.Label != "" {
 		where = append(where, "label LIKE ?")
 		args = append(args, "%"+shared.EscapeLike(q.Label)+"%")

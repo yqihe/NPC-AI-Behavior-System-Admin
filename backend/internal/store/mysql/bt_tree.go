@@ -86,6 +86,10 @@ func (s *BtTreeStore) List(ctx context.Context, q *model.BtTreeListQuery) ([]mod
 	where := []string{"deleted = 0"}
 	args := make([]any, 0, 4)
 
+	if q.Name != "" {
+		where = append(where, "name LIKE ?")
+		args = append(args, "%"+shared.EscapeLike(q.Name)+"%")
+	}
 	if q.DisplayName != "" {
 		where = append(where, "display_name LIKE ?")
 		args = append(args, "%"+shared.EscapeLike(q.DisplayName)+"%")
@@ -362,6 +366,23 @@ func (s *BtTreeStore) GetBBKeyUsages(ctx context.Context, bbKey string, nodePara
 		return nil, fmt.Errorf("iterate bt_trees: %w", err)
 	}
 	return names, nil
+}
+
+// ExtractBBKeysFromConfig 从 config JSON 中提取所有 bb_key 类型参数值（去重）。
+//
+// nodeParamTypes: type_name → bb_key 参数名列表，由调用方预加载。
+// 返回 map[keyName → true]，可直接用于 SyncBtBBKeyRefs。
+func ExtractBBKeysFromConfig(config json.RawMessage, nodeParamTypes map[string][]string) (map[string]bool, error) {
+	var root map[string]any
+	if err := json.Unmarshal(config, &root); err != nil {
+		return nil, fmt.Errorf("unmarshal config: %w", err)
+	}
+	keys := extractBBKeys(root, nodeParamTypes)
+	m := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		m[k] = true
+	}
+	return m, nil
 }
 
 // ---- bt_node_type_refs 维护 ----

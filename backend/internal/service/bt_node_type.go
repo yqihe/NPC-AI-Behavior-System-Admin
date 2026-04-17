@@ -67,7 +67,7 @@ func (s *BtNodeTypeService) getOrNotFound(ctx context.Context, id int64) (*model
 		return nil, fmt.Errorf("get bt_node_type %d: %w", id, err)
 	}
 	if d == nil {
-		return nil, errcode.New(errcode.ErrBtNodeTypeNotFound)
+		return nil, errcode.Newf(errcode.ErrBtNodeTypeNotFound, "节点类型 ID=%d 不存在", id)
 	}
 	return d, nil
 }
@@ -175,7 +175,7 @@ func (s *BtNodeTypeService) GetByID(ctx context.Context, id int64) (*model.BtNod
 	// 1. 查缓存
 	if cached, hit, err := s.cache.GetDetail(ctx, id); err == nil && hit {
 		if cached == nil {
-			return nil, errcode.New(errcode.ErrBtNodeTypeNotFound)
+			return nil, errcode.Newf(errcode.ErrBtNodeTypeNotFound, "节点类型 ID=%d 不存在", id)
 		}
 		return cached, nil
 	}
@@ -190,7 +190,7 @@ func (s *BtNodeTypeService) GetByID(ctx context.Context, id int64) (*model.BtNod
 		// double-check
 		if cached, hit, err := s.cache.GetDetail(ctx, id); err == nil && hit {
 			if cached == nil {
-				return nil, errcode.New(errcode.ErrBtNodeTypeNotFound)
+				return nil, errcode.Newf(errcode.ErrBtNodeTypeNotFound, "节点类型 ID=%d 不存在", id)
 			}
 			return cached, nil
 		}
@@ -206,7 +206,7 @@ func (s *BtNodeTypeService) GetByID(ctx context.Context, id int64) (*model.BtNod
 	s.cache.SetDetail(ctx, id, d)
 
 	if d == nil {
-		return nil, errcode.New(errcode.ErrBtNodeTypeNotFound)
+		return nil, errcode.Newf(errcode.ErrBtNodeTypeNotFound, "节点类型 ID=%d 不存在", id)
 	}
 	return d, nil
 }
@@ -329,7 +329,7 @@ func (s *BtNodeTypeService) Delete(ctx context.Context, id int64) (*model.BtNode
 	// 软删除
 	if err := s.store.SoftDelete(ctx, id); err != nil {
 		if errors.Is(err, errcode.ErrNotFound) {
-			return nil, errcode.New(errcode.ErrBtNodeTypeNotFound)
+			return nil, errcode.Newf(errcode.ErrBtNodeTypeNotFound, "节点类型 ID=%d 不存在", id)
 		}
 		slog.Error("service.删除节点类型失败", "error", err, "id", id)
 		return nil, fmt.Errorf("soft delete bt_node_type: %w", err)

@@ -15,6 +15,7 @@ export interface BtNodeInternal {
 // ─── 列表 ───
 
 export interface BtTreeListQuery {
+  name?: string
   display_name?: string
   enabled?: boolean | null
   page: number
@@ -73,6 +74,7 @@ export const BT_TREE_ERR = {
   DELETE_NOT_DISABLED: 44009,
   EDIT_NOT_DISABLED:   44010,
   VERSION_CONFLICT:    44011,
+  REF_DELETE:          44012,
 } as const
 
 // ─── 序列化 / 反序列化 ───
@@ -154,4 +156,19 @@ export const btTreeApi = {
 
   toggleEnabled: (id: number, enabled: boolean, version: number) =>
     request.post('/bt-trees/toggle-enabled', { id, enabled, version }) as Promise<ApiResponse<string>>,
+
+  references: (id: number) =>
+    request.post('/bt-trees/references', { id }) as Promise<ApiResponse<BtTreeReferenceDetail>>,
+}
+
+export interface BtTreeReferenceNPC {
+  npc_id: number
+  npc_name: string
+  npc_label: string
+}
+
+export interface BtTreeReferenceDetail {
+  bt_tree_id: number
+  bt_tree_label: string
+  npcs: BtTreeReferenceNPC[]
 }

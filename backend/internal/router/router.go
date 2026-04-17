@@ -85,7 +85,7 @@ func Setup(r *gin.Engine, h *setup.Handlers) {
 		eventTypeSchema.POST("/references", handler.WrapCtx(h.EventTypeSchema.GetReferences))
 	}
 
-	// 状态机管理（7 个接口）
+	// 状态机管理（8 个接口）
 	fsmConfigs := v1.Group("/fsm-configs")
 	{
 		fsmConfigs.POST("/list", handler.WrapCtx(h.FsmConfig.List))
@@ -94,10 +94,11 @@ func Setup(r *gin.Engine, h *setup.Handlers) {
 		fsmConfigs.POST("/update", handler.WrapCtx(h.FsmConfig.Update))
 		fsmConfigs.POST("/delete", handler.WrapCtx(h.FsmConfig.Delete))
 		fsmConfigs.POST("/check-name", handler.WrapCtx(h.FsmConfig.CheckName))
+		fsmConfigs.POST("/references", handler.WrapCtx(h.FsmConfig.GetReferences))
 		fsmConfigs.POST("/toggle-enabled", handler.WrapCtx(h.FsmConfig.ToggleEnabled))
 	}
 
-	// 状态字典管理（8 个接口）
+	// 状态字典管理（9 个接口）
 	fsmStateDicts := v1.Group("/fsm-state-dicts")
 	{
 		fsmStateDicts.POST("/list", handler.WrapCtx(h.FsmStateDict.List))
@@ -106,10 +107,11 @@ func Setup(r *gin.Engine, h *setup.Handlers) {
 		fsmStateDicts.POST("/update", handler.WrapCtx(h.FsmStateDict.Update))
 		fsmStateDicts.POST("/delete", handler.WrapCtx(h.FsmStateDict.Delete))
 		fsmStateDicts.POST("/check-name", handler.WrapCtx(h.FsmStateDict.CheckName))
+		fsmStateDicts.POST("/references", handler.WrapCtx(h.FsmStateDict.GetReferences))
 		fsmStateDicts.POST("/toggle-enabled", handler.WrapCtx(h.FsmStateDict.ToggleEnabled))
 	}
 
-	// 行为树管理（7 个接口）
+	// 行为树管理（8 个接口）
 	btTrees := v1.Group("/bt-trees")
 	{
 		btTrees.POST("/list", handler.WrapCtx(h.BtTree.List))
@@ -118,6 +120,7 @@ func Setup(r *gin.Engine, h *setup.Handlers) {
 		btTrees.POST("/update", handler.WrapCtx(h.BtTree.Update))
 		btTrees.POST("/delete", handler.WrapCtx(h.BtTree.Delete))
 		btTrees.POST("/check-name", handler.WrapCtx(h.BtTree.CheckName))
+		btTrees.POST("/references", handler.WrapCtx(h.BtTree.GetReferences))
 		btTrees.POST("/toggle-enabled", handler.WrapCtx(h.BtTree.ToggleEnabled))
 	}
 

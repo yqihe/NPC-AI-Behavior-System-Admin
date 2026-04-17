@@ -3,6 +3,7 @@ import type { ApiResponse } from './request'
 
 /** 字段列表查询参数 */
 export interface FieldListQuery {
+  name?: string
   label?: string
   type?: string
   category?: string

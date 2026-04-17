@@ -100,7 +100,7 @@ func (c *EventTypeCache) getListVersion(ctx context.Context) int64 {
 // GetList 查事件类型列表缓存（带版本号，类型安全）
 func (c *EventTypeCache) GetList(ctx context.Context, q *model.EventTypeListQuery) (*model.EventTypeListData, bool, error) {
 	version := c.getListVersion(ctx)
-	key := rcfg.EventTypeListKey(version, q.Label, q.PerceptionMode, q.Enabled, q.Page, q.PageSize)
+	key := rcfg.EventTypeListKey(version, q.Name, q.Label, q.PerceptionMode, q.Enabled, q.Page, q.PageSize)
 	data, err := c.rdb.Get(ctx, key).Bytes()
 	if err == redis.Nil {
 		slog.Debug("cache.事件类型列表未命中", "key", key)
@@ -124,7 +124,7 @@ func (c *EventTypeCache) GetList(ctx context.Context, q *model.EventTypeListQuer
 // SetList 写事件类型列表缓存（带当前版本号）
 func (c *EventTypeCache) SetList(ctx context.Context, q *model.EventTypeListQuery, list *model.EventTypeListData) {
 	version := c.getListVersion(ctx)
-	key := rcfg.EventTypeListKey(version, q.Label, q.PerceptionMode, q.Enabled, q.Page, q.PageSize)
+	key := rcfg.EventTypeListKey(version, q.Name, q.Label, q.PerceptionMode, q.Enabled, q.Page, q.PageSize)
 	data, err := json.Marshal(list)
 	if err != nil {
 		slog.Error("cache.事件类型列表序列化失败", "error", err)

@@ -377,8 +377,6 @@ func (s *EventTypeService) Delete(ctx context.Context, id int64) (*model.DeleteR
 		return nil, errcode.New(errcode.ErrEventTypeDeleteNotDisabled)
 	}
 
-	// TODO: FSM/BT 上线后加引用检查
-
 	// 事务：软删 event_types + 清理 schema_refs
 	tx, err := s.store.DB().BeginTxx(ctx, nil)
 	if err != nil {
@@ -453,6 +451,81 @@ func (s *EventTypeService) ToggleEnabled(ctx context.Context, req *model.ToggleE
 // ExportAll 导出所有已启用的事件类型
 func (s *EventTypeService) ExportAll(ctx context.Context) ([]model.EventTypeExportItem, error) {
 	return s.store.ExportAll(ctx)
+}
+
+// GetDetail 查详情并拼装 EventTypeDetail（含 config 展开 + 扩展字段 schema 合并）
+//
+// 业务逻辑：
+//  1. 从 cache/DB 拿 EventType 裸行
+//  2. unmarshal config_json
+//  3. 合并扩展字段 schema（启用的 + 虽然禁用但 config 里有值的）
+func (s *EventTypeService) GetDetail(ctx context.Context, id int64) (*model.EventTypeDetail, error) {
+	et, err := s.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// unmarshal config_json
+	var config map[string]interface{}
+	if et.ConfigJSON != nil {
+		if err := json.Unmarshal(et.ConfigJSON, &config); err != nil {
+			slog.Error("service.事件类型详情.unmarshal_config", "error", err, "id", id)
+			config = make(map[string]interface{})
+		}
+	}
+	if config == nil {
+		config = make(map[string]interface{})
+	}
+
+	// 拿扩展字段 schema：启用的 + 虽然禁用但 config 里有值的
+	schemas := s.schemaCache.ListEnabled()
+	enabledNames := make(map[string]bool, len(schemas))
+	for _, sc := range schemas {
+		enabledNames[sc.FieldName] = true
+	}
+
+	// 系统字段集合
+	systemKeys := map[string]bool{
+		"display_name": true, "default_severity": true,
+		"default_ttl": true, "perception_mode": true, "range": true,
+	}
+
+	// 检查 config 中是否有禁用 schema 的值
+	var missingNames []string
+	for k := range config {
+		if !systemKeys[k] && !enabledNames[k] {
+			missingNames = append(missingNames, k)
+		}
+	}
+	if len(missingNames) > 0 {
+		allSchemas, err := s.schemaStore.ListAllLite(ctx)
+		if err != nil {
+			slog.Error("service.事件类型详情.list_all_schemas", "error", err)
+		} else {
+			missingSet := make(map[string]bool, len(missingNames))
+			for _, n := range missingNames {
+				missingSet[n] = true
+			}
+			for _, sc := range allSchemas {
+				if missingSet[sc.FieldName] {
+					schemas = append(schemas, sc)
+				}
+			}
+		}
+	}
+
+	return &model.EventTypeDetail{
+		ID:              et.ID,
+		Name:            et.Name,
+		DisplayName:     et.DisplayName,
+		PerceptionMode:  et.PerceptionMode,
+		Enabled:         et.Enabled,
+		Version:         et.Version,
+		CreatedAt:       et.CreatedAt,
+		UpdatedAt:       et.UpdatedAt,
+		Config:          config,
+		ExtensionSchema: schemas,
+	}, nil
 }
 
 // ---- schema_refs 维护辅助 ----

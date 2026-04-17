@@ -56,6 +56,11 @@ func GetBool(raw json.RawMessage) (bool, bool) {
 	return v, true
 }
 
+// IsJSONNull 判断 json.RawMessage 是否为 JSON null（空或 "null"）
+func IsJSONNull(v json.RawMessage) bool {
+	return len(v) == 0 || string(v) == "null"
+}
+
 // ParseSelectOptions 解析 select 类型的 options 数组，返回 value 列表
 func ParseSelectOptions(raw json.RawMessage) []string {
 	if len(raw) == 0 {

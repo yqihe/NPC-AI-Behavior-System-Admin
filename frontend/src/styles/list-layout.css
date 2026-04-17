@@ -54,3 +54,43 @@
   font-size: 13px;
   color: #909399;
 }
+
+/* ── 列表页根容器（各模块共用，替代 .xxx-list scoped）── */
+.list-root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── 禁用行半透明（启用开关 + 创建时间 + 操作列保持高亮）── */
+:deep(.row-disabled td:not(:nth-last-child(-n+3))) {
+  opacity: 0.5;
+}
+
+/* ── 引用弹窗公共样式 ── */
+.ref-section {
+  margin-bottom: 8px;
+}
+
+.ref-subtitle {
+  font-size: 13px;
+  color: #909399;
+  margin: 0 0 8px 0;
+}
+
+.ref-empty {
+  font-size: 13px;
+  color: #C0C4CC;
+  margin: 4px 0;
+}
+
+/* ── 通用辅助样式 ── */
+.mono {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 13px;
+}
+
+.text-muted {
+  color: #C0C4CC;
+}

@@ -396,37 +396,6 @@ func (s *FsmConfigService) Update(ctx context.Context, req *model.UpdateFsmConfi
 	return nil
 }
 
-// Delete 软删除状态机配置
-func (s *FsmConfigService) Delete(ctx context.Context, id int64) (*model.DeleteResult, error) {
-	fc, err := s.getOrNotFound(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-
-	// 启用中禁止删除
-	if fc.Enabled {
-		return nil, errcode.New(errcode.ErrFsmConfigDeleteNotDisabled)
-	}
-
-	// 本期 ref_count 不接入，直接删
-	// TODO: NPC 管理上线后加 ref_count 检查 + FOR SHARE 防 TOCTOU
-
-	if err := s.store.SoftDelete(ctx, id); err != nil {
-		if errors.Is(err, errcode.ErrNotFound) {
-			return nil, errcode.New(errcode.ErrFsmConfigNotFound)
-		}
-		slog.Error("service.删除状态机失败", "error", err, "id", id)
-		return nil, fmt.Errorf("soft delete fsm_config: %w", err)
-	}
-
-	// 清缓存
-	s.cache.DelDetail(ctx, id)
-	s.cache.InvalidateList(ctx)
-
-	slog.Info("service.删除状态机成功", "id", id, "name", fc.Name)
-	return &model.DeleteResult{ID: id, Name: fc.Name, Label: fc.DisplayName}, nil
-}
-
 // ---- 事务版方法（handler 跨模块编排用）----
 
 // CreateInTx 事务内创建状态机（校验 + store 写入，不清缓存）
@@ -507,8 +476,6 @@ func (s *FsmConfigService) SoftDeleteInTx(ctx context.Context, tx *sqlx.Tx, id i
 	if fc.Enabled {
 		return nil, errcode.New(errcode.ErrFsmConfigDeleteNotDisabled)
 	}
-
-	// TODO: NPC 管理上线后加引用检查
 
 	if err := s.store.SoftDeleteTx(ctx, tx, id); err != nil {
 		if errors.Is(err, errcode.ErrNotFound) {
@@ -626,4 +593,31 @@ func (s *FsmConfigService) GetEnabledByName(ctx context.Context, name string) (*
 		return nil, errcode.New(errcode.ErrNPCFsmDisabled)
 	}
 	return fsm, nil
+}
+
+// GetStateNames 从 FSM config_json 中提取状态名集合
+//
+// 先校验 name 存在且已启用（复用 GetEnabledByName 逻辑），再解析 states。
+// 返回 map[stateName → true]。fsmRef 为空时返回空 map, nil。
+func (s *FsmConfigService) GetStateNames(ctx context.Context, fsmRef string) (map[string]bool, error) {
+	if fsmRef == "" {
+		return make(map[string]bool), nil
+	}
+	fsm, err := s.GetEnabledByName(ctx, fsmRef)
+	if err != nil {
+		return nil, err
+	}
+	var cfg struct {
+		States []struct {
+			Name string `json:"name"`
+		} `json:"states"`
+	}
+	if err := json.Unmarshal(fsm.ConfigJSON, &cfg); err != nil {
+		return nil, fmt.Errorf("parse fsm states: %w", err)
+	}
+	m := make(map[string]bool, len(cfg.States))
+	for _, s := range cfg.States {
+		m[s.Name] = true
+	}
+	return m, nil
 }

@@ -78,11 +78,21 @@ func (s *EventTypeSchemaStore) ExistsByFieldName(ctx context.Context, fieldName 
 // List 分页列表查询（可按 enabled 筛选，按 sort_order ASC, id ASC 排序）
 func (s *EventTypeSchemaStore) List(ctx context.Context, q *model.EventTypeSchemaListQuery) ([]model.EventTypeSchema, int64, error) {
 	where := []string{"deleted = 0"}
-	args := make([]any, 0, 2)
+	args := make([]any, 0, 4)
 
-	if q != nil && q.Enabled != nil {
-		where = append(where, "enabled = ?")
-		args = append(args, *q.Enabled)
+	if q != nil {
+		if q.FieldName != "" {
+			where = append(where, "field_name LIKE ?")
+			args = append(args, "%"+shared.EscapeLike(q.FieldName)+"%")
+		}
+		if q.FieldLabel != "" {
+			where = append(where, "field_label LIKE ?")
+			args = append(args, "%"+shared.EscapeLike(q.FieldLabel)+"%")
+		}
+		if q.Enabled != nil {
+			where = append(where, "enabled = ?")
+			args = append(args, *q.Enabled)
+		}
 	}
 
 	whereClause := strings.Join(where, " AND ")

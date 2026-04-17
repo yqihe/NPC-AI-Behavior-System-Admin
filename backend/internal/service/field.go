@@ -22,13 +22,11 @@ import (
 
 // FieldService 字段管理业务逻辑
 type FieldService struct {
-	fieldStore       *storemysql.FieldStore
-	fieldRefStore    *storemysql.FieldRefStore
-	fieldCache       *storeredis.FieldCache
-	dictCache        *cache.DictCache
-	pagCfg           *config.PaginationConfig
-	btTreeStore      *storemysql.BtTreeStore      // T18: BB Key 引用检查
-	btNodeTypeStore  *storemysql.BtNodeTypeStore  // T18: 构建 bb_key 参数名 map
+	fieldStore    *storemysql.FieldStore
+	fieldRefStore *storemysql.FieldRefStore
+	fieldCache    *storeredis.FieldCache
+	dictCache     *cache.DictCache
+	pagCfg        *config.PaginationConfig
 }
 
 // NewFieldService 创建 FieldService
@@ -38,17 +36,13 @@ func NewFieldService(
 	fieldCache *storeredis.FieldCache,
 	dictCache *cache.DictCache,
 	pagCfg *config.PaginationConfig,
-	btTreeStore *storemysql.BtTreeStore,
-	btNodeTypeStore *storemysql.BtNodeTypeStore,
 ) *FieldService {
 	return &FieldService{
-		fieldStore:      fieldStore,
-		fieldRefStore:   fieldRefStore,
-		fieldCache:      fieldCache,
-		dictCache:       dictCache,
-		pagCfg:          pagCfg,
-		btTreeStore:     btTreeStore,
-		btNodeTypeStore: btNodeTypeStore,
+		fieldStore:    fieldStore,
+		fieldRefStore: fieldRefStore,
+		fieldCache:    fieldCache,
+		dictCache:     dictCache,
+		pagCfg:        pagCfg,
 	}
 }
 
@@ -284,31 +278,14 @@ func (s *FieldService) Update(ctx context.Context, req *model.UpdateFieldRequest
 	oldProps, _ := parseProperties(old.Properties)
 	newProps, _ := parseProperties(req.Properties)
 	if oldProps != nil && newProps != nil && oldProps.ExposeBB && !newProps.ExposeBB {
-		// FSM 引用检查
+		// FSM/BT 引用检查：field_refs 表中 ref_type=fsm/bt 均代表行为配置引用
 		refs, err := s.fieldRefStore.GetByFieldID(ctx, req.ID)
 		if err != nil {
 			slog.Error("service.查字段引用失败", "error", err, "id", req.ID)
 			return fmt.Errorf("get field refs: %w", err)
 		}
 		for _, r := range refs {
-			if r.RefType == util.RefTypeFsm {
-				return errcode.New(errcode.ErrFieldBBKeyInUse)
-			}
-		}
-
-		// BT 引用检查（T18：扫描 bt_trees.config 中是否有节点用该 BB Key）
-		if s.btTreeStore != nil && s.btNodeTypeStore != nil {
-			nodeParamTypes, err := s.btNodeTypeStore.ListBBKeyParamNames(ctx)
-			if err != nil {
-				slog.Error("service.加载节点类型BBKey参数失败", "error", err, "id", req.ID)
-				return fmt.Errorf("load bb_key param names: %w", err)
-			}
-			used, err := s.btTreeStore.IsBBKeyUsed(ctx, old.Name, nodeParamTypes)
-			if err != nil {
-				slog.Error("service.BT引用检查失败", "error", err, "name", old.Name)
-				return fmt.Errorf("check bt bb key usage: %w", err)
-			}
-			if used {
+			if r.RefType == util.RefTypeFsm || r.RefType == util.RefTypeBt {
 				return errcode.New(errcode.ErrFieldBBKeyInUse)
 			}
 		}
@@ -981,4 +958,76 @@ func (s *FieldService) SyncFsmBBKeyRefs(ctx context.Context, tx *sqlx.Tx, fsmID 
 // 返回被引用的 field IDs（用于清缓存）。
 func (s *FieldService) CleanFsmBBKeyRefs(ctx context.Context, tx *sqlx.Tx, fsmID int64) ([]int64, error) {
 	return s.fieldRefStore.RemoveBySource(ctx, tx, util.RefTypeFsm, fsmID)
+}
+
+// ---- BT BB Key 引用维护 ----
+
+// SyncBtBBKeyRefs 同步行为树节点中 BB Key 对字段的引用关系（事务内）
+//
+// oldKeys/newKeys: 节点树中提取的 BB Key name 集合。
+// 内部解析 name→field ID，只追踪来自字段表的 Key（运行时 Key 跳过）。
+// 返回 affected field IDs（用于清缓存）。
+func (s *FieldService) SyncBtBBKeyRefs(ctx context.Context, tx *sqlx.Tx, btTreeID int64, oldKeys, newKeys map[string]bool) ([]int64, error) {
+	toAdd := make([]string, 0)
+	toRemove := make([]string, 0)
+	for k := range newKeys {
+		if !oldKeys[k] {
+			toAdd = append(toAdd, k)
+		}
+	}
+	for k := range oldKeys {
+		if !newKeys[k] {
+			toRemove = append(toRemove, k)
+		}
+	}
+
+	if len(toAdd) == 0 && len(toRemove) == 0 {
+		return nil, nil
+	}
+
+	// 批量查所有涉及的 name → field ID（合并查一次）
+	allNames := make([]string, 0, len(toAdd)+len(toRemove))
+	allNames = append(allNames, toAdd...)
+	allNames = append(allNames, toRemove...)
+	fields, err := s.fieldStore.GetByNames(ctx, allNames)
+	if err != nil {
+		return nil, fmt.Errorf("get fields by names: %w", err)
+	}
+	nameToID := make(map[string]int64, len(fields))
+	for _, f := range fields {
+		nameToID[f.Name] = f.ID
+	}
+
+	affected := make([]int64, 0)
+
+	for _, name := range toAdd {
+		fieldID, ok := nameToID[name]
+		if !ok {
+			continue // 运行时 Key，不来自字段表，跳过
+		}
+		if err := s.fieldRefStore.Add(ctx, tx, fieldID, util.RefTypeBt, btTreeID); err != nil {
+			return nil, fmt.Errorf("add bt bb key ref %s: %w", name, err)
+		}
+		affected = append(affected, fieldID)
+	}
+
+	for _, name := range toRemove {
+		fieldID, ok := nameToID[name]
+		if !ok {
+			continue
+		}
+		if err := s.fieldRefStore.Remove(ctx, tx, fieldID, util.RefTypeBt, btTreeID); err != nil {
+			return nil, fmt.Errorf("remove bt bb key ref %s: %w", name, err)
+		}
+		affected = append(affected, fieldID)
+	}
+
+	return affected, nil
+}
+
+// CleanBtBBKeyRefs 清理行为树删除时的所有 BB Key 引用（事务内）
+//
+// 返回被引用的 field IDs（用于清缓存）。
+func (s *FieldService) CleanBtBBKeyRefs(ctx context.Context, tx *sqlx.Tx, btTreeID int64) ([]int64, error) {
+	return s.fieldRefStore.RemoveBySource(ctx, tx, util.RefTypeBt, btTreeID)
 }

@@ -54,7 +54,7 @@ func checkJSONObjectShape(data []byte, fieldDesc string) *errcode.Error {
 
 // List 扩展字段 Schema 列表
 func (h *EventTypeSchemaHandler) List(ctx context.Context, req *model.EventTypeSchemaListQuery) (*model.ListData, error) {
-	slog.Debug("handler.event_type_schema.list")
+	slog.Debug("handler.event_type_schema.list", "field_name", req.FieldName, "field_label", req.FieldLabel)
 	data, err := h.schemaService.List(ctx, req)
 	if err != nil {
 		return nil, err
@@ -97,8 +97,6 @@ func (h *EventTypeSchemaHandler) Create(ctx context.Context, req *model.CreateEv
 
 // Update 编辑扩展字段定义
 func (h *EventTypeSchemaHandler) Update(ctx context.Context, req *model.UpdateEventTypeSchemaRequest) (*string, error) {
-	slog.Debug("handler.event_type_schema.update", "id", req.ID)
-
 	if err := shared.CheckID(req.ID); err != nil {
 		return nil, err
 	}
@@ -114,6 +112,7 @@ func (h *EventTypeSchemaHandler) Update(ctx context.Context, req *model.UpdateEv
 	if len(req.DefaultValue) == 0 {
 		return nil, errcode.Newf(errcode.ErrBadRequest, "默认值不能为空")
 	}
+	slog.Debug("handler.编辑扩展字段", "id", req.ID)
 
 	if err := h.schemaService.Update(ctx, req); err != nil {
 		return nil, err

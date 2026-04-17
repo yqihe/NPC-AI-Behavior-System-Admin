@@ -1,5 +1,5 @@
 <template>
-  <div class="fsm-state-dict-list">
+  <div class="list-root">
     <!-- 顶部标题栏 -->
     <div class="page-header">
       <div class="header-left">
@@ -16,10 +16,17 @@
     <!-- 筛选栏 -->
     <div class="filter-bar">
       <el-input
+        v-model="query.name"
+        placeholder="搜索英文标识"
+        clearable
+        class="filter-item"
+        @keyup.enter="handleSearch"
+      />
+      <el-input
         v-model="query.display_name"
         placeholder="搜索中文标签"
         clearable
-        class="filter-item filter-item-wide"
+        class="filter-item"
         @keyup.enter="handleSearch"
       />
       <el-select
@@ -114,29 +121,36 @@
     <!-- 启用守卫弹窗 -->
     <EnabledGuardDialog ref="guardRef" @refresh="fetchList" />
 
-    <!-- 43020 被 FSM 引用弹窗 -->
+    <!-- 引用详情弹窗 -->
     <el-dialog
-      v-model="refDeleteVisible"
-      :title="`无法删除「${refDeleteResult?.display_name ?? ''}」`"
+      v-model="refDialog.visible"
+      :title="`引用详情 — ${refDialog.label} (${refDialog.name})`"
       width="540px"
-      :close-on-click-modal="false"
-      append-to-body
+      @close="resetRefDialog"
     >
-      <p class="ref-delete-lead">以下 FSM 配置引用了此状态，请先修改再删除：</p>
-      <el-table :data="refDeleteResult?.referenced_by ?? []" style="width: 100%" size="small">
-        <el-table-column prop="name" label="配置标识" min-width="140" />
-        <el-table-column prop="display_name" label="中文名" min-width="140" />
-        <el-table-column label="状态" width="80" align="center">
-          <template #default="{ row }">
-            <el-tag :type="row.enabled ? 'success' : 'info'" size="small">
-              {{ row.enabled ? '启用' : '停用' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-      </el-table>
-      <template #footer>
-        <el-button @click="refDeleteVisible = false">知道了</el-button>
-      </template>
+      <div v-loading="refDialog.loading">
+        <div class="ref-section">
+          <p class="ref-subtitle">
+            FSM 引用（{{ refDialog.fsmConfigs.length }} 个状态机使用了该状态）：
+          </p>
+          <el-table
+            v-if="refDialog.fsmConfigs.length > 0"
+            :data="refDialog.fsmConfigs"
+            size="small"
+          >
+            <el-table-column prop="name" label="状态机标识" min-width="140" />
+            <el-table-column prop="display_name" label="中文标签" min-width="140" />
+            <el-table-column label="启用" width="80" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.enabled ? 'success' : 'info'" size="small">
+                  {{ row.enabled ? '启用' : '停用' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+          </el-table>
+          <p v-else class="ref-empty">暂无 FSM 引用</p>
+        </div>
+      </div>
     </el-dialog>
   </div>
 </template>
@@ -151,7 +165,7 @@ import { fsmStateDictApi, FSM_STATE_DICT_ERR } from '@/api/fsmStateDicts'
 import type {
   FsmStateDictListItem,
   FsmStateDictListQuery,
-  FsmStateDictDeleteResult,
+  FsmStateDictRefConfigItem,
 } from '@/api/fsmStateDicts'
 import type { BizError } from '@/api/request'
 import { dictApi } from '@/api/dictionaries'
@@ -166,10 +180,16 @@ const total = ref(0)
 const categoryOptions = ref<DictionaryItem[]>([])
 const guardRef = ref<InstanceType<typeof EnabledGuardDialog> | null>(null)
 
-const refDeleteVisible = ref(false)
-const refDeleteResult = ref<FsmStateDictDeleteResult | null>(null)
+const refDialog = reactive({
+  visible: false,
+  loading: false,
+  name: '',
+  label: '',
+  fsmConfigs: [] as FsmStateDictRefConfigItem[],
+})
 
 const query = reactive<FsmStateDictListQuery>({
+  name: '',
   display_name: '',
   category: '',
   enabled: null,
@@ -186,6 +206,7 @@ async function fetchList() {
       page: query.page,
       page_size: query.page_size,
     }
+    if (query.name) params.name = query.name
     if (query.display_name) params.display_name = query.display_name
     if (query.category) params.category = query.category
     if (query.enabled !== null && query.enabled !== undefined) {
@@ -223,6 +244,7 @@ function handleSearch() {
 }
 
 function handleReset() {
+  query.name = ''
   query.display_name = ''
   query.category = ''
   query.enabled = null
@@ -279,22 +301,71 @@ async function handleDelete(row: FsmStateDictListItem) {
     })
     return
   }
-  // 已禁用：直接调删除接口
-  // - 有引用（IN_USE）→ 直接展示引用弹窗（与字段管理一致，不走无效确认）
-  // - 无引用 → 删除成功（先禁用本身已是一层保护，无需重复确认）
+  // 已禁用：先查引用，有引用弹详情阻止，无引用确认删除
   try {
+    const res = await fsmStateDictApi.references(row.id)
+    const configs = res.data?.fsm_configs || []
+    if (configs.length > 0) {
+      showRefDialog(row, configs)
+      ElMessage.warning(`该状态被 ${configs.length} 个状态机引用，无法删除。请先移除引用关系。`)
+      return
+    }
+  } catch {
+    return
+  }
+  // 无引用：确认删除
+  try {
+    await ElMessageBox.confirm(
+      `确认删除状态「${row.display_name}」（${row.name}）？删除后无法恢复。`,
+      '删除确认',
+      { confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'warning' },
+    )
     await fsmStateDictApi.delete(row.id)
     ElMessage.success('删除成功')
     fetchList()
   } catch (err: unknown) {
+    if (err === 'cancel') return
     const bizErr = err as BizError
     if (bizErr.code === FSM_STATE_DICT_ERR.IN_USE) {
-      refDeleteResult.value = bizErr.data as FsmStateDictDeleteResult
-      refDeleteVisible.value = true
+      // 后端兜底：重新拉引用详情展示
+      await loadAndShowRefs(row)
       return
     }
     // 其他错误拦截器已 toast
   }
+}
+
+// ---------- 引用弹窗 ----------
+
+function showRefDialog(row: FsmStateDictListItem, configs: FsmStateDictRefConfigItem[]) {
+  refDialog.visible = true
+  refDialog.loading = false
+  refDialog.name = row.name
+  refDialog.label = row.display_name
+  refDialog.fsmConfigs = configs
+}
+
+async function loadAndShowRefs(row: FsmStateDictListItem) {
+  refDialog.visible = true
+  refDialog.loading = true
+  refDialog.name = row.name
+  refDialog.label = row.display_name
+  refDialog.fsmConfigs = []
+  try {
+    const res = await fsmStateDictApi.references(row.id)
+    refDialog.fsmConfigs = res.data?.fsm_configs || []
+  } catch {
+    // 拦截器已 toast
+  } finally {
+    refDialog.loading = false
+  }
+}
+
+function resetRefDialog() {
+  refDialog.loading = false
+  refDialog.name = ''
+  refDialog.label = ''
+  refDialog.fsmConfigs = []
 }
 
 // ---------- 辅助 ----------
@@ -304,22 +375,3 @@ function rowClassName({ row }: { row: FsmStateDictListItem }) {
 }
 
 </script>
-
-<style scoped>
-.fsm-state-dict-list {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.ref-delete-lead {
-  font-size: 14px;
-  color: #606266;
-  margin: 0 0 12px;
-}
-
-:deep(.row-disabled td:not(:nth-last-child(-n+3))) {
-  opacity: 0.5;
-}
-</style>

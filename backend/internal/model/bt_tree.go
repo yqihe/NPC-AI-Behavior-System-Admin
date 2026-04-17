@@ -80,7 +80,8 @@ type BtTreeExportItem struct {
 
 // BtTreeListQuery 列表查询参数
 type BtTreeListQuery struct {
-	DisplayName string `json:"display_name"` // 模糊匹配
+	Name        string `json:"name"`         // 英文标识模糊搜索
+	DisplayName string `json:"display_name"` // 中文标签模糊搜索
 	Enabled     *bool  `json:"enabled"`      // nil=全部
 	Page        int    `json:"page"`
 	PageSize    int    `json:"page_size"`
@@ -107,4 +108,11 @@ type UpdateBtTreeRequest struct {
 	DisplayName string          `json:"display_name"`
 	Description string          `json:"description"`
 	Config      json.RawMessage `json:"config"`
+}
+
+// BtTreeReferenceDetail 行为树引用详情（被哪些 NPC 引用）
+type BtTreeReferenceDetail struct {
+	BtTreeID    int64     `json:"bt_tree_id"`
+	BtTreeLabel string    `json:"bt_tree_label"`
+	NPCs        []NPCLite `json:"npcs"`
 }

@@ -100,7 +100,7 @@ func (c *TemplateCache) getListVersion(ctx context.Context) int64 {
 // GetList 查模板列表缓存（带版本号）
 func (c *TemplateCache) GetList(ctx context.Context, q *model.TemplateListQuery) (*model.TemplateListData, bool, error) {
 	version := c.getListVersion(ctx)
-	key := rcfg.TemplateListKey(version, q.Label, q.Enabled, q.Page, q.PageSize)
+	key := rcfg.TemplateListKey(version, q.Name, q.Label, q.Enabled, q.Page, q.PageSize)
 	data, err := c.rdb.Get(ctx, key).Bytes()
 	if err == redis.Nil {
 		slog.Debug("cache.模板列表未命中", "key", key)
@@ -124,7 +124,7 @@ func (c *TemplateCache) GetList(ctx context.Context, q *model.TemplateListQuery)
 // SetList 写模板列表缓存（带当前版本号）
 func (c *TemplateCache) SetList(ctx context.Context, q *model.TemplateListQuery, list *model.TemplateListData) {
 	version := c.getListVersion(ctx)
-	key := rcfg.TemplateListKey(version, q.Label, q.Enabled, q.Page, q.PageSize)
+	key := rcfg.TemplateListKey(version, q.Name, q.Label, q.Enabled, q.Page, q.PageSize)
 	data, err := json.Marshal(list)
 	if err != nil {
 		slog.Error("cache.模板列表序列化失败", "error", err)

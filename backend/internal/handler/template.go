@@ -87,7 +87,7 @@ func extractFieldIDs(fields []model.TemplateFieldEntry) []int64 {
 
 // List 模板列表
 func (h *TemplateHandler) List(ctx context.Context, q *model.TemplateListQuery) (*model.ListData, error) {
-	slog.Debug("handler.模板列表", "label", q.Label, "enabled", q.Enabled, "page", q.Page)
+	slog.Debug("handler.模板列表", "name", q.Name, "label", q.Label, "enabled", q.Enabled, "page", q.Page)
 	return h.templateService.List(ctx, q)
 }
 
@@ -329,7 +329,7 @@ func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateR
 
 	// 3. 跨模块校验（仅校验新增字段）
 	//    在事务外预校验：先计算 toAdd（service 同样会算一次，但耗时极小）
-	toAddPre, _ := diffNewFieldIDs(oldEntries, req.Fields)
+	toAddPre, _ := h.templateService.DiffFieldIDs(oldEntries, req.Fields)
 	if len(toAddPre) > 0 {
 		if err := h.fieldService.ValidateFieldsForTemplate(ctx, toAddPre); err != nil {
 			return nil, err
@@ -337,7 +337,7 @@ func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateR
 	}
 
 	// 字段有变更时：存在 NPC 引用则拒绝修改字段配置
-	if fieldsWillChange(oldEntries, req.Fields) {
+	if h.templateService.IsFieldsChanged(oldEntries, req.Fields) {
 		if count, err := h.npcService.CountByTemplateID(ctx, req.ID); err != nil {
 			return nil, err
 		} else if count > 0 {
@@ -472,47 +472,3 @@ func (h *TemplateHandler) Delete(ctx context.Context, req *model.IDRequest) (*mo
 	return &model.DeleteResult{ID: tpl.ID, Name: tpl.Name, Label: tpl.Label}, nil
 }
 
-// ---- 内部辅助 ----
-
-// fieldsWillChange 判断字段配置是否有变更（集合 + 顺序 + required 任一不同均视为变更）
-//
-// 用于事务外预判：若有变更则校验 NPC 引用，避免破坏 NPC 快照一致性。
-func fieldsWillChange(old, new []model.TemplateFieldEntry) bool {
-	if len(old) != len(new) {
-		return true
-	}
-	for i := range old {
-		if old[i].FieldID != new[i].FieldID || old[i].Required != new[i].Required {
-			return true
-		}
-	}
-	return false
-}
-
-// diffNewFieldIDs 计算新增的 fieldIDs（用于事务前校验启用状态）
-//
-// handler 在事务外预校验只关心 toAdd（toRemove 不需要校验启用）。
-// service 内部会再做一次完整 diff，handler 这里的预校验是为了提前给前端友好错误。
-func diffNewFieldIDs(old, new []model.TemplateFieldEntry) (toAdd []int64, toRemove []int64) {
-	oldSet := make(map[int64]bool, len(old))
-	for _, e := range old {
-		oldSet[e.FieldID] = true
-	}
-	newSet := make(map[int64]bool, len(new))
-	for _, e := range new {
-		newSet[e.FieldID] = true
-	}
-	toAdd = make([]int64, 0)
-	toRemove = make([]int64, 0)
-	for _, e := range new {
-		if !oldSet[e.FieldID] {
-			toAdd = append(toAdd, e.FieldID)
-		}
-	}
-	for _, e := range old {
-		if !newSet[e.FieldID] {
-			toRemove = append(toRemove, e.FieldID)
-		}
-	}
-	return toAdd, toRemove
-}

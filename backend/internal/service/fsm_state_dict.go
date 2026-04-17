@@ -192,6 +192,27 @@ func (s *FsmStateDictService) Update(ctx context.Context, req *model.UpdateFsmSt
 }
 
 // Delete 软删除状态字典条目
+// GetReferences 查询状态字典引用详情（被哪些 FSM 配置引用）
+func (s *FsmStateDictService) GetReferences(ctx context.Context, id int64) (*model.FsmStateDictReferenceDetail, error) {
+	d, err := s.getOrNotFound(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	refs, err := s.fsmConfigStore.ListFsmConfigsReferencingState(ctx, d.Name, 50)
+	if err != nil {
+		slog.Error("service.状态字典引用查询失败", "error", err, "name", d.Name)
+		return nil, fmt.Errorf("scan fsm refs: %w", err)
+	}
+
+	return &model.FsmStateDictReferenceDetail{
+		StateDictID:    d.ID,
+		StateDictLabel: d.DisplayName,
+		FsmConfigs:     refs,
+	}, nil
+}
+
+// Delete 删除状态字典
 //
 // 被 FSM 引用时返回 (*FsmStateDictDeleteResult{ReferencedBy: [...]}, ErrFsmStateDictInUse)，
 // WrapCtx 会将 resp 作为 data 携带在错误响应中。

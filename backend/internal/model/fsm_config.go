@@ -95,6 +95,7 @@ type FsmConfigExportItem struct {
 
 // FsmConfigListQuery 列表查询参数
 type FsmConfigListQuery struct {
+	Name     string `json:"name"`              // 英文标识模糊搜索
 	Label    string `json:"label"`             // display_name 模糊搜索
 	Enabled  *bool  `json:"enabled,omitempty"` // nil=不筛选，true=仅启用，false=仅停用
 	Page     int    `json:"page"`
@@ -164,4 +165,11 @@ type FsmCondition struct {
 // IsEmpty 判断条件是否为空（无条件转换，始终为 true）
 func (c *FsmCondition) IsEmpty() bool {
 	return c.Key == "" && len(c.And) == 0 && len(c.Or) == 0
+}
+
+// FsmConfigReferenceDetail 状态机引用详情（被哪些 NPC 引用）
+type FsmConfigReferenceDetail struct {
+	FsmConfigID    int64     `json:"fsm_config_id"`
+	FsmConfigLabel string    `json:"fsm_config_label"`
+	NPCs           []NPCLite `json:"npcs"`
 }

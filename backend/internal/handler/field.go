@@ -57,7 +57,7 @@ func checkPropertiesShape(raw json.RawMessage) *errcode.Error {
 
 // List 字段列表
 func (h *FieldHandler) List(ctx context.Context, req *model.FieldListQuery) (*model.ListData, error) {
-	slog.Debug("handler.字段列表", "label", req.Label, "type", req.Type, "category", req.Category, "page", req.Page)
+	slog.Debug("handler.字段列表", "name", req.Name, "label", req.Label, "type", req.Type, "category", req.Category, "page", req.Page)
 
 	return h.fieldService.List(ctx, req)
 }

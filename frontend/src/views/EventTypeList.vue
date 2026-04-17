@@ -1,5 +1,5 @@
 <template>
-  <div class="event-type-list">
+  <div class="list-root">
     <!-- 顶部标题栏 -->
     <div class="page-header">
       <div class="header-left">
@@ -16,10 +16,17 @@
     <!-- 筛选栏 -->
     <div class="filter-bar">
       <el-input
+        v-model="query.name"
+        placeholder="搜索英文标识"
+        clearable
+        class="filter-item"
+        @keyup.enter="handleSearch"
+      />
+      <el-input
         v-model="query.label"
         placeholder="搜索中文标签"
         clearable
-        class="filter-item filter-item-wide"
+        class="filter-item"
         @keyup.enter="handleSearch"
       />
       <el-select
@@ -141,6 +148,7 @@ const total = ref(0)
 const guardRef = ref<InstanceType<typeof EnabledGuardDialog> | null>(null)
 
 const query = reactive<EventTypeListQuery>({
+  name: '',
   label: '',
   perception_mode: '',
   enabled: null,
@@ -157,6 +165,7 @@ async function fetchList() {
       page: query.page,
       page_size: query.page_size,
     }
+    if (query.name) params.name = query.name
     if (query.label) params.label = query.label
     if (query.perception_mode) params.perception_mode = query.perception_mode
     if (query.enabled !== null && query.enabled !== undefined) {
@@ -184,6 +193,7 @@ function handleSearch() {
 }
 
 function handleReset() {
+  query.name = ''
   query.label = ''
   query.perception_mode = ''
   query.enabled = null
@@ -252,7 +262,7 @@ async function handleDelete(row: EventTypeListItem) {
   } catch (err: unknown) {
     if (err === 'cancel') return
     if ((err as BizError).code === EVENT_TYPE_ERR.VERSION_CONFLICT) {
-      ElMessage.warning('数据已更新，请重新操作')
+      ElMessageBox.alert('数据已被其他用户修改，请刷新页面后重试。', '版本冲突', { type: 'warning' })
       fetchList()
       return
     }
@@ -286,15 +296,3 @@ function modeLabel(mode: string): string {
 
 </script>
 
-<style scoped>
-.event-type-list {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-:deep(.row-disabled td:not(:nth-last-child(-n+3))) {
-  opacity: 0.5;
-}
-</style>

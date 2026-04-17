@@ -59,6 +59,7 @@ func (d *FsmStateDictListData) ToListData() *ListData {
 
 // FsmStateDictListQuery 列表查询参数
 type FsmStateDictListQuery struct {
+	Name        string `json:"name"`              // 英文标识模糊搜索
 	DisplayName string `json:"display_name"`      // 中文标签模糊搜索
 	Category    string `json:"category"`          // 分类精确过滤
 	Enabled     *bool  `json:"enabled,omitempty"` // nil=不筛选，true=仅启用，false=仅停用
@@ -99,6 +100,13 @@ type FsmConfigRef struct {
 	Name        string `json:"name" db:"name"`
 	DisplayName string `json:"display_name" db:"display_name"`
 	Enabled     bool   `json:"enabled" db:"enabled"`
+}
+
+// FsmStateDictReferenceDetail 状态字典引用详情（被哪些 FSM 配置引用）
+type FsmStateDictReferenceDetail struct {
+	StateDictID    int64          `json:"state_dict_id"`
+	StateDictLabel string         `json:"state_dict_label"`
+	FsmConfigs     []FsmConfigRef `json:"fsm_configs"`
 }
 
 // FsmStateDictDeleteResult 删除结果

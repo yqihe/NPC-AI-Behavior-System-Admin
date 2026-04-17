@@ -74,7 +74,8 @@ type FieldRef struct {
 
 // FieldListQuery 列表查询参数
 type FieldListQuery struct {
-	Label     string `json:"label"`
+	Name      string `json:"name"`  // 英文标识模糊搜索
+	Label     string `json:"label"` // 中文标签模糊搜索
 	Type      string `json:"type"`
 	Category  string `json:"category"`
 	Enabled   *bool  `json:"enabled,omitempty"`   // nil=不筛选（字段管理页），true=仅启用（其他模块选字段）

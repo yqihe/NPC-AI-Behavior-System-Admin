@@ -101,7 +101,8 @@ type TemplateFieldItem struct {
 
 // TemplateListQuery 列表查询参数
 type TemplateListQuery struct {
-	Label    string `json:"label"`
+	Name     string `json:"name"`  // 英文标识模糊搜索
+	Label    string `json:"label"` // 中文标签模糊搜索
 	Enabled  *bool  `json:"enabled,omitempty"` // nil=不筛选（管理页），true=仅启用（NPC 管理页）
 	Page     int    `json:"page"`
 	PageSize int    `json:"page_size"`

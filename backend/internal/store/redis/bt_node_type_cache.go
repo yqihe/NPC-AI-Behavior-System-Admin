@@ -100,7 +100,7 @@ func (c *BtNodeTypeCache) getListVersion(ctx context.Context) int64 {
 // GetList 查节点类型列表缓存（带版本号，类型安全）
 func (c *BtNodeTypeCache) GetList(ctx context.Context, q *model.BtNodeTypeListQuery) (*model.BtNodeTypeListData, bool, error) {
 	version := c.getListVersion(ctx)
-	key := rcfg.BtNodeTypeListKey(version, q.TypeName, q.Category, q.Enabled, q.Page, q.PageSize)
+	key := rcfg.BtNodeTypeListKey(version, q.TypeName, q.Label, q.Category, q.Enabled, q.Page, q.PageSize)
 	data, err := c.rdb.Get(ctx, key).Bytes()
 	if err == redis.Nil {
 		slog.Debug("cache.节点类型列表未命中", "key", key)
@@ -124,7 +124,7 @@ func (c *BtNodeTypeCache) GetList(ctx context.Context, q *model.BtNodeTypeListQu
 // SetList 写节点类型列表缓存（带当前版本号）
 func (c *BtNodeTypeCache) SetList(ctx context.Context, q *model.BtNodeTypeListQuery, list *model.BtNodeTypeListData) {
 	version := c.getListVersion(ctx)
-	key := rcfg.BtNodeTypeListKey(version, q.TypeName, q.Category, q.Enabled, q.Page, q.PageSize)
+	key := rcfg.BtNodeTypeListKey(version, q.TypeName, q.Label, q.Category, q.Enabled, q.Page, q.PageSize)
 	data, err := json.Marshal(list)
 	if err != nil {
 		slog.Error("cache.节点类型列表序列化失败", "error", err)

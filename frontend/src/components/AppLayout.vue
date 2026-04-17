@@ -50,6 +50,10 @@
             <el-icon class="group-icon"><Cpu /></el-icon>
             <span class="group-title">行为配置管理</span>
           </template>
+          <el-menu-item index="/bt-trees">
+            <el-icon><Share /></el-icon>
+            <span>行为树管理</span>
+          </el-menu-item>
           <el-menu-item index="/fsm-configs">
             <el-icon><Operation /></el-icon>
             <span>状态机管理</span>
@@ -58,14 +62,7 @@
             <el-icon><Collection /></el-icon>
             <span>状态字典管理</span>
           </el-menu-item>
-          <el-menu-item index="/bt-trees">
-            <el-icon><Share /></el-icon>
-            <span>行为树管理</span>
-          </el-menu-item>
-          <el-menu-item index="/bt-node-types">
-            <el-icon><Grid /></el-icon>
-            <span>节点类型管理</span>
-          </el-menu-item>
+          <!-- 节点类型管理（已隐藏，内置节点由 seed 管理） -->
         </el-sub-menu>
       </el-menu>
     </el-aside>

@@ -21,6 +21,7 @@ type FsmConfigHandler struct {
 	db               *sqlx.DB
 	fsmConfigService *service.FsmConfigService
 	fieldService     *service.FieldService
+	schemaService    *service.EventTypeSchemaService
 	npcService       *service.NpcService
 	fsmCfg           *config.FsmConfigConfig
 }
@@ -30,6 +31,7 @@ func NewFsmConfigHandler(
 	db *sqlx.DB,
 	fsmConfigService *service.FsmConfigService,
 	fieldService *service.FieldService,
+	schemaService *service.EventTypeSchemaService,
 	npcService *service.NpcService,
 	fsmCfg *config.FsmConfigConfig,
 ) *FsmConfigHandler {
@@ -37,6 +39,7 @@ func NewFsmConfigHandler(
 		db:               db,
 		fsmConfigService: fsmConfigService,
 		fieldService:     fieldService,
+		schemaService:    schemaService,
 		npcService:       npcService,
 		fsmCfg:           fsmCfg,
 	}
@@ -46,7 +49,7 @@ func NewFsmConfigHandler(
 
 // List 状态机列表
 func (h *FsmConfigHandler) List(ctx context.Context, req *model.FsmConfigListQuery) (*model.ListData, error) {
-	slog.Debug("handler.状态机列表", "label", req.Label)
+	slog.Debug("handler.状态机列表", "name", req.Name, "label", req.Label)
 	return h.fsmConfigService.List(ctx, req)
 }
 
@@ -78,12 +81,15 @@ func (h *FsmConfigHandler) Create(ctx context.Context, req *model.CreateFsmConfi
 		return nil, err
 	}
 
-	// BB Key 引用追踪
+	// BB Key 引用追踪（field_refs + schema_refs）
 	newKeys := service.ExtractBBKeys(req.Transitions)
 	emptyKeys := make(map[string]bool)
 	affected, err := h.fieldService.SyncFsmBBKeyRefs(ctx, tx, id, emptyKeys, newKeys)
 	if err != nil {
 		return nil, fmt.Errorf("sync bb key refs: %w", err)
+	}
+	if _, err := h.schemaService.SyncFsmSchemaRefs(ctx, tx, id, emptyKeys, newKeys); err != nil {
+		return nil, fmt.Errorf("sync fsm schema refs: %w", err)
 	}
 
 	// 先清缓存再 Commit（消除 Commit 后清缓存窗口期的脏读风险）
@@ -167,12 +173,15 @@ func (h *FsmConfigHandler) Update(ctx context.Context, req *model.UpdateFsmConfi
 		return nil, err
 	}
 
-	// BB Key diff
+	// BB Key diff（field_refs + schema_refs）
 	oldKeys := service.ExtractBBKeysFromConfigJSON(oldFc.ConfigJSON)
 	newKeys := service.ExtractBBKeys(req.Transitions)
 	affected, err := h.fieldService.SyncFsmBBKeyRefs(ctx, tx, req.ID, oldKeys, newKeys)
 	if err != nil {
 		return nil, fmt.Errorf("sync bb key refs: %w", err)
+	}
+	if _, err := h.schemaService.SyncFsmSchemaRefs(ctx, tx, req.ID, oldKeys, newKeys); err != nil {
+		return nil, fmt.Errorf("sync fsm schema refs: %w", err)
 	}
 
 	// 先清缓存再 Commit（消除 Commit 后清缓存窗口期的脏读风险）
@@ -228,10 +237,13 @@ func (h *FsmConfigHandler) Delete(ctx context.Context, req *model.IDRequest) (*m
 		return nil, err
 	}
 
-	// 清理 BB Key 引用
+	// 清理 BB Key 引用（field_refs + schema_refs）
 	affected, err := h.fieldService.CleanFsmBBKeyRefs(ctx, tx, req.ID)
 	if err != nil {
 		return nil, fmt.Errorf("clean bb key refs: %w", err)
+	}
+	if _, err := h.schemaService.CleanFsmSchemaRefs(ctx, tx, req.ID); err != nil {
+		return nil, fmt.Errorf("clean fsm schema refs: %w", err)
 	}
 
 	// 先清缓存再 Commit（消除 Commit 后清缓存窗口期的脏读风险）
@@ -273,4 +285,24 @@ func (h *FsmConfigHandler) ToggleEnabled(ctx context.Context, req *model.ToggleE
 		return nil, err
 	}
 	return shared.SuccessMsg("操作成功"), nil
+}
+
+// GetReferences 状态机引用详情（列出引用该状态机的 NPC，最多 50 条）
+func (h *FsmConfigHandler) GetReferences(ctx context.Context, req *model.IDRequest) (*model.FsmConfigReferenceDetail, error) {
+	if err := shared.CheckID(req.ID); err != nil {
+		return nil, err
+	}
+	slog.Debug("handler.状态机引用详情", "id", req.ID)
+
+	fsm, err := h.fsmConfigService.GetByID(ctx, req.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	npcs, _, _ := h.npcService.ListByFsmRef(ctx, fsm.Name, 1, 50)
+	return &model.FsmConfigReferenceDetail{
+		FsmConfigID:    fsm.ID,
+		FsmConfigLabel: fsm.DisplayName,
+		NPCs:           npcs,
+	}, nil
 }

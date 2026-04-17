@@ -51,6 +51,7 @@ export interface TemplateDetail {
 
 /** 列表查询参数（enabled 三态：null 不筛选 / true 仅启用 / false 仅停用） */
 export interface TemplateListQuery {
+  name?: string
   label?: string
   enabled?: boolean | null
   page: number

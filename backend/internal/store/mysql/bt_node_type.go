@@ -77,9 +77,12 @@ func (s *BtNodeTypeStore) List(ctx context.Context, q *model.BtNodeTypeListQuery
 	args := make([]any, 0, 5)
 
 	if q.TypeName != "" {
-		escaped := shared.EscapeLike(q.TypeName)
 		where = append(where, "type_name LIKE ?")
-		args = append(args, escaped+"%")
+		args = append(args, "%"+shared.EscapeLike(q.TypeName)+"%")
+	}
+	if q.Label != "" {
+		where = append(where, "label LIKE ?")
+		args = append(args, "%"+shared.EscapeLike(q.Label)+"%")
 	}
 	if q.Category != "" {
 		where = append(where, "category = ?")

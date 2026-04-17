@@ -95,7 +95,7 @@
             <!-- string / select / 运行时 Key（未知类型）-->
             <el-input
               v-else
-              :model-value="(modelValue.value as string | undefined) || ''"
+              :model-value="String(modelValue.value ?? '')"
               :disabled="disabled"
               placeholder="输入值"
               style="width: 100%"
@@ -219,7 +219,7 @@ const selectedFieldType = ref<string>('')
 function handleKeyChange(key: string) {
   emit('update:modelValue', {
     key,
-    op: props.modelValue.op || '',
+    op: props.modelValue.op ?? '',
   })
   if (!key) {
     selectedFieldType.value = ''

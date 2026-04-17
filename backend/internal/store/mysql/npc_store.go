@@ -188,6 +188,61 @@ func (s *NpcStore) ListByTemplateID(ctx context.Context, templateID int64, page,
 	return items, total, nil
 }
 
+// ListByFsmRef 查询引用了指定状态机的 NPC 精简列表（供 FsmConfigHandler GetReferences 使用）
+func (s *NpcStore) ListByFsmRef(ctx context.Context, fsmName string, page, pageSize int) ([]model.NPCLite, int64, error) {
+	var total int64
+	if err := s.db.GetContext(ctx, &total,
+		`SELECT COUNT(*) FROM npcs WHERE fsm_ref = ? AND deleted = 0`, fsmName); err != nil {
+		return nil, 0, fmt.Errorf("count npcs by fsm_ref: %w", err)
+	}
+
+	if total == 0 {
+		return make([]model.NPCLite, 0), 0, nil
+	}
+
+	offset := (page - 1) * pageSize
+	items := make([]model.NPCLite, 0)
+	if err := s.db.SelectContext(ctx, &items,
+		`SELECT id, name, label FROM npcs WHERE fsm_ref = ? AND deleted = 0 ORDER BY id DESC LIMIT ? OFFSET ?`,
+		fsmName, pageSize, offset,
+	); err != nil {
+		return nil, 0, fmt.Errorf("list npcs by fsm_ref: %w", err)
+	}
+	return items, total, nil
+}
+
+// ListByBtTreeName 查询引用了指定行为树的 NPC 精简列表（供 BtTreeHandler GetReferences 使用）
+func (s *NpcStore) ListByBtTreeName(ctx context.Context, btName string, page, pageSize int) ([]model.NPCLite, int64, error) {
+	var total int64
+	if err := s.db.GetContext(ctx, &total,
+		`SELECT COUNT(*)
+		 FROM npc_bt_refs r
+		 INNER JOIN npcs n ON r.npc_id = n.id
+		 WHERE r.bt_tree_name = ? AND n.deleted = 0`,
+		btName,
+	); err != nil {
+		return nil, 0, fmt.Errorf("count npcs by bt_tree_name: %w", err)
+	}
+
+	if total == 0 {
+		return make([]model.NPCLite, 0), 0, nil
+	}
+
+	offset := (page - 1) * pageSize
+	items := make([]model.NPCLite, 0)
+	if err := s.db.SelectContext(ctx, &items,
+		`SELECT n.id, n.name, n.label
+		 FROM npc_bt_refs r
+		 INNER JOIN npcs n ON r.npc_id = n.id
+		 WHERE r.bt_tree_name = ? AND n.deleted = 0
+		 ORDER BY n.id DESC LIMIT ? OFFSET ?`,
+		btName, pageSize, offset,
+	); err != nil {
+		return nil, 0, fmt.Errorf("list npcs by bt_tree_name: %w", err)
+	}
+	return items, total, nil
+}
+
 // ExportAll 导出所有已启用且未删除的 NPC 裸行
 //
 // 返回 []model.NPC，service 层负责组装 NPCExportItem（template_ref / fields map / behavior）。
