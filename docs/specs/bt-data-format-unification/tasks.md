@@ -138,7 +138,7 @@
 
 ---
 
-## T7：迁移 CLI 主程序（读 MySQL + 写 HTTP） (R5, R6)
+## T7：迁移 CLI 主程序（读 MySQL + 写 HTTP） (R5, R6)  `[x]` 完成 2026-04-18
 
 **文件**：`backend/cmd/bt-migrate/main.go`
 
