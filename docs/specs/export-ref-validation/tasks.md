@@ -38,7 +38,7 @@ T5 (typed error) ─┘                          │ 所有上游就绪后实施
 
 ---
 
-## T2：新增 FSM `CheckEnabledByNames` 跨层 helper（store + service）
+## T2：新增 FSM `CheckEnabledByNames` 跨层 helper（store + service）  `[x]` 完成 2026-04-18
 
 **关联**：R1, R2
 **文件**：
