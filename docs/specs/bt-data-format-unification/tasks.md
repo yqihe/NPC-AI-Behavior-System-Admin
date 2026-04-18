@@ -25,7 +25,7 @@
 
 ---
 
-## T2：Seed 补齐 `move_to` / `flee_from` (R1)
+## T2：Seed 补齐 `move_to` / `flee_from` (R1)  `[x]` 完成 2026-04-18
 
 **文件**：`backend/cmd/seed/bt_node_type_seed.go`
 
