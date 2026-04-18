@@ -269,9 +269,11 @@ handler/export.go
 
 新增的依赖：`errcode → model`（用 `model.NPCExportDanglingRef` 作为 details 元素类型）。验证 `model` 不反向 import `errcode`：
 
-<待 grep 在 task T0 时再核>
+**T1 (2026-04-18) 已核实**：`grep -rn "internal/errcode" backend/internal/model/` 零匹配，model 包不 import errcode。单向依赖成立，按方案 A 推进：
+- `NPCExportDanglingRef` 留 [backend/internal/model/npc.go](backend/internal/model/npc.go)（T4 实施）
+- `ExportDanglingRefError` 新建 [backend/internal/errcode/export_error.go](backend/internal/errcode/export_error.go)（T5 实施），import model
 
-如反向依赖存在，方案 B：把 `NPCExportDanglingRef` 也放进 errcode 包（更通用的 `DanglingRefDetail`）。
+方案 B（结构改放 errcode 包，命名 `DanglingRefDetail`）作为反向依赖出现时的逃生路径，本 spec 不启用。
 
 ## 6. 陷阱检查
 

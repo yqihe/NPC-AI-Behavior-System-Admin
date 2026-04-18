@@ -18,10 +18,12 @@ T5 (typed error) ─┘                          │ 所有上游就绪后实施
 
 ---
 
-## T1：核实依赖方向，锁定 ExportDanglingRefError 归属包
+## T1：核实依赖方向，锁定 ExportDanglingRefError 归属包  `[x]` 完成 2026-04-18
 
 **关联**：design §0、§5
 **文件**：0 改动（只探索 + 在 design.md §5 落定结论）
+
+**结论**：`grep -rn "internal/errcode" backend/internal/model/` 零匹配 → 方案 A 成立（errcode → model 单向）。`ExportDanglingRefError` 放 errcode/export_error.go（T5），`NPCExportDanglingRef` 放 model/npc.go（T4）。详见 design.md §5 修订。
 
 **做什么**：
 1. `grep -r "internal/errcode" backend/internal/model/` 确认 model 包是否 import errcode
