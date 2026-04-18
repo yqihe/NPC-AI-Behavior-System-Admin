@@ -160,9 +160,11 @@ func (e *ExportDanglingRefError) Error() string {
 
 ---
 
-## T6：拆分 `NpcService.ExportAll` 为 4 个纯方法
+## T6：拆分 `NpcService.ExportAll` 为 4 个纯方法  `[x]` 完成 2026-04-18
 
 **关联**：R1, R2, R5, R6
+
+> **实施备注**：T6 二次修订删 ExportAll 会让 handler 编译失败（T7 才迁移）。为保 build 绿可验证，T6 临时保留 `ExportAll` 作为薄 shim（调 ExportRows + AssembleExportItems，**不做**引用复核），打 `// TODO(T7)` 标记，T7 迁移完成后删除。
 **文件**：[backend/internal/service/npc_service.go](backend/internal/service/npc_service.go)
 
 > **2026-04-18 二次修订**：原 T6 让 service 直接调 fsm/bt service，违反 [npc_service.go:22-24](backend/internal/service/npc_service.go#L22) 明文「不持有跨服务依赖」硬约束。改为 handler 编排（T7）+ service 4 个纯方法（本任务）。详见 design §0、§1.4、§2.1。
