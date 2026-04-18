@@ -89,7 +89,7 @@
 
 ---
 
-## T5：validator 新行为单元测试 (R2, R3, R4, R12)
+## T5：validator 新行为单元测试 (R2, R3, R4, R12)  `[x]` 完成 2026-04-18
 
 **文件**：`backend/internal/service/bt_tree_test.go`
 
