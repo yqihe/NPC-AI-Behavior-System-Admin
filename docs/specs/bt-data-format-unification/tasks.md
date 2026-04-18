@@ -159,7 +159,7 @@
 
 ---
 
-## T8：dry-run + apply 端到端验证 (R5, R6, R8, R9, R10, R11)
+## T8：dry-run + apply 端到端验证 (R5, R6, R8, R9, R10, R11)  `[x]` 完成 2026-04-18
 
 **文件**：`docs/specs/bt-data-format-unification/apply-log.md`（新增）
 

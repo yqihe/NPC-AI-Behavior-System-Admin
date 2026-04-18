@@ -160,8 +160,8 @@ func putTree(ctx context.Context, client *http.Client, adminURL string, row btRo
 		return fmt.Errorf("marshal request: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/api/v1/bt-trees/%d", adminURL, row.ID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(payload))
+	url := adminURL + "/api/v1/bt-trees/update"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("new request: %w", err)
 	}
