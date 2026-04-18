@@ -709,17 +709,6 @@ func (s *NpcService) AssembleExportItems(rows []model.NPC) ([]model.NPCExportIte
 	return items, nil
 }
 
-// ExportAll TODO(T7): 临时 shim 保持 build 绿，T7 handler 迁移后删除
-//
-// 既有 handler 仍调用此方法；本 shim 不做引用复核（那是 handler 5 步编排的职责）。
-// 行为退化为"仅取行 + 装配"，与 T6 修订前的旧 ExportAll 缺少校验等价。
-func (s *NpcService) ExportAll(ctx context.Context) ([]model.NPCExportItem, error) {
-	rows, err := s.ExportRows(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return s.AssembleExportItems(rows)
-}
 
 // assembleExportItem 将 NPC 裸行组装为导出结构（包内 helper，AssembleExportItems 调用）
 func assembleExportItem(n model.NPC) (model.NPCExportItem, error) {

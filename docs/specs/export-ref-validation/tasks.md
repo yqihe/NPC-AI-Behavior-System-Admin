@@ -197,7 +197,7 @@ func (e *ExportDanglingRefError) Error() string {
 
 ---
 
-## T7：handler 5 步编排 + 修 5xx 格式
+## T7：handler 5 步编排 + 修 5xx 格式  `[x]` 完成 2026-04-18
 
 **关联**：R1, R2, R3, R4, R5, R6, R7
 **文件**：[backend/internal/handler/export.go](backend/internal/handler/export.go)
