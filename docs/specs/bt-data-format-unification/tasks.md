@@ -60,7 +60,7 @@
 
 ---
 
-## T4：service validator 接入 param_schema 数据驱动 (R2, R3, R4, R12)
+## T4：service validator 接入 param_schema 数据驱动 (R2, R3, R4, R12)  `[x]` 完成 2026-04-18
 
 **文件**：`backend/internal/service/bt_tree.go`
 
