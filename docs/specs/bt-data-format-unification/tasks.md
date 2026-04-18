@@ -181,7 +181,7 @@
 
 ---
 
-## T9：跨项目 e2e — game server BuildFromJSON 验证 (R7)
+## T9：跨项目 e2e — game server BuildFromJSON 验证 (R7)  `[x]` 完成 2026-04-18
 
 **文件**：`docs/specs/bt-data-format-unification/cross-project-verify.md`（新增）
 
