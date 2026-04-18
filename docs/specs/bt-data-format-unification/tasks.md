@@ -114,7 +114,7 @@
 
 ---
 
-## T6：迁移 transformer 纯函数 + 单测 (R5, R8, R9, R10, R11)
+## T6：迁移 transformer 纯函数 + 单测 (R5, R8, R9, R10, R11)  `[x]` 完成 2026-04-18
 
 **文件**：
 - `backend/cmd/bt-migrate/transform.go`（新增）
