@@ -87,7 +87,7 @@ T5 (typed error) ─┘                          │ 所有上游就绪后实施
 
 ---
 
-## T4：新增 `NPCExportDanglingRef` 结构 + 3 个常量
+## T4：新增 `NPCExportDanglingRef` 结构 + 3 个常量  `[x]` 完成 2026-04-18
 
 **关联**：R3, R4
 **文件**：[backend/internal/model/npc.go](backend/internal/model/npc.go)
