@@ -236,3 +236,25 @@ func (s *BtNodeTypeStore) ListEnabledTypes(ctx context.Context) (map[string]stri
 	}
 	return m, nil
 }
+
+// ListParamSchemas 返回 type_name → param_schema 原始 JSON（仅 enabled=1 AND deleted=0）
+//
+// store 层不解析业务类型（ParamSpec / NodeParamSchema 定义在 service 层），
+// 返回 json.RawMessage 供调用方自行反序列化，保持分层单向向下。
+// 空结果返回非 nil 空 map + nil error。
+func (s *BtNodeTypeStore) ListParamSchemas(ctx context.Context) (map[string]json.RawMessage, error) {
+	type row struct {
+		TypeName    string          `db:"type_name"`
+		ParamSchema json.RawMessage `db:"param_schema"`
+	}
+	var rows []row
+	if err := s.db.SelectContext(ctx, &rows,
+		`SELECT type_name, param_schema FROM bt_node_types WHERE enabled = 1 AND deleted = 0`); err != nil {
+		return nil, fmt.Errorf("list bt_node_type param schemas: %w", err)
+	}
+	m := make(map[string]json.RawMessage, len(rows))
+	for _, r := range rows {
+		m[r.TypeName] = r.ParamSchema
+	}
+	return m, nil
+}

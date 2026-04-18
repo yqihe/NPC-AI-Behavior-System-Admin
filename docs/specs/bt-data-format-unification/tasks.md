@@ -43,7 +43,7 @@
 
 ---
 
-## T3：store 层 `ListParamSchemas` 方法 (支撑 R2-R4)
+## T3：store 层 `ListParamSchemas` 方法 (支撑 R2-R4)  `[x]` 完成 2026-04-18
 
 **文件**：`backend/internal/store/mysql/bt_node_type.go`
 
