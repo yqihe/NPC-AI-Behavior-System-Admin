@@ -233,7 +233,7 @@ func (e *ExportDanglingRefError) Error() string {
 
 ---
 
-## T8：单元测试覆盖 4 个纯方法
+## T8：单元测试覆盖 4 个纯方法  `[x]` 完成 2026-04-18
 
 **关联**：R8
 **文件**：[backend/internal/service/npc_service_test.go](backend/internal/service/npc_service_test.go)（如不存在则新建；如存在则追加）
