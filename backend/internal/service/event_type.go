@@ -449,8 +449,38 @@ func (s *EventTypeService) ToggleEnabled(ctx context.Context, req *model.ToggleE
 }
 
 // ExportAll 导出所有已启用的事件类型
+//
+// 将外层 name 注入 config JSON 内部。游戏服务端 cmd/server/main.go:249
+// 从 config 反序列化出 EventTypeConfig 后用 cfg.Name 作索引键——
+// 若不注入，所有事件都落到空字符串 key，事件系统失效。
+// 其他配置（FSM/BT/NPCTemplate）用外层 name 寻址，不受此影响。
 func (s *EventTypeService) ExportAll(ctx context.Context) ([]model.EventTypeExportItem, error) {
-	return s.store.ExportAll(ctx)
+	items, err := s.store.ExportAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		merged, mergeErr := injectNameIntoConfig(items[i].Name, items[i].Config)
+		if mergeErr != nil {
+			slog.Error("service.事件类型导出.注入name失败", "name", items[i].Name, "error", mergeErr)
+			return nil, fmt.Errorf("inject name into config for %q: %w", items[i].Name, mergeErr)
+		}
+		items[i].Config = merged
+	}
+	return items, nil
+}
+
+// injectNameIntoConfig 把 name 合并到 config JSON 中（已有同名 key 以外层 name 为准）。
+func injectNameIntoConfig(name string, config json.RawMessage) (json.RawMessage, error) {
+	var m map[string]interface{}
+	if err := json.Unmarshal(config, &m); err != nil {
+		return nil, fmt.Errorf("unmarshal config: %w", err)
+	}
+	if m == nil {
+		m = make(map[string]interface{})
+	}
+	m["name"] = name
+	return json.Marshal(m)
 }
 
 // GetDetail 查详情并拼装 EventTypeDetail（含 config 展开 + 扩展字段 schema 合并）
