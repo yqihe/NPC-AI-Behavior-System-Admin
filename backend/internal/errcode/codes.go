@@ -166,6 +166,7 @@ const (
 	ErrNPCDeleteNotDisabled = 45013 // 删除前必须先停用
 	ErrNPCVersionConflict   = 45014 // 版本冲突（乐观锁）
 	ErrNPCBtWithoutFsm      = 45015 // bt_refs 非空时 fsm_ref 必须设置
+	ErrNPCExportDanglingRef = 45016 // 导出 NPC 时发现悬空 FSM/BT 引用
 )
 
 // --- 错误消息 ---
@@ -290,6 +291,7 @@ var messages = map[int]string{
 	ErrNPCDeleteNotDisabled: "请先停用该 NPC 再删除",
 	ErrNPCVersionConflict:   "该 NPC 已被其他人修改，请刷新后重试",
 	ErrNPCBtWithoutFsm:      "配置行为树前请先选择状态机",
+	ErrNPCExportDanglingRef: "NPC 导出失败：存在悬空的状态机/行为树引用，请按 details 修复",
 }
 
 // Msg 获取错误码对应的默认消息

@@ -63,7 +63,7 @@ T5 (typed error) ─┘                          │ 所有上游就绪后实施
 
 ---
 
-## T3：新增错误码 `ErrNPCExportDanglingRef`（45016）+ message
+## T3：新增错误码 `ErrNPCExportDanglingRef`（45016）+ message  `[x]` 完成 2026-04-18
 
 **关联**：R3, R4
 **文件**：[backend/internal/errcode/codes.go](backend/internal/errcode/codes.go)
