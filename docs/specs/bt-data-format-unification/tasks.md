@@ -4,22 +4,24 @@
 
 ---
 
-## T1：errcode 扩展 +4 个 BT params 错误码 (R2, R3, R4)
+## T1：errcode 扩展 +4 个 BT params 错误码 (R2, R3, R4)  `[x]` 完成 2026-04-18
 
 **文件**：`backend/internal/errcode/codes.go`
 
 **做什么**：
-- 新增 4 个常量：`ErrBtNodeBareFields`(44007) / `ErrBtNodeParamMissing`(44008) / `ErrBtNodeParamType`(44009) / `ErrBtNodeParamEnum`(44010)
-- `defaultMessages` map 补 4 条中文消息：
+- 新增 4 个常量：`ErrBtNodeBareFields`(44007) / `ErrBtNodeParamMissing`(44008) / `ErrBtNodeParamType`(44013) / `ErrBtNodeParamEnum`(44014)
+  - **码段分配**：44001-44006、44009-44012 已占用，44007-44008 + 44013-44015 为预留段；本 task 用 44007/44008/44013/44014 共 4 个（留 44015 最后一个备用）
+- `messages` map 补 4 条中文消息：
   - 44007 → `"节点字段结构非法"`
   - 44008 → `"节点缺少必填参数"`
-  - 44009 → `"节点参数类型不匹配"`
-  - 44010 → `"节点参数取值不在允许集合"`
+  - 44013 → `"节点参数类型不匹配"`
+  - 44014 → `"节点参数取值不在允许集合"`
+- 常量插入位置：放在 `ErrBtTreeRefDelete = 44012` 后面，`// 44013-44015 预留` 注释替换为新三项
 
 **做完了是什么样**：
-- `grep -E 'ErrBtNode(BareFields|ParamMissing|ParamType|ParamEnum)' backend/internal/errcode/codes.go` 各返回 ≥2 次（常量定义 + messages map）
+- `grep -E 'ErrBtNode(BareFields|ParamMissing|ParamType|ParamEnum)' backend/internal/errcode/codes.go` 各返回 2 次（常量定义 + messages map）
 - `go build ./backend/...` 通过，零新 warning
-- 码值 44007-44010 在 BT 段（44001-44006 已用），无撞码
+- 码值与现有常量无冲突（人工核对 44001-44015 整段清单）
 
 ---
 

@@ -160,12 +160,12 @@ func (s *BtNodeTypeStore) ListParamSchemas(ctx context.Context) (map[string]json
 
 | 新常量 | 码 | 消息 |
 |---|---|---|
-| `ErrBtNodeBareFields` | 44007 | `"节点 params 结构非法"` |
+| `ErrBtNodeBareFields` | 44007 | `"节点字段结构非法"` |
 | `ErrBtNodeParamMissing` | 44008 | `"节点缺少必填参数"` |
-| `ErrBtNodeParamType` | 44009 | `"节点参数类型不匹配"` |
-| `ErrBtNodeParamEnum` | 44010 | `"节点参数取值不在允许集合"` |
+| `ErrBtNodeParamType` | 44013 | `"节点参数类型不匹配"` |
+| `ErrBtNodeParamEnum` | 44014 | `"节点参数取值不在允许集合"` |
 
-码段延续现有 BT 44000 段（44001~44006 已用）。消息为后端返回前端的中文短语（见 admin 红线 6.3）；`Newf` 可拼具体细节。
+码段分配说明：BT 段 44001-44015，其中 44001-44006、44009-44012 已用；44007-44008、44013-44015 为预留段。本 spec 使用 44007/44008（相邻）+ 44013/44014（相邻），留 44015 作 BT 段最后一个预留。消息为后端返回前端的中文短语（见 admin 红线 6.3）；`Newf` 可拼具体细节。
 
 ### 1.4 迁移脚本（`backend/cmd/bt-migrate/main.go`）
 
