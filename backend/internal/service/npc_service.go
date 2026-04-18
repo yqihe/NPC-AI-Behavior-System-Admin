@@ -585,21 +585,123 @@ func (s *NpcService) ListByBtTreeName(ctx context.Context, btName string, page, 
 	return s.store.ListByBtTreeName(ctx, btName, page, pageSize)
 }
 
-// ExportAll 导出所有已启用且未删除的 NPC，组装 NPCExportItem
+// ──────────────────────────────────────────────
+// 导出（handler 编排，service 4 个纯方法 + ExportRows 直查）
 //
-// 直查 MySQL，不走缓存（导出场景需要最新数据）。
-func (s *NpcService) ExportAll(ctx context.Context) ([]model.NPCExportItem, error) {
+// NpcService 严格遵守"分层职责"：不持有 fsmConfigService / btTreeService。
+// 跨模块校验（FSM/BT 启用状态）由 handler 编排（见 ExportHandler.NPCTemplates）。
+// ──────────────────────────────────────────────
+
+// NPCExportRefs 导出引用反查索引
+//
+// CollectExportRefs 产物，BuildExportDanglingError 输入。
+// FsmIndex: fsmName → 引用它的 NPC 名列表
+// BtIndex:  btName  → 引用它的 (npcName, state) 列表
+type NPCExportRefs struct {
+	FsmIndex map[string][]string
+	BtIndex  map[string][]NPCExportBtUsage
+}
+
+// NPCExportBtUsage 一条 BT 引用的来源（dangling details 反查用）
+type NPCExportBtUsage struct {
+	NPCName string
+	State   string
+}
+
+// ExportRows 直查 MySQL 取所有已启用未删除 NPC 原始行
+//
+// 不走缓存（导出场景需要最新数据）。返回原始 model.NPC，
+// 由调用方（handler）编排引用校验和最终装配。
+func (s *NpcService) ExportRows(ctx context.Context) ([]model.NPC, error) {
 	rows, err := s.store.ExportAll(ctx)
 	if err != nil {
-		slog.Error("service.导出NPC失败", "error", err)
-		return nil, fmt.Errorf("export npcs: %w", err)
+		slog.Error("service.导出NPC.取行失败", "error", err)
+		return nil, fmt.Errorf("export rows: %w", err)
 	}
+	return rows, nil
+}
 
+// CollectExportRefs 纯函数：扫 rows 构建 FSM/BT 反查索引
+//
+// 解析每行 BtRefs JSON 失败立即返 error（数据损坏不放行）。
+// 空 fsm_ref / 空 bt_refs map 不进入 index（视为合法的"无行为配置"）。
+func (s *NpcService) CollectExportRefs(rows []model.NPC) (*NPCExportRefs, error) {
+	refs := &NPCExportRefs{
+		FsmIndex: make(map[string][]string),
+		BtIndex:  make(map[string][]NPCExportBtUsage),
+	}
+	for _, n := range rows {
+		if n.FsmRef != "" {
+			refs.FsmIndex[n.FsmRef] = append(refs.FsmIndex[n.FsmRef], n.Name)
+		}
+		var btRefs map[string]string
+		if err := json.Unmarshal(n.BtRefs, &btRefs); err != nil {
+			return nil, fmt.Errorf("collect refs: unmarshal bt_refs (npc=%s): %w", n.Name, err)
+		}
+		for state, btName := range btRefs {
+			refs.BtIndex[btName] = append(refs.BtIndex[btName], NPCExportBtUsage{
+				NPCName: n.Name,
+				State:   state,
+			})
+		}
+	}
+	return refs, nil
+}
+
+// BuildExportDanglingError 纯函数：notOK 名列表 + 反查索引 → 结构化错误
+//
+// 全部正常返回 nil。任一 notOK 非空时返回 *ExportDanglingRefError，
+// Details 按 (FSM 全部) → (BT 全部) 顺序展开。
+//
+// 一个 NPC 多次引用同一悬空 BT 不会发生（bt_refs 是 map[state]btName，
+// 同 NPC 内 state 唯一），所以 Details 不需要去重。
+func (s *NpcService) BuildExportDanglingError(
+	refs *NPCExportRefs,
+	fsmNotOK []string,
+	btNotOK []string,
+) *errcode.ExportDanglingRefError {
+	if len(fsmNotOK) == 0 && len(btNotOK) == 0 {
+		return nil
+	}
+	details := make([]model.NPCExportDanglingRef, 0, len(fsmNotOK)+len(btNotOK))
+	for _, fsmName := range fsmNotOK {
+		for _, npcName := range refs.FsmIndex[fsmName] {
+			details = append(details, model.NPCExportDanglingRef{
+				NPCName:  npcName,
+				RefType:  model.ExportRefTypeFsm,
+				RefValue: fsmName,
+				Reason:   model.ExportRefReasonMissingOrDisabled,
+			})
+		}
+	}
+	for _, btName := range btNotOK {
+		for _, u := range refs.BtIndex[btName] {
+			details = append(details, model.NPCExportDanglingRef{
+				NPCName:  u.NPCName,
+				RefType:  model.ExportRefTypeBt,
+				RefValue: btName,
+				Reason:   model.ExportRefReasonMissingOrDisabled,
+				State:    u.State,
+			})
+		}
+	}
+	if len(details) == 0 {
+		// 防御：notOK 非空但反查索引找不到对应 NPC（理论不可能，因为 handler
+		// 把 keysOf(refs.*Index) 传进 CheckEnabledByNames 再回来），返 nil 避免空错误。
+		return nil
+	}
+	return &errcode.ExportDanglingRefError{Details: details}
+}
+
+// AssembleExportItems 纯函数：rows → []NPCExportItem
+//
+// 抽自既有 ExportAll 的装配段。任一行解析失败立即返 error，不部分装配。
+func (s *NpcService) AssembleExportItems(rows []model.NPC) ([]model.NPCExportItem, error) {
 	items := make([]model.NPCExportItem, 0, len(rows))
 	for _, n := range rows {
 		item, err := assembleExportItem(n)
 		if err != nil {
-			slog.Error("service.导出NPC-组装失败", "error", err, "name", n.Name)
+			slog.Error("service.导出NPC.装配失败", "error", err, "name", n.Name)
 			return nil, fmt.Errorf("assemble export item for npc %q: %w", n.Name, err)
 		}
 		items = append(items, item)
@@ -607,7 +709,8 @@ func (s *NpcService) ExportAll(ctx context.Context) ([]model.NPCExportItem, erro
 	return items, nil
 }
 
-// assembleExportItem 将 NPC 裸行组装为导出结构
+
+// assembleExportItem 将 NPC 裸行组装为导出结构（包内 helper，AssembleExportItems 调用）
 func assembleExportItem(n model.NPC) (model.NPCExportItem, error) {
 	// 解析字段快照 → map[name]value
 	var fieldEntries []model.NPCFieldEntry

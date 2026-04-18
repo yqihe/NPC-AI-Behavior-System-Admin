@@ -86,7 +86,7 @@ ADMIN 现状：
 | R2 | 校验产生的 SQL 不超过 **2 次**（FSM 批量 + BT 批量），与 NPC 数量无关 | 单测：mock store，断言 GetEnabledByNames 各被调用一次 |
 | R3 | 任一引用悬空 → 整端点返回 HTTP 500，body 含错误码 `ErrNPCExportDanglingRef` (45010) + `details` 数组列出**所有**悬空条目（不止第一个） | e2e：构造 2 条 NPC 各引用一个禁用 FSM/BT，curl 验证 details 长度=2 |
 | R4 | `details` 每项包含 `npc_name` / `ref_type` (`fsm_ref` 或 `bt_ref`) / `ref_value` / `reason` (`not_found` 或 `disabled`)；BT 项额外含 `state`（FSM 状态名） | e2e + 单测：检查 JSON 字段 |
-| R5 | 校验失败时 slog 输出 ERROR 日志，包含完整 details；审计日志记一条 `export_npc_templates / failed_dangling_ref` | 单测 + 手测查日志 |
+| R5 | 校验失败时 slog 输出 ERROR 日志，包含完整 details（**审计日志延后到独立 spec**：T6 audit 核实 V3 当前无 audit log 基础设施，单为本 spec 一个事件搭基础设施 = scope creep） | 单测验 slog 调用 + 手测查日志 |
 | R6 | 全部引用有效时 ExportAll 行为与现状完全一致（200 + items）；空 NPC 列表时返回 `{"items":[]}` | e2e：seed 一条正常 NPC，curl 验证 |
 | R7 | 不影响 `event_types` / `fsm_configs` / `bt_trees` 三个 export 端点 | e2e：分别 curl 三个端点，行为与本 spec 前一致 |
 | R8 | 单测覆盖 5 个场景：全部正常 / FSM 不存在 / FSM 禁用 / BT 不存在 / BT 禁用 | go test ./internal/service/... 全绿 |

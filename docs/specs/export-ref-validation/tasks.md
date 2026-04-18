@@ -18,10 +18,12 @@ T5 (typed error) ─┘                          │ 所有上游就绪后实施
 
 ---
 
-## T1：核实依赖方向，锁定 ExportDanglingRefError 归属包
+## T1：核实依赖方向，锁定 ExportDanglingRefError 归属包  `[x]` 完成 2026-04-18
 
 **关联**：design §0、§5
 **文件**：0 改动（只探索 + 在 design.md §5 落定结论）
+
+**结论**：`grep -rn "internal/errcode" backend/internal/model/` 零匹配 → 方案 A 成立（errcode → model 单向）。`ExportDanglingRefError` 放 errcode/export_error.go（T5），`NPCExportDanglingRef` 放 model/npc.go（T4）。详见 design.md §5 修订。
 
 **做什么**：
 1. `grep -r "internal/errcode" backend/internal/model/` 确认 model 包是否 import errcode
@@ -36,7 +38,7 @@ T5 (typed error) ─┘                          │ 所有上游就绪后实施
 
 ---
 
-## T2：新增 FSM `CheckEnabledByNames` 跨层 helper（store + service）
+## T2：新增 FSM `CheckEnabledByNames` 跨层 helper（store + service）  `[x]` 完成 2026-04-18
 
 **关联**：R1, R2
 **文件**：
@@ -61,7 +63,7 @@ T5 (typed error) ─┘                          │ 所有上游就绪后实施
 
 ---
 
-## T3：新增错误码 `ErrNPCExportDanglingRef`（45016）+ message
+## T3：新增错误码 `ErrNPCExportDanglingRef`（45016）+ message  `[x]` 完成 2026-04-18
 
 **关联**：R3, R4
 **文件**：[backend/internal/errcode/codes.go](backend/internal/errcode/codes.go)
@@ -85,7 +87,7 @@ T5 (typed error) ─┘                          │ 所有上游就绪后实施
 
 ---
 
-## T4：新增 `NPCExportDanglingRef` 结构 + 3 个常量
+## T4：新增 `NPCExportDanglingRef` 结构 + 3 个常量  `[x]` 完成 2026-04-18
 
 **关联**：R3, R4
 **文件**：[backend/internal/model/npc.go](backend/internal/model/npc.go)
@@ -122,7 +124,7 @@ const (
 
 ---
 
-## T5：新增 `ExportDanglingRefError` typed error
+## T5：新增 `ExportDanglingRefError` typed error  `[x]` 完成 2026-04-18
 
 **关联**：R3
 **文件**：按 T1 结论：
@@ -158,93 +160,125 @@ func (e *ExportDanglingRefError) Error() string {
 
 ---
 
-## T6：实现 `NpcService.validateExportRefs` + 集成到 `ExportAll`
+## T6：拆分 `NpcService.ExportAll` 为 4 个纯方法  `[x]` 完成 2026-04-18
 
 **关联**：R1, R2, R5, R6
+
+> **实施备注**：T6 二次修订删 ExportAll 会让 handler 编译失败（T7 才迁移）。为保 build 绿可验证，T6 临时保留 `ExportAll` 作为薄 shim（调 ExportRows + AssembleExportItems，**不做**引用复核），打 `// TODO(T7)` 标记，T7 迁移完成后删除。
 **文件**：[backend/internal/service/npc_service.go](backend/internal/service/npc_service.go)
 
+> **2026-04-18 二次修订**：原 T6 让 service 直接调 fsm/bt service，违反 [npc_service.go:22-24](backend/internal/service/npc_service.go#L22) 明文「不持有跨服务依赖」硬约束。改为 handler 编排（T7）+ service 4 个纯方法（本任务）。详见 design §0、§1.4、§2.1。
+
 **做什么**：
-1. 新增私有方法（紧邻既有 `ExportAll`）：
+1. 新增类型（紧邻既有 ExportAll 上方）：
    ```go
-   // validateExportRefs 批量复核所有 NPC 的 FSM/BT 引用是否存在且 enabled
-   //
-   // 全部正常返回 nil。任一悬空返回 *errcode.ExportDanglingRefError，details 含全部悬空条目。
-   // SQL 恒为 2 次（FSM 1 次 + BT 1 次批量），与 NPC 数量无关。
-   func (s *NpcService) validateExportRefs(ctx context.Context, rows []model.NPC) (*errcode.ExportDanglingRefError, error) { ... }
+   type NPCExportRefs struct {
+       FsmIndex map[string][]string         // fsmName → npc names
+       BtIndex  map[string][]NPCExportBtUsage  // btName → (npc, state) list
+   }
+   type NPCExportBtUsage struct {
+       NPCName string
+       State   string
+   }
    ```
-2. 实现策略：
-   - 第一遍扫 rows：聚合 `fsmSet := map[string]bool` (fsm_ref 非空) 和 `btMap := map[string]string` (bt name → 它来自哪个 state，仅取最近一条用于 details 反查)
-   - 实际反查 details 时需要"哪些 NPC 用了这个名"，所以 btMap 应是 `map[btName][]struct{NPC, State}`，fsmSet 类似 `map[fsmName][]string{NPC names}`
-   - 调 `fsmConfigService.CheckEnabledByNames(ctx, fsmNames)` 拿 notOK
-   - 调 `btTreeService.CheckEnabledByNames(ctx, btNames)` 拿 notOK
-   - 把 notOK × 反查 map 展开成 `[]NPCExportDanglingRef`
-   - 任意非空 → 返回 `*ExportDanglingRefError`
-   - infra 错误（SQL 失败等）走第二个返回值
-3. 修改 [npc_service.go:591](backend/internal/service/npc_service.go#L591) `ExportAll`：
-   - `store.ExportAll` 后插入 `if dangling, err := s.validateExportRefs(ctx, rows); err != nil { return nil, err } else if dangling != nil { return nil, dangling }`
-   - 后续 assembleExportItem 循环不变
+2. 新增 4 个方法（替代既有 `ExportAll`）：
+   - `ExportRows(ctx) ([]model.NPC, error)` — 直查 store.ExportAll
+   - `CollectExportRefs(rows) (*NPCExportRefs, error)` — 纯函数，扫 rows + json.Unmarshal bt_refs，构建反查索引；空 fsm_ref / 空 bt_refs 不入索引（合法的"无行为配置"）
+   - `BuildExportDanglingError(refs, fsmNotOK, btNotOK) *errcode.ExportDanglingRefError` — 纯函数，遍历两个 notOK × 反查 index 拼 details；全部正常返 nil
+   - `AssembleExportItems(rows) ([]model.NPCExportItem, error)` — 纯函数，抽自既有 ExportAll 的装配段
+3. **删除** 既有 `ExportAll` 方法（调用方只有 export.go 一处，T7 切到新 4 步编排）
+4. 注意：本任务**不动** NpcService struct（不新增字段，因为不持有任何跨服务依赖）
 
 **做完了是什么样**：
 - `go build ./internal/...` 通过
-- 调用 `npcService.ExportAll(ctx)` 在 0 NPC 时不发起 FSM/BT 任何 SQL（短路）
-- 1 个 NPC 引用 1 个 FSM + 2 个 BT 时：FSM helper 收到 names=[fsmRef]，BT helper 收到 names=[bt1,bt2]（去重后）
-- 5 个 NPC 全引用同一个 FSM 时：FSM helper 收到 names 长度=1（验证去重）
-- 触发 `/verify`：跨模块一致性 + N+1 防护检查
+- grep 确认 `ExportAll` 只剩 1 个命中（store 层 `NpcStore.ExportAll`，service 层旧方法已删）
+- 4 个新方法都是 receiver 纯方法（无 ctx 参数除 ExportRows）
+- 触发 `/verify`：单元测起来更容易（输入 model.NPC 切片、输出确定结构），N+1 防护通过 T7 实施时验证
 
 ---
 
-## T7：修改 `ExportHandler.NPCTemplates` 处理 typed error + 修 5xx 格式
+## T7：handler 5 步编排 + 修 5xx 格式  `[x]` 完成 2026-04-18
 
-**关联**：R3, R4, R5, R6, R7
+**关联**：R1, R2, R3, R4, R5, R6, R7
 **文件**：[backend/internal/handler/export.go](backend/internal/handler/export.go)
 
+> **2026-04-18 二次修订**：handler 接管跨模块编排（NpcService 不持有 fsm/bt service，遵守硬约束）。ExportHandler 已注入 fsmConfigService + btTreeService（[export.go:15](backend/internal/handler/export.go#L15)），无需改 setup。
+
 **做什么**：
-按 design §1.6 改写 `NPCTemplates` 函数：
-- `errors.As(err, &dangling)` 命中 → 5xx + `gin.H{"code":45016, "message":..., "details": dangling.Details}` + slog.Error 输出 details
-- 通用错误 → 5xx + `gin.H{"code":errcode.ErrInternal, "message":"导出失败，请查看服务端日志"}`，**不再返回 `{"items":[]}`**（修既有 admin red-line #14 违规）
-- 200 + items 路径不变
-- 200 + empty 路径不变（`{"items":[]}`）
-- 不动其他三个 export handler（EventTypes / FsmConfigs / BTTrees）
+按 design §1.6 改写 `NPCTemplates` 函数为 5 步编排：
+
+| Step | 调用 | 失败处理 |
+|---|---|---|
+| 1 | `npcService.ExportRows(ctx)` | 通用 500 |
+| - | `len(rows)==0` 短路 | 200 + `{"items":[]}` |
+| 2 | `npcService.CollectExportRefs(rows)` | 通用 500 |
+| 3a | `fsmConfigService.CheckEnabledByNames(ctx, keysOf(refs.FsmIndex))` | 通用 500 |
+| 3b | `btTreeService.CheckEnabledByNames(ctx, keysOf(refs.BtIndex))` | 通用 500 |
+| 4 | `npcService.BuildExportDanglingError(refs, fsmNotOK, btNotOK)` | 非 nil → 5xx + `{code:45016, message, details}` + slog.Error 输出 details |
+| 5 | `npcService.AssembleExportItems(rows)` | 通用 500 |
+| - | success | 200 + `{"items": items}` |
+
+通用 500 抽 `respondInternalErr(c, stage, err)` 辅助，含 stage 标签（`"export_rows"` / `"collect_refs"` / `"check_fsm"` / `"check_bt"` / `"assemble"`）。
+
+**不动**其他三个 export handler（EventTypes / FsmConfigs / BTTrees）。
 
 **做完了是什么样**：
 - `go build ./internal/...` 通过
-- 用 panic + middleware 模拟通用错误：响应 body 是 `{"code":<ErrInternal>, "message":"导出失败..."}`，**不含** `items` 字段
-- 触发 typed error：响应 body 含 `code=45016` + `message` + `details` 数组（手动 mock service 注入悬空 NPC 即可）
-- 其他三个端点 handler 行为完全不变（diff 显示只动了 NPCTemplates 函数体）
-- 触发 `/verify`：HTTP 响应格式红线 #14 应通过
+- diff 显示只动了 `NPCTemplates` + 新增 `respondInternalErr`，其他 handler 函数零变更
+- handler 不依赖 `errors.As`（因为 BuildExportDanglingError 直接返指针）
+- 用 `errcode.Msg(...)` 而非 `errcode.Message(...)`（design 原 §1.6 笔误已订正）
+- 触发 `/verify`：跨模块一致性 + 5xx 格式红线 #14
 
 ---
 
-## T8：单元测试 6 用例
+---
+
+## T8：单元测试覆盖 4 个纯方法  `[x]` 完成 2026-04-18
 
 **关联**：R8
 **文件**：[backend/internal/service/npc_service_test.go](backend/internal/service/npc_service_test.go)（如不存在则新建；如存在则追加）
 
-**做什么**：
-1. 先看 npc_service 当前是否有测试文件 + mock 模式（`grep -l "MockFsmConfigService\|interface.*Fsm" backend/internal/`）。
-2. 如无 mock 框架：用最简方式——给 NpcService 注入接口（FsmRefChecker / BtRefChecker），测试时传 stub 实现。**不引入 mockery / gomock 等新依赖**（admin red-line "禁止引入没有使用场景的依赖"）。
-3. 写以下 6 用例：
+> **2026-04-18 二次修订**：T6 拆分后测试目标从 1 个 hybrid 方法变成 4 个纯方法，**不再需要 mock fsm/bt service**（service 不持有它们）。store mock 仅 `ExportRows` 测试需要。
 
-| 用例 | 数据 | 期望 |
-|---|---|---|
-| TestExportAll_AllValid | 1 NPC, FSM/BT 都 enabled | items 长度=1，无错误 |
-| TestExportAll_FsmMissing | NPC.fsm_ref 不在 enabledSet | err is `*ExportDanglingRefError`, details 长度=1, ref_type=fsm_ref |
-| TestExportAll_FsmDisabled | 同上（CheckEnabledByNames 视角分不出，复用 Missing 测试逻辑即可） | 与 FsmMissing 同 |
-| TestExportAll_BtMissing | NPC.bt_refs[patrol]=不存在的 BT | details[0].ref_type=bt_ref, state=patrol |
-| TestExportAll_BtDisabled | 同上语义 | 与 BtMissing 同 |
-| TestExportAll_BatchSqlCount | mock store + checker，10 NPC 引用 5 FSM 3 BT | FsmRefChecker.CheckEnabledByNames 被调 1 次, names 长度=5；BtRefChecker 被调 1 次, names 长度=3（去重） |
+**做什么**：
+
+3 个纯函数（无 ctx，纯输入输出）直接 table-driven test，零 mock：
+
+| 用例 | 测对象 | 数据 | 期望 |
+|---|---|---|---|
+| TestCollectExportRefs_Empty | CollectExportRefs | rows=[] | refs 两个 index 都是空 map（非 nil） |
+| TestCollectExportRefs_AllRefs | 同 | 3 NPC: A 引 fsm=g + bt={patrol→p1}; B 引 fsm=g + bt={patrol→p1, alert→a1}; C 无 fsm 仅 bt={idle→i1} | FsmIndex={g:[A,B]}; BtIndex={p1:[(A,patrol),(B,patrol)], a1:[(B,alert)], i1:[(C,idle)]} |
+| TestCollectExportRefs_BadJSON | 同 | 1 NPC bt_refs="not json" | 返 error |
+| TestBuildExportDanglingError_AllValid | BuildExportDanglingError | refs 非空，fsmNotOK=[]，btNotOK=[] | nil |
+| TestBuildExportDanglingError_FsmMissing | 同 | FsmIndex={g:[A,B]}, fsmNotOK=[g] | details=2 条，都 ref_type=fsm_ref + ref_value=g + npc_name 各为 A/B |
+| TestBuildExportDanglingError_BtMissing | 同 | BtIndex={p1:[(A,patrol),(B,patrol)]}, btNotOK=[p1] | details=2 条，都 ref_type=bt_ref + state=patrol |
+| TestBuildExportDanglingError_FsmAndBt | 同 | 同时 fsmNotOK + btNotOK | details=多条，FSM 在前 BT 在后 |
+| TestAssembleExportItems_Empty | AssembleExportItems | rows=[] | items=[] (非 nil) |
+| TestAssembleExportItems_OneRow | 同 | 1 NPC 含 fields/fsm_ref/bt_refs | items 长度=1，与既有 ExportAll 装配语义一致 |
+
+ExportRows 是 store passthrough，不单独测（store 层覆盖；e2e 在 T9 验证）。
 
 **做完了是什么样**：
-- `go test -race ./internal/service/...` 全绿
-- 6 个用例全部 PASS（输出 `ok backend/internal/service`）
-- 测试文件无未使用变量、无空断言（red-line "禁止测试质量低下"）
+- `go test ./internal/service/...` 全绿
+- 9 个用例全部 PASS
+- 不引入新 mock 框架（admin red-line "禁止引入没有使用场景的依赖"）
+- 测试文件无未使用变量、无空断言
 - 触发 `/verify`：测试质量红线应通过
+
+> **N+1 防护和"3 SQL 总数"** 通过 T9 e2e 验证（用 SQL 慢查日志或 EXPLAIN），不在单测范围。
 
 ---
 
-## T9：e2e 手动验证
+## T9：e2e 手动验证  `[x]` 完成 2026-04-18
 
 **关联**：R3, R6, R7
+
+> **执行结果**：
+> - C1（正常路径）：200 + items 含 6 NPC（5 pre-existing + 1 新建 guard_basic）
+> - C2（悬空路径）：500 + code 45016 + details 含 6 条（4 NPCs→bt/combat/attack, 1→bt/passive/wander, 1→guard/patrol，每条含 npc_name/ref_type=bt_ref/ref_value/reason=missing_or_disabled/state）
+> - C3（slog）：handler.export.npc_templates.dangling_refs ERROR 含 count=6 + 完整 details 数组
+> - C4（隔离）：event_types/fsm_configs/bt_trees 三端点全 200 不受影响
+> - **重要踩坑**：首次 docker compose up -d 跑的是 stale 镜像（无 T6/T7 代码），所以最初看到 C2 返 200。`docker compose up -d --build` 后 binary 含 9 处新方法符号，C2 才 PASS。教训写进 dev-rules。
 **文件**：0 改动（验证清单）
 
 **做什么**：

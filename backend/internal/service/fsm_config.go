@@ -595,6 +595,26 @@ func (s *FsmConfigService) GetEnabledByName(ctx context.Context, name string) (*
 	return fsm, nil
 }
 
+// CheckEnabledByNames 批量校验状态机配置是否存在且已启用（供 NPC 导出引用复核调用）
+//
+// 返回不存在或已停用的 name 列表（notOK）。
+// names 为空时直接返回 nil, nil，不发起查询。
+func (s *FsmConfigService) CheckEnabledByNames(ctx context.Context, names []string) (notOK []string, err error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
+	enabledSet, err := s.store.GetEnabledByNames(ctx, names)
+	if err != nil {
+		return nil, fmt.Errorf("get enabled fsm_configs by names: %w", err)
+	}
+	for _, name := range names {
+		if !enabledSet[name] {
+			notOK = append(notOK, name)
+		}
+	}
+	return notOK, nil
+}
+
 // GetStateNames 从 FSM config_json 中提取状态名集合
 //
 // 先校验 name 存在且已启用（复用 GetEnabledByName 逻辑），再解析 states。

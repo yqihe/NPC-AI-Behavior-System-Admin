@@ -291,6 +291,33 @@ func (s *FsmConfigStore) GetByName(ctx context.Context, name string) (*model.Fsm
 	return &fc, nil
 }
 
+// GetEnabledByNames 批量查询指定 name 中已启用且未删除的状态机配置名集合
+//
+// 返回 map[name → true]，不在 map 中的 name 表示不存在或未启用。
+// names 为空时直接返回空 map，不发起数据库查询。
+func (s *FsmConfigStore) GetEnabledByNames(ctx context.Context, names []string) (map[string]bool, error) {
+	result := make(map[string]bool)
+	if len(names) == 0 {
+		return result, nil
+	}
+
+	query, args, err := sqlx.In(
+		`SELECT name FROM fsm_configs WHERE name IN (?) AND enabled = 1 AND deleted = 0`, names)
+	if err != nil {
+		return nil, fmt.Errorf("build in query: %w", err)
+	}
+	query = s.db.Rebind(query)
+
+	rows := make([]string, 0)
+	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+		return nil, fmt.Errorf("get enabled fsm_configs by names: %w", err)
+	}
+	for _, name := range rows {
+		result[name] = true
+	}
+	return result, nil
+}
+
 // ExportAll 导出所有已启用且未删除的状态机配置
 //
 // 返回 (name, config_json) 二元组，handler 层原样输出到 HTTP 响应。

@@ -147,6 +147,26 @@ type NPCExportBehavior struct {
 	BtRefs map[string]string `json:"bt_refs,omitempty"`
 }
 
+// NPCExportDanglingRef 导出期发现的单条悬空引用（fsm_ref 或 bt_ref）
+//
+// Reason 当前实现统一为 ExportRefReasonMissingOrDisabled——
+// 因 service.CheckEnabledByNames 仅返回"不在 enabled 集合"列表，
+// 无法区分"不存在"和"存在但已禁用"。如未来 helper 增强可分别细化。
+type NPCExportDanglingRef struct {
+	NPCName  string `json:"npc_name"`
+	RefType  string `json:"ref_type"`
+	RefValue string `json:"ref_value"`
+	Reason   string `json:"reason"`
+	State    string `json:"state,omitempty"` // 仅 RefType=ExportRefTypeBt 时有值（FSM 状态名）
+}
+
+// 导出引用悬空 details 字段枚举值（供 service/handler 统一引用）
+const (
+	ExportRefTypeFsm                 = "fsm_ref"
+	ExportRefTypeBt                  = "bt_ref"
+	ExportRefReasonMissingOrDisabled = "missing_or_disabled"
+)
+
 // ──────────────────────────────────────────────
 // 请求结构
 // ──────────────────────────────────────────────

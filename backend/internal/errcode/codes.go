@@ -124,12 +124,15 @@ const (
 	ErrBtTreeConfigInvalid     = 44004 // 树结构不合法
 	ErrBtTreeNodeTypeNotFound  = 44005 // 节点类型不存在或已禁用
 	ErrBtTreeNodeDepthExceeded = 44006 // 节点嵌套深度超过 20 层
-	// 44007-44008 预留
+	ErrBtNodeBareFields        = 44007 // 节点字段结构非法（顶层裸字段 / params 缺失或非对象）
+	ErrBtNodeParamMissing      = 44008 // 节点缺少必填参数
 	ErrBtTreeDeleteNotDisabled = 44009 // 删除前必须先停用
 	ErrBtTreeEditNotDisabled   = 44010 // 编辑前必须先停用
 	ErrBtTreeVersionConflict   = 44011 // 版本冲突（乐观锁）
 	ErrBtTreeRefDelete         = 44012 // 被 NPC 引用，无法删除（占位，NPC 管理完成后激活）
-	// 44013-44015 预留
+	ErrBtNodeParamType         = 44013 // 节点参数类型不匹配
+	ErrBtNodeParamEnum         = 44014 // 节点参数取值不在允许集合
+	// 44015 预留
 )
 
 // --- 节点类型管理 44016-44025 ---
@@ -166,6 +169,7 @@ const (
 	ErrNPCDeleteNotDisabled = 45013 // 删除前必须先停用
 	ErrNPCVersionConflict   = 45014 // 版本冲突（乐观锁）
 	ErrNPCBtWithoutFsm      = 45015 // bt_refs 非空时 fsm_ref 必须设置
+	ErrNPCExportDanglingRef = 45016 // 导出 NPC 时发现悬空 FSM/BT 引用
 )
 
 // --- 错误消息 ---
@@ -258,10 +262,14 @@ var messages = map[int]string{
 	ErrBtTreeConfigInvalid:     "行为树结构不合法",
 	ErrBtTreeNodeTypeNotFound:  "节点类型不存在或已禁用",
 	ErrBtTreeNodeDepthExceeded: "节点嵌套深度超过 20 层",
+	ErrBtNodeBareFields:        "节点字段结构非法",
+	ErrBtNodeParamMissing:      "节点缺少必填参数",
 	ErrBtTreeDeleteNotDisabled: "请先停用该行为树再删除",
 	ErrBtTreeEditNotDisabled:   "请先停用该行为树再编辑",
 	ErrBtTreeVersionConflict:   "该行为树已被其他人修改，请刷新后重试",
 	ErrBtTreeRefDelete:         "当前行为树仍被 NPC 引用，不能删除",
+	ErrBtNodeParamType:         "节点参数类型不匹配",
+	ErrBtNodeParamEnum:         "节点参数取值不在允许集合",
 
 	ErrBtNodeTypeNameExists:         "节点类型标识已存在",
 	ErrBtNodeTypeNameInvalid:        "节点类型标识格式不合法，需小写字母开头，仅允许 a-z、0-9、下划线",
@@ -290,6 +298,7 @@ var messages = map[int]string{
 	ErrNPCDeleteNotDisabled: "请先停用该 NPC 再删除",
 	ErrNPCVersionConflict:   "该 NPC 已被其他人修改，请刷新后重试",
 	ErrNPCBtWithoutFsm:      "配置行为树前请先选择状态机",
+	ErrNPCExportDanglingRef: "NPC 导出失败：存在悬空的状态机/行为树引用，请按 details 修复",
 }
 
 // Msg 获取错误码对应的默认消息

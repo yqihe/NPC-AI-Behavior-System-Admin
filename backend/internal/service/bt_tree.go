@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
@@ -56,6 +57,23 @@ func (s *BtTreeService) getOrNotFound(ctx context.Context, id int64) (*model.BtT
 	return d, nil
 }
 
+// paramSpec 单个参数规格，对应 bt_node_types.param_schema.params[i]。
+// 仅 service 层消费，保持 unexported。
+type paramSpec struct {
+	Name     string   `json:"name"`
+	Label    string   `json:"label"`
+	Type     string   `json:"type"`
+	Required bool     `json:"required"`
+	Options  []string `json:"options,omitempty"`
+}
+
+// nodeParamSchema 节点类型的完整 params 规格
+type nodeParamSchema struct {
+	Params []paramSpec `json:"params"`
+}
+
+func (s *nodeParamSchema) hasParams() bool { return len(s.Params) > 0 }
+
 // validateConfig 解析 JSON 并递归校验节点树结构
 func (s *BtTreeService) validateConfig(ctx context.Context, config json.RawMessage) error {
 	if len(config) == 0 {
@@ -68,19 +86,37 @@ func (s *BtTreeService) validateConfig(ctx context.Context, config json.RawMessa
 		return fmt.Errorf("load enabled node types: %w", err)
 	}
 
+	// 预加载 param_schema（原始 JSON）并逐条解析为 nodeParamSchema
+	// seed 数据损坏时 fail-fast（audit-T4 Q2 决策：不静默降级）
+	rawSchemas, err := s.nodeTypeStore.ListParamSchemas(ctx)
+	if err != nil {
+		return fmt.Errorf("load param schemas: %w", err)
+	}
+	paramSchemas := make(map[string]*nodeParamSchema, len(rawSchemas))
+	for typeName, raw := range rawSchemas {
+		var ps nodeParamSchema
+		if err := json.Unmarshal(raw, &ps); err != nil {
+			slog.Error("service.行为树校验-解析节点类型参数规格失败",
+				"type_name", typeName, "error", err, "raw", string(raw))
+			return fmt.Errorf("unmarshal param_schema %q: %w", typeName, err)
+		}
+		paramSchemas[typeName] = &ps
+	}
+
 	var root map[string]any
 	if err := json.Unmarshal(config, &root); err != nil {
 		return errcode.Newf(errcode.ErrBtTreeConfigInvalid, "config 必须是合法 JSON 对象")
 	}
 
-	return validateBtNode(root, nodeTypes, 0)
+	return validateBtNode(root, nodeTypes, paramSchemas, 0)
 }
 
 // validateBtNode 递归校验节点结构合法性
 //
-// nodeTypes: type_name → category（从 BtNodeTypeStore 预加载 enabled 且 not deleted 的类型）
-// depth: 当前递归深度，超过 20 返回 44006
-func validateBtNode(node map[string]any, nodeTypes map[string]string, depth int) error {
+// nodeTypes:    type_name → category（enabled 且 not deleted）
+// paramSchemas: type_name → 参数规格（预先 unmarshal 好，null 表示该类型无 params）
+// depth:        当前递归深度，超过 20 返回 44006
+func validateBtNode(node map[string]any, nodeTypes map[string]string, paramSchemas map[string]*nodeParamSchema, depth int) error {
 	if depth > 20 {
 		return errcode.New(errcode.ErrBtTreeNodeDepthExceeded)
 	}
@@ -93,6 +129,15 @@ func validateBtNode(node map[string]any, nodeTypes map[string]string, depth int)
 	category, exists := nodeTypes[typeName]
 	if !exists {
 		return errcode.Newf(errcode.ErrBtTreeNodeTypeNotFound, "节点类型 %q 不存在或已禁用", typeName)
+	}
+
+	// 顶层字段白名单：仅允许 type / params / children / child
+	// 拦截旧格式裸字段如 {type:"stub_action", action:"wait_idle"}
+	for k := range node {
+		if k != "type" && k != "params" && k != "children" && k != "child" {
+			return errcode.Newf(errcode.ErrBtNodeBareFields,
+				"节点 %q 含未知字段 %q（仅允许 type/params/children/child）", typeName, k)
+		}
 	}
 
 	switch category {
@@ -109,7 +154,7 @@ func validateBtNode(node map[string]any, nodeTypes map[string]string, depth int)
 			if !ok {
 				return errcode.New(errcode.ErrBtTreeConfigInvalid)
 			}
-			if err := validateBtNode(child, nodeTypes, depth+1); err != nil {
+			if err := validateBtNode(child, nodeTypes, paramSchemas, depth+1); err != nil {
 				return err
 			}
 		}
@@ -126,7 +171,7 @@ func validateBtNode(node map[string]any, nodeTypes map[string]string, depth int)
 		if _, hasChildren := node["children"]; hasChildren {
 			return errcode.Newf(errcode.ErrBtTreeConfigInvalid, "decorator 节点不应有 children 字段")
 		}
-		if err := validateBtNode(child, nodeTypes, depth+1); err != nil {
+		if err := validateBtNode(child, nodeTypes, paramSchemas, depth+1); err != nil {
 			return err
 		}
 
@@ -139,6 +184,77 @@ func validateBtNode(node map[string]any, nodeTypes map[string]string, depth int)
 		}
 	}
 
+	// 消费 param_schema 校验 params（仅当该节点类型声明了参数）
+	if schema, ok := paramSchemas[typeName]; ok && schema.hasParams() {
+		if err := validateNodeParams(typeName, node, schema); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateNodeParams 校验节点 params 对象整体合法性
+// 前提：schema 非 nil 且 schema.hasParams()
+func validateNodeParams(typeName string, node map[string]any, schema *nodeParamSchema) error {
+	paramsRaw, hasParams := node["params"]
+	if !hasParams {
+		return errcode.Newf(errcode.ErrBtNodeBareFields,
+			"节点 %q 缺少 params 字段", typeName)
+	}
+	params, ok := paramsRaw.(map[string]any)
+	if !ok {
+		return errcode.Newf(errcode.ErrBtNodeBareFields,
+			"节点 %q 的 params 必须是对象", typeName)
+	}
+	for _, p := range schema.Params {
+		val, exists := params[p.Name]
+		if p.Required && !exists {
+			return errcode.Newf(errcode.ErrBtNodeParamMissing,
+				"节点 %q 缺少必填参数 %q", typeName, p.Name)
+		}
+		if exists {
+			if err := validateParamValue(typeName, p, val); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// validateParamValue 校验单个 param 的值类型
+//
+// 已支持的 schema 类型：bb_key / string / float / select。
+// 未知 param.Type 显式 fail（audit-T4 Q2 决策：不静默通过，防止未来新增
+// 类型时漏校验）。TODO(future): 如需 int/bool/array 参数，在此 switch 加 case。
+func validateParamValue(typeName string, p paramSpec, val any) error {
+	switch p.Type {
+	case "bb_key", "string":
+		s, ok := val.(string)
+		if !ok || s == "" {
+			return errcode.Newf(errcode.ErrBtNodeParamType,
+				"节点 %q 参数 %q 必须是非空字符串", typeName, p.Name)
+		}
+	case "float":
+		// json.Unmarshal 到 any 后所有数字都是 float64（dev-rules/go.md）
+		if _, ok := val.(float64); !ok {
+			return errcode.Newf(errcode.ErrBtNodeParamType,
+				"节点 %q 参数 %q 必须是数字", typeName, p.Name)
+		}
+	case "select":
+		s, ok := val.(string)
+		if !ok {
+			return errcode.Newf(errcode.ErrBtNodeParamType,
+				"节点 %q 参数 %q 必须是字符串枚举", typeName, p.Name)
+		}
+		if len(p.Options) > 0 && !slices.Contains(p.Options, s) {
+			return errcode.Newf(errcode.ErrBtNodeParamEnum,
+				"节点 %q 参数 %q 取值 %q 不在允许集合 %v", typeName, p.Name, s, p.Options)
+		}
+	default:
+		return errcode.Newf(errcode.ErrBtNodeParamType,
+			"节点 %q 参数 %q 的 schema 类型 %q 未知（validator 不支持）", typeName, p.Name, p.Type)
+	}
 	return nil
 }
 

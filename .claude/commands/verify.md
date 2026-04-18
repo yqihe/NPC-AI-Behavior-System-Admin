@@ -30,6 +30,8 @@
 
 ## 验证手段（按优先级）
 
+> **只执行与本次任务相关的手段，无关的跳过并在报告中注明原因**（例如纯前端任务不跑 go build，纯 store 层改动不开浏览器）。
+
 ### 后端
 1. **`cd backend && go build ./...`** — 编译通过
 2. **`cd backend && go test ./...`** — 单元测试全部通过
@@ -102,7 +104,7 @@
 
 **Spec**：<feature-name>
 **范围**：全部 / T[N]
-**服务端版本**：[git log --oneline -1]
+**当前 commit**：[git log --oneline -1]
 
 ### 验收标准检查
 | 标准 | 验证方法 | 预期 | 实际 | 判定 |
@@ -120,6 +122,6 @@
 **PASS** / **FAIL**（X 条失败）
 
 ### 下一步
-- PASS → 提交 commit，继续 `/spec-execute T[N+1] <feature-name>`
+- PASS → 提交 commit，**停下等用户审批后再决定是否进入下一个 task**（与 `/spec-execute` 步骤 9 一致）
 - FAIL → 跑 `/debug <symptom>`
 ```

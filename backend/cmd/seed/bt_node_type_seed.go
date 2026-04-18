@@ -73,6 +73,20 @@ var builtinNodeTypes = []btNodeTypeSeed{
 		Description: "占位动作节点，返回固定结果（调试/占位用）",
 		ParamSchema: json.RawMessage(`{"params":[{"name":"name","label":"动作名","type":"string","required":true},{"name":"result","label":"返回结果","type":"select","options":["success","failure","running"],"required":true}]}`),
 	},
+	{
+		TypeName:    "move_to",
+		Category:    "leaf",
+		Label:       "移动到",
+		Description: "向 Blackboard 中指定坐标移动（读 target_key_x / target_key_z），到达返回 success",
+		ParamSchema: json.RawMessage(`{"params":[{"name":"target_key_x","label":"目标X坐标BB Key","type":"bb_key","required":true},{"name":"target_key_z","label":"目标Z坐标BB Key","type":"bb_key","required":true},{"name":"speed","label":"移动速度(单位/秒)","type":"float","required":false}]}`),
+	},
+	{
+		TypeName:    "flee_from",
+		Category:    "leaf",
+		Label:       "逃离",
+		Description: "从 Blackboard 中指定威胁源逃离（读 source_key_x / source_key_z），达到安全距离返回 success",
+		ParamSchema: json.RawMessage(`{"params":[{"name":"source_key_x","label":"威胁源X坐标BB Key","type":"bb_key","required":true},{"name":"source_key_z","label":"威胁源Z坐标BB Key","type":"bb_key","required":true},{"name":"distance","label":"安全距离","type":"float","required":false},{"name":"speed","label":"逃离速度(单位/秒)","type":"float","required":false}]}`),
+	},
 }
 
 // seedBtNodeTypes 幂等写入内置节点类型。

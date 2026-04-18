@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/service"
 )
 
@@ -112,20 +113,84 @@ func (h *ExportHandler) BTTrees(c *gin.Context) {
 //
 // 返回所有已启用且未删除的 NPC 配置（含字段值快照 + 行为配置）。
 // 格式：{name, config: {template_ref, fields: {k:v}, behavior: {fsm_ref?, bt_refs?}}}
+//
+// 5 步编排（NpcService 不持有 fsm/bt service，跨模块校验由 handler 编排，
+// 详见 docs/specs/export-ref-validation/design.md §1.1）：
+//  1. ExportRows 取原始 NPC 行
+//  2. CollectExportRefs 构建反查索引
+//  3a/3b. fsm/bt service 批量校验 enabled
+//  4. BuildExportDanglingError 拼 details，悬空 → 5xx + code 45016
+//  5. AssembleExportItems 装配 → 200
 func (h *ExportHandler) NPCTemplates(c *gin.Context) {
+	ctx := c.Request.Context()
 	slog.Debug("handler.export.npc_templates")
 
-	items, err := h.npcService.ExportAll(c.Request.Context())
+	// Step 1: 取行
+	rows, err := h.npcService.ExportRows(ctx)
 	if err != nil {
-		slog.Error("handler.export.npc_templates.error", "error", err)
-		c.JSON(http.StatusInternalServerError, exportResponse{Items: make([]interface{}, 0)})
+		h.respondInternalErr(c, "export_rows", err)
 		return
 	}
-
-	if len(items) == 0 {
+	if len(rows) == 0 {
 		c.JSON(http.StatusOK, exportResponse{Items: make([]interface{}, 0)})
 		return
 	}
 
+	// Step 2: 收集引用反查索引
+	refs, err := h.npcService.CollectExportRefs(rows)
+	if err != nil {
+		h.respondInternalErr(c, "collect_refs", err)
+		return
+	}
+
+	// Step 3: 跨模块校验（key 集合空时 helper 自动短路不发 SQL）
+	fsmNames := make([]string, 0, len(refs.FsmIndex))
+	for name := range refs.FsmIndex {
+		fsmNames = append(fsmNames, name)
+	}
+	fsmNotOK, err := h.fsmConfigService.CheckEnabledByNames(ctx, fsmNames)
+	if err != nil {
+		h.respondInternalErr(c, "check_fsm", err)
+		return
+	}
+	btNames := make([]string, 0, len(refs.BtIndex))
+	for name := range refs.BtIndex {
+		btNames = append(btNames, name)
+	}
+	btNotOK, err := h.btTreeService.CheckEnabledByNames(ctx, btNames)
+	if err != nil {
+		h.respondInternalErr(c, "check_bt", err)
+		return
+	}
+
+	// Step 4: 构建 dangling error
+	if dangling := h.npcService.BuildExportDanglingError(refs, fsmNotOK, btNotOK); dangling != nil {
+		slog.Error("handler.export.npc_templates.dangling_refs",
+			"count", len(dangling.Details), "details", dangling.Details)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    errcode.ErrNPCExportDanglingRef,
+			"message": errcode.Msg(errcode.ErrNPCExportDanglingRef),
+			"details": dangling.Details,
+		})
+		return
+	}
+
+	// Step 5: 装配
+	items, err := h.npcService.AssembleExportItems(rows)
+	if err != nil {
+		h.respondInternalErr(c, "assemble", err)
+		return
+	}
 	c.JSON(http.StatusOK, exportResponse{Items: items})
+}
+
+// respondInternalErr 统一通用 500 响应（含中文 message + slog 原始 error）
+//
+// 修复既有 admin red-line #14 违规：原 NPCTemplates 错误路径返 {"items":[]} 没有 code 字段。
+func (h *ExportHandler) respondInternalErr(c *gin.Context, stage string, err error) {
+	slog.Error("handler.export.npc_templates.error", "stage", stage, "error", err)
+	c.JSON(http.StatusInternalServerError, gin.H{
+		"code":    errcode.ErrInternal,
+		"message": "导出失败，请查看服务端日志",
+	})
 }
