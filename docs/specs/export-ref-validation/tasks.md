@@ -124,7 +124,7 @@ const (
 
 ---
 
-## T5：新增 `ExportDanglingRefError` typed error
+## T5：新增 `ExportDanglingRefError` typed error  `[x]` 完成 2026-04-18
 
 **关联**：R3
 **文件**：按 T1 结论：
