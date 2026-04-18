@@ -29,7 +29,7 @@
 6. 检查文档是否需要同步更新（参考 `docs/development/admin/dev-rules.md` 文档同步章节）
 7. 在 tasks.md 中将任务标记为 `[x]`
 8. **立即执行 `/verify <feature-name> --task=T[N]`**——写完代码必须先验证，不允许跳过
-9. verify PASS → commit 当前改动 → 自动继续下一个 task
+9. verify PASS → commit 当前改动 → **停下等用户审批后再进入下一个 task**
 10. verify FAIL → 停下报告，修复后重新 verify
 
 ---
@@ -50,6 +50,7 @@
 - Agent 必须专职：探索代码的不改代码，写代码的不做验证
 - 不准读其他 Agent worktree 的中间文件，等返回结果
 - 不准给 Agent 设不同模型
+- Agent 失败时由主流程汇总上报，不准 Agent 之间相互吞异常——任何一个 Agent 失败都必须显式反映到完成摘要里
 
 ## 写 Go 代码时必须检查
 
