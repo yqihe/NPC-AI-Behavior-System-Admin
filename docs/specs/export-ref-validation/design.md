@@ -6,25 +6,51 @@
 
 **错误码段位修正**：requirements 写的 `45010` 已被 `ErrNPCBtNotFound` 占用（[errcode/codes.go:163](backend/internal/errcode/codes.go#L163)）。NPC 段当前用到 45015，本 spec 取下一空位 **45016 `ErrNPCExportDanglingRef`**。R3 验收标准的 JSON 示例 code 字段同步改 45016。
 
+**T6 实施前二次修订（2026-04-18，T6 实施前发现 + 用户确认）**：
+
+原 design §1.4 让 `NpcService.validateExportRefs` 直接调 `s.fsmConfigService.CheckEnabledByNames` —— **违反 [npc_service.go:22-24](backend/internal/service/npc_service.go#L22) 明文硬约束**：
+
+> `NpcService 严格遵守"分层职责"硬规则：只持有自身的 store/cache，不持有 templateService / fieldService / fsmService / btService。跨模块校验由 handler 层负责。`
+
+按既有 NPC Create/Update pattern（[handler/npc.go:170-186](backend/internal/handler/npc.go#L170)）改为 **handler 编排，service 拆 4 个纯方法**：
+
+- service 不再持有跨服务依赖
+- 业务验证在 service（纯输入输出，易测）
+- 跨模块 IO 在 handler（编排）
+
+§1.1 / §1.4 / §1.6 全部按此重写，§2 新增对比，§3 补 admin #10 检查，§5 依赖图简化。
+
 ## 1. 方案描述
 
-### 1.1 整体调用链
+### 1.1 整体调用链（handler 5 步编排）
 
 ```
 GET /api/configs/npc_templates
-  → ExportHandler.NPCTemplates
-    → NpcService.ExportAll(ctx)
-        ├─ store.ExportAll(ctx)              // 既有：捞 NPC 行（不变）
-        ├─ collectRefs(rows)                 // 新增：扫一遍收集 fsm/bt name 集合
-        ├─ validateExportRefs(ctx, refs)    // 新增：批量复核
-        │     ├─ fsmConfigService.CheckEnabledByNames(ctx, fsmNames)
-        │     └─ btTreeService.CheckEnabledByNames(ctx, btNames)
-        │   → 任一悬空 → 返回 *ExportDanglingRefError（含 details）
-        └─ assembleExportItem 循环（不变）
-  → handler 用 errors.As 解出 *ExportDanglingRefError
-        → 命中：HTTP 500 + {code:45016, msg, details:[...]}
-        → 未命中：原样 500 + 通用错误（既有逻辑）
+  → ExportHandler.NPCTemplates(c)
+    │
+    │ Step 1：取原始 rows（service 纯查 DB，无校验）
+    ├─ rows, err = npcService.ExportRows(ctx)
+    │     └─ store.ExportAll(ctx)              （既有 store 方法，不变）
+    │
+    │ Step 2：收集引用反查索引（service 纯函数，无 IO）
+    ├─ refs, err = npcService.CollectExportRefs(rows)
+    │     → refs.FsmIndex: map[fsmName][]npcName
+    │     → refs.BtIndex:  map[btName][]{npcName, state}
+    │
+    │ Step 3：跨模块校验（handler 直接调 fsm/bt service，2 次 SQL）
+    ├─ fsmNotOK, err = fsmConfigService.CheckEnabledByNames(ctx, keysOf(refs.FsmIndex))
+    ├─ btNotOK,  err = btTreeService.CheckEnabledByNames(ctx, keysOf(refs.BtIndex))
+    │
+    │ Step 4：构建 dangling error（service 纯函数，无 IO）
+    ├─ dangling = npcService.BuildExportDanglingError(refs, fsmNotOK, btNotOK)
+    │     if dangling != nil → HTTP 500 + {code:45016, msg, details:[...]}, return
+    │
+    │ Step 5：装配 items（service 纯函数，无 IO）
+    └─ items, err = npcService.AssembleExportItems(rows)
+          → HTTP 200 + {items}
 ```
+
+**关键点**：handler 持有跨模块编排责任，service 4 个新方法全部"纯输入输出"——不调用其他 service、不发起 IO（除 ExportRows 直查自己 store）。这与 NPC Create/Update 既有 pattern 完全一致。
 
 ### 1.2 数据结构
 
@@ -86,44 +112,71 @@ messages map 同文件追加：
 ErrNPCExportDanglingRef: "NPC 导出失败：存在悬空的状态机/行为树引用，请按 details 修复",
 ```
 
-### 1.4 Service 层签名
+### 1.4 Service 层签名（4 个纯方法 + 删除 ExportAll）
 
 [backend/internal/service/npc_service.go](backend/internal/service/npc_service.go) 修改：
 
+**新增反查索引类型**（也加到 model 或 service 内部，按内聚就近原则放 service 内部）：
+
 ```go
-// ExportAll 导出所有已启用且未删除的 NPC（带导出期引用复核）
-func (s *NpcService) ExportAll(ctx context.Context) ([]model.NPCExportItem, error) {
-    rows, err := s.store.ExportAll(ctx)
-    if err != nil { ... }
-
-    // 新增：先复核引用，悬空或 infra 失败都直接返
-    if err := s.validateExportRefs(ctx, rows); err != nil {
-        return nil, err
-    }
-
-    items := make([]model.NPCExportItem, 0, len(rows))
-    for _, n := range rows {
-        item, err := assembleExportItem(n)
-        ...
-    }
-    return items, nil
+// NPCExportRefs 导出引用反查索引
+//
+// CollectExportRefs 产物，BuildExportDanglingError 输入。
+// FsmIndex: fsmName → 引用它的 NPC 名列表
+// BtIndex:  btName  → 引用它的 (npcName, state) 列表
+type NPCExportRefs struct {
+    FsmIndex map[string][]string
+    BtIndex  map[string][]NPCExportBtUsage
 }
 
-// validateExportRefs 批量校验所有 NPC 的 fsm_ref / bt_refs.value
-//
-// 返回值（单 error 通道，handler 用 errors.As 区分类型）：
-//   - nil               全部正常
-//   - *errcode.ExportDanglingRefError  发现悬空引用（业务错）
-//   - 其他 error        infra 失败（SQL/反序列化等）
-//
-// SQL 查询恒为 2 次（FSM/BT 各一次批量），与 N 无关。
-//
-// 设计决策：T6 audit 修订 design §1.4 双返回为单 error，理由：
-//   1. Go 惯例单 error 返回；
-//   2. handler 反正用 errors.As 解 typed，双返回无信息增益；
-//   3. fmt.Errorf("%w") wrap 链路对单 error 更自然。
-func (s *NpcService) validateExportRefs(ctx context.Context, rows []model.NPC) error { ... }
+type NPCExportBtUsage struct {
+    NPCName string
+    State   string
+}
 ```
+
+**4 个新方法**：
+
+```go
+// ExportRows 直查 MySQL 取所有已启用未删除 NPC 原始行
+//
+// 替代既有 ExportAll 的"取数"职责。返回原始 model.NPC，
+// 由调用方编排引用校验和最终装配。
+func (s *NpcService) ExportRows(ctx context.Context) ([]model.NPC, error)
+
+// CollectExportRefs 纯函数：扫 rows 构建反查索引
+//
+// 解析每行 BtRefs JSON 失败立即返回 error（数据损坏不能放行）。
+// 空 fsm_ref / 空 bt_refs 不进入 Index（视为合法的"无行为配置"）。
+func (s *NpcService) CollectExportRefs(rows []model.NPC) (*NPCExportRefs, error)
+
+// BuildExportDanglingError 纯函数：notOK 名列表 + 反查索引 → 结构化错误
+//
+// 全部正常返回 nil。任一非空时返回 *ExportDanglingRefError，
+// Details 按 (fsm 全部) → (bt 全部) 顺序展开。
+//
+// 一个 NPC 多次引用同一悬空 BT 不会发生（bt_refs 是 map[state]btName，
+// 同 NPC 内 state 唯一），所以 Details 不需要去重。
+func (s *NpcService) BuildExportDanglingError(
+    refs *NPCExportRefs,
+    fsmNotOK []string,
+    btNotOK  []string,
+) *errcode.ExportDanglingRefError
+
+// AssembleExportItems 纯函数：rows → []NPCExportItem
+//
+// 抽自既有 ExportAll 的装配段。任一行解析失败立即返回 error，
+// 不允许部分装配。
+func (s *NpcService) AssembleExportItems(rows []model.NPC) ([]model.NPCExportItem, error)
+```
+
+**删除既有 `ExportAll`**：调用方只有 [export.go:118](backend/internal/handler/export.go#L118) 一处，明确切换到上面 4 步编排。删除而非保留 dead code。
+
+**返回签名设计决策**：
+- `BuildExportDanglingError` 返回**值类型** `*ExportDanglingRefError`（不是 error），因为 handler 直接用 nil 检查即可，无需 errors.As 解构链路（service 不再走"业务错混 infra 错"的单 error 通道）。
+- `ExportRows` / `CollectExportRefs` / `AssembleExportItems` 返回 `(T, error)`，error 都是 infra/数据损坏类，handler 一律走通用 500 通道。
+
+**这是对 T6 audit §6 的二次修订**：audit 写的 `validateExportRefs(ctx, rows) error` 在新拆分下不存在，它的功能被 `CollectExportRefs + BuildExportDanglingError` 替代，且**handler 持有 fsm/bt 调用**而非 service 持有。
 
 ### 1.5 新增 store/service helper（对齐 BT 模式）
 
@@ -158,53 +211,101 @@ func (s *FsmConfigService) CheckEnabledByNames(ctx context.Context, names []stri
 }
 ```
 
-### 1.6 Handler 层修改
+### 1.6 Handler 层修改（5 步编排，不再用 errors.As）
+
+**前置**：[ExportHandler](backend/internal/handler/export.go#L15) 已注入 `fsmConfigService` 和 `btTreeService`，**不需改 setup**。
 
 [backend/internal/handler/export.go:115-131](backend/internal/handler/export.go#L115) 的 `NPCTemplates` 改为：
 
 ```go
 func (h *ExportHandler) NPCTemplates(c *gin.Context) {
-    items, err := h.npcService.ExportAll(c.Request.Context())
+    ctx := c.Request.Context()
+    slog.Debug("handler.export.npc_templates")
+
+    // Step 1: 取 rows
+    rows, err := h.npcService.ExportRows(ctx)
     if err != nil {
-        var dangling *errcode.ExportDanglingRefError
-        if errors.As(err, &dangling) {
-            slog.Error("handler.export.npc_templates.dangling_refs",
-                "count", len(dangling.Details), "details", dangling.Details)
-            c.JSON(http.StatusInternalServerError, gin.H{
-                "code":    errcode.ErrNPCExportDanglingRef,
-                "message": errcode.Message(errcode.ErrNPCExportDanglingRef),
-                "details": dangling.Details,
-            })
-            return
-        }
-        slog.Error("handler.export.npc_templates.error", "error", err)
-        c.JSON(http.StatusInternalServerError, gin.H{
-            "code":    errcode.ErrInternal,    // 既有通用 500 码
-            "message": "导出失败，请查看服务端日志",
-        })
+        h.respondInternalErr(c, "export_rows", err)
         return
     }
-    if len(items) == 0 {
+    if len(rows) == 0 {
         c.JSON(http.StatusOK, exportResponse{Items: make([]interface{}, 0)})
         return
     }
+
+    // Step 2: 收集引用
+    refs, err := h.npcService.CollectExportRefs(rows)
+    if err != nil {
+        h.respondInternalErr(c, "collect_refs", err)
+        return
+    }
+
+    // Step 3: 跨模块校验（key 集合空时 helper 自动短路）
+    fsmNames := make([]string, 0, len(refs.FsmIndex))
+    for name := range refs.FsmIndex { fsmNames = append(fsmNames, name) }
+    fsmNotOK, err := h.fsmConfigService.CheckEnabledByNames(ctx, fsmNames)
+    if err != nil {
+        h.respondInternalErr(c, "check_fsm", err)
+        return
+    }
+    btNames := make([]string, 0, len(refs.BtIndex))
+    for name := range refs.BtIndex { btNames = append(btNames, name) }
+    btNotOK, err := h.btTreeService.CheckEnabledByNames(ctx, btNames)
+    if err != nil {
+        h.respondInternalErr(c, "check_bt", err)
+        return
+    }
+
+    // Step 4: dangling error
+    if dangling := h.npcService.BuildExportDanglingError(refs, fsmNotOK, btNotOK); dangling != nil {
+        slog.Error("handler.export.npc_templates.dangling_refs",
+            "count", len(dangling.Details), "details", dangling.Details)
+        c.JSON(http.StatusInternalServerError, gin.H{
+            "code":    errcode.ErrNPCExportDanglingRef,
+            "message": errcode.Msg(errcode.ErrNPCExportDanglingRef),  // 注意是 Msg 不是 Message
+            "details": dangling.Details,
+        })
+        return
+    }
+
+    // Step 5: 装配
+    items, err := h.npcService.AssembleExportItems(rows)
+    if err != nil {
+        h.respondInternalErr(c, "assemble", err)
+        return
+    }
     c.JSON(http.StatusOK, exportResponse{Items: items})
+}
+
+// 通用 500 响应辅助（消除 5 处 ifErr 重复）
+func (h *ExportHandler) respondInternalErr(c *gin.Context, stage string, err error) {
+    slog.Error("handler.export.npc_templates.error", "stage", stage, "error", err)
+    c.JSON(http.StatusInternalServerError, gin.H{
+        "code":    errcode.ErrInternal,
+        "message": "导出失败，请查看服务端日志",
+    })
 }
 ```
 
 > **顺便修了一个既有 bug**：原代码 500 返回 `{"items":[]}` 没有 code 字段，违反 admin red-line #14。本 spec 范围内顺手修正（属于"为达成 R3 必须做的事"，不算 scope creep）。
 
+> **errors.As 不再需要**：编排式实现下 dangling 是 `BuildExportDanglingError` 直接返回值，handler nil 检查即可。`ExportDanglingRefError` 仍实现 `error` 接口（Go 惯例 + T5 已实现），但本 spec 内无消费者依赖该接口路径——保留为未来潜在扩展点。
+
 ## 2. 方案对比
 
-### 2.1 校验位置：Service 层 vs Handler 层
+### 2.1 编排位置：Service 持有跨服务依赖 vs Handler 编排
 
-| 维度 | Service 层（**选**） | Handler 层 |
+| 维度 | Service 持有 fsm/bt（原 design） | **Handler 编排（采用，T6 audit 后修订）** |
 |---|---|---|
-| 单测难度 | 低（直接测 service） | 高（需要 mock gin context） |
-| 可复用性 | 未来 CLI/Job 调用同样校验 | 只能 HTTP 用 |
-| 跨模块一致性 | service 层已是其他校验逻辑（`ValidateBehaviorRefs`）的位置 | handler 现在很薄 |
+| 项目硬约束 | **违反** [npc_service.go:22-24](backend/internal/service/npc_service.go#L22) 注释明文「不持有跨服务依赖」 | 符合 |
+| 跨模块一致性（feedback memory） | 偏离 NPC Create/Update 既有 pattern | 完全对齐 |
+| 单测难度 | 需要 mock fsmConfigService + btTreeService | 测 4 个纯函数（输入输出），**更简单** |
+| handler 厚度 | 1 行调 ExportAll | 5 步编排（约 40 行） |
+| 可复用性 | service 内部封装，CLI/Job 直调 | CLI/Job 也得照搬 5 步——略折损 |
 
-**选 Service 层**：与 admin red-line #10「跨模块代码模式」一致——校验/业务规则放 service，handler 仅做 HTTP 适配。
+**选 Handler 编排**：项目硬约束 > 单点便利。可复用性折损可接受（毕设阶段没有 CLI/Job）。
+
+**service 内部纯方法**与 NPC `ValidateBehaviorRefs`（[npc_service.go:431](backend/internal/service/npc_service.go#L431)）风格完全一致——pure 输入输出。
 
 ### 2.2 错误码策略：新增 vs 复用现有
 
@@ -253,7 +354,7 @@ requirements 已定 fail-fast。design 不再纠结。
 | [admin/red-lines.md](docs/development/admin/red-lines.md) | #1.5「禁止放行服务端不支持的枚举」 | 本 spec 是落实「不放行悬空引用」 | — |
 | admin/red-lines.md | #2.2「禁止创建时引用不存在的配置」 | 已有；本 spec 补「导出时引用必须仍有效」 | — |
 | admin/red-lines.md | #4 「禁止硬编码」#1-2「错误码数字/消息进 codes.go」 | 45016 + message 进 codes.go | 见 1.3 |
-| admin/red-lines.md | #10「跨模块代码模式」 | service 错误用 `slog.Error + fmt.Errorf("%w")` | 见 1.4 |
+| admin/red-lines.md | #10「跨模块代码模式」 | service 错误用 `slog.Error + fmt.Errorf("%w")`；**NpcService 不持有跨服务依赖**（T6 二次修订核心） | 见 1.4 / §0 |
 | admin/red-lines.md | #11「文件职责」 | helper 加在已有 `npc_service.go` 同包；新错误类型加在 errcode 包 | — |
 | admin/red-lines.md | #14「HTTP 5xx 必须 JSON 含 code」 | 顺手修复既有违规 | 见 1.6 |
 
@@ -265,17 +366,21 @@ requirements 已定 fail-fast。design 不再纠结。
 
 **新增表单字段轴**：不涉及。
 
-## 5. 依赖方向
+## 5. 依赖方向（T6 二次修订后）
 
 ```
-handler/export.go
-   ├─ service/npc_service.go
-   │     ├─ store/mysql/npc.go           (既有)
-   │     ├─ service/fsm_config.go         → store/mysql/fsm_config.go (新方法)
-   │     └─ service/bt_tree.go            → store/mysql/bt_tree.go    (既有)
-   ├─ errcode (新增 ExportDanglingRefError, ErrNPCExportDanglingRef)
-   └─ model (既有)
+handler/export.go (ExportHandler — 已注入 4 service)
+   ├─ npcService.ExportRows         → store/mysql/npc.go (既有 ExportAll)
+   ├─ npcService.CollectExportRefs  纯函数
+   ├─ fsmConfigService.CheckEnabledByNames → store/mysql/fsm_config.go (T2 新增)
+   ├─ btTreeService.CheckEnabledByNames    → store/mysql/bt_tree.go    (既有)
+   ├─ npcService.BuildExportDanglingError  纯函数
+   ├─ npcService.AssembleExportItems       纯函数
+   ├─ errcode (ErrNPCExportDanglingRef T3 + ExportDanglingRefError T5)
+   └─ model (NPCExportDanglingRef 等 T4)
 ```
+
+**npcService 不依赖 fsmConfigService / btTreeService**——这是 T6 二次修订的核心。
 
 新增的依赖：`errcode → model`（用 `model.NPCExportDanglingRef` 作为 details 元素类型）。验证 `model` 不反向 import `errcode`：
 
@@ -300,7 +405,7 @@ handler/export.go
       ExportRefReasonMissingOrDisabled = "missing_or_disabled"
   )
   ```
-- ✅ handler 用 `errors.As` 而非 `==` 比较 typed error
+- ⚠️ ~~handler 用 `errors.As` 而非 `==` 比较 typed error~~ — T6 二次修订后不再走 typed error 通道，handler 直接拿 `BuildExportDanglingError` 返回值做 nil 检查
 
 ### MySQL ([dev-rules/mysql.md](docs/development/standards/dev-rules/mysql.md))
 - ✅ `IN` 查询用 `sqlx.In + Rebind`（既有 BT/Field 模式）
