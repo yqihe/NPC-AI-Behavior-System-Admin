@@ -96,9 +96,9 @@ func (s *NpcService) ExportAll(ctx context.Context) ([]model.NPCExportItem, erro
     rows, err := s.store.ExportAll(ctx)
     if err != nil { ... }
 
-    // 新增：先复核引用，悬空直接返回结构化错误
-    if dangling := s.validateExportRefs(ctx, rows); dangling != nil {
-        return nil, dangling   // *errcode.ExportDanglingRefError
+    // 新增：先复核引用，悬空或 infra 失败都直接返
+    if err := s.validateExportRefs(ctx, rows); err != nil {
+        return nil, err
     }
 
     items := make([]model.NPCExportItem, 0, len(rows))
@@ -109,10 +109,20 @@ func (s *NpcService) ExportAll(ctx context.Context) ([]model.NPCExportItem, erro
     return items, nil
 }
 
-// validateExportRefs 批量校验所有 NPC 的 fsm_ref / bt_refs.value，悬空返回结构化错误
+// validateExportRefs 批量校验所有 NPC 的 fsm_ref / bt_refs.value
 //
-// 全部正常返回 nil。SQL 查询恒为 2 次（FSM/BT 各一次批量），与 N 无关。
-func (s *NpcService) validateExportRefs(ctx context.Context, rows []model.NPC) *errcode.ExportDanglingRefError { ... }
+// 返回值（单 error 通道，handler 用 errors.As 区分类型）：
+//   - nil               全部正常
+//   - *errcode.ExportDanglingRefError  发现悬空引用（业务错）
+//   - 其他 error        infra 失败（SQL/反序列化等）
+//
+// SQL 查询恒为 2 次（FSM/BT 各一次批量），与 N 无关。
+//
+// 设计决策：T6 audit 修订 design §1.4 双返回为单 error，理由：
+//   1. Go 惯例单 error 返回；
+//   2. handler 反正用 errors.As 解 typed，双返回无信息增益；
+//   3. fmt.Errorf("%w") wrap 链路对单 error 更自然。
+func (s *NpcService) validateExportRefs(ctx context.Context, rows []model.NPC) error { ... }
 ```
 
 ### 1.5 新增 store/service helper（对齐 BT 模式）
