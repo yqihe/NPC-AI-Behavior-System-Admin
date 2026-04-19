@@ -1,0 +1,24 @@
+{
+  "items": [
+    {
+      "name": "wolf_common",
+      "config": {
+        "template_ref": "warrior_base",
+        "fields": {
+          "aggression": "aggressive", "attack_power": 18.5, "defense": 8.0,
+          "is_boss": false, "loot_table": "loot_wolf_common",
+          "max_hp": 120, "move_speed": 5.5, "perception_range": 20.0
+        },
+        "behavior": {
+          "fsm_ref": "fsm_combat_basic",
+          "bt_refs": {"attack": "bt/combat/attack", "chase": "bt/combat/chase", "idle": "bt/combat/idle", "patrol": "bt/combat/patrol"}
+        }
+      }
+    },
+    {"name": "wolf_alpha",        "config": {"template_ref": "warrior_base", "fields": {"aggression": "aggressive", "attack_power": 45.0, "defense": 25.0, "is_boss": true, "loot_table": "loot_wolf_alpha", "max_hp": 800, "move_speed": 6.0, "perception_range": 30.0}, "behavior": {"fsm_ref": "fsm_combat_basic", "bt_refs": {"attack": "bt/combat/attack", "chase": "bt/combat/chase", "idle": "bt/combat/idle", "patrol": "bt/combat/patrol"}}}},
+    {"name": "goblin_archer",     "config": {"template_ref": "ranger_base",  "fields": {"aggression": "aggressive", "attack_power": 22.0, "defense": 3.0,  "loot_table": "loot_goblin", "max_hp": 60, "move_speed": 4.0, "perception_range": 35.0}, "behavior": {"fsm_ref": "fsm_combat_basic", "bt_refs": {"attack": "bt/combat/attack", "chase": "bt/combat/chase", "idle": "bt/combat/idle", "patrol": "bt/combat/patrol"}}}},
+    {"name": "villager_merchant", "config": {"template_ref": "passive_npc",  "fields": {"aggression": "passive", "max_hp": 100, "move_speed": 2.0, "perception_range": 10.0}, "behavior": {"fsm_ref": "fsm_passive", "bt_refs": {"idle": "bt/combat/idle", "wander": "bt/passive/wander"}}}},
+    {"name": "villager_guard",    "config": {"template_ref": "warrior_base", "fields": {"aggression": "neutral", "attack_power": 15.0, "defense": 20.0, "is_boss": false, "loot_table": "", "max_hp": 200, "move_speed": 3.0, "perception_range": 25.0}, "behavior": {"fsm_ref": "fsm_combat_basic", "bt_refs": {"attack": "bt/combat/attack", "chase": "bt/combat/chase", "idle": "bt/combat/idle", "patrol": "bt/combat/patrol"}}}},
+    {"name": "guard_basic",       "config": {"template_ref": "tpl_guard",    "fields": {"hp": 100}, "behavior": {"fsm_ref": "guard", "bt_refs": {"patrol": "guard/patrol"}}}}
+  ]
+}
