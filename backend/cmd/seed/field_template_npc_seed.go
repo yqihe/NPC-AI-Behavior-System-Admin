@@ -2,20 +2,22 @@ package main
 
 // 外部契约数据 seed（对齐 docs/specs/external-contract-admin-shape-alignment/）
 //
-// T2 阶段：仅 seedFields（9 个字段，含 hp 孤儿 enabled=0）
-// T3 阶段：将在本文件追加 seedTemplates / seedNPCs 并由 seedFieldsTemplatesNPCs 聚合调用
+// 幂等写入 9 字段 + 4 模板 + 6 NPC，全部走 INSERT IGNORE 语义。
+// 由 main.go 在 dictionary / fsm_state / bt_node_type seed 完成后调用。
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/yqihe/npc-ai-admin/backend/internal/model"
 	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
-// 字段 name 常量（T2 seed + T3 模板 field_id 查找共用，避免裸字符串散落）
+// 字段 name 常量（seed + 模板 field_id 查找 + NPC 字段快照共用，避免裸字符串散落）
 const (
 	fieldNameMaxHp           = "max_hp"
 	fieldNameMoveSpeed       = "move_speed"
@@ -28,11 +30,53 @@ const (
 	fieldNameHp              = "hp"
 )
 
+// 模板 name 常量（NPC seed 通过 TemplateName 引用）
+const (
+	templateNameWarriorBase = "warrior_base"
+	templateNameRangerBase  = "ranger_base"
+	templateNamePassiveNPC  = "passive_npc"
+	templateNameTplGuard    = "tpl_guard"
+)
+
+// NPC name 常量（R12 要求 npc name 走 const，避免裸字符串散落）
+const (
+	npcNameWolfCommon       = "wolf_common"
+	npcNameWolfAlpha        = "wolf_alpha"
+	npcNameGoblinArcher     = "goblin_archer"
+	npcNameVillagerMerchant = "villager_merchant"
+	npcNameVillagerGuard    = "villager_guard"
+	npcNameGuardBasic       = "guard_basic"
+)
+
+// FSM ref 常量（snapshot §4 实际使用值）
+const (
+	fsmRefCombatBasic = "fsm_combat_basic"
+	fsmRefPassive     = "fsm_passive"
+	fsmRefGuard       = "guard"
+)
+
+// 行为树 tree name 常量（snapshot §4 bt_refs 值）
+const (
+	btTreeCombatAttack   = "bt/combat/attack"
+	btTreeCombatChase    = "bt/combat/chase"
+	btTreeCombatIdle     = "bt/combat/idle"
+	btTreeCombatPatrol   = "bt/combat/patrol"
+	btTreePassiveWander  = "bt/passive/wander"
+	btTreeGuardPatrol    = "guard/patrol"
+)
+
 // seedFieldsTemplatesNPCs 外部契约数据 seed 聚合入口。
-// T2 阶段只执行 seedFields；T3 追加 seedTemplates / seedNPCs。
+// 依次：字段 → 模板（含 field_refs）→ NPC（含 npc_bt_refs）。
+// 每步幂等，冲突跳过不报错。
 func seedFieldsTemplatesNPCs(ctx context.Context, db *sqlx.DB) error {
 	if err := seedFields(ctx, db); err != nil {
 		return fmt.Errorf("seed fields: %w", err)
+	}
+	if err := seedTemplates(ctx, db); err != nil {
+		return fmt.Errorf("seed templates: %w", err)
+	}
+	if err := seedNPCs(ctx, db); err != nil {
+		return fmt.Errorf("seed npcs: %w", err)
 	}
 	return nil
 }
@@ -161,4 +205,416 @@ VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, NOW(), NOW())`
 
 	fmt.Printf("字段写入完成：新增 %d 条，跳过 %d 条（已存在）\n", inserted, skipped)
 	return nil
+}
+
+// ──────────────────────────────────────────────
+// 模板 seed
+// ──────────────────────────────────────────────
+
+// templateSeed 描述一个模板的 seed 数据。
+// FieldNames 按 NPC 表单展示顺序排列；tpl_guard 占位模板为空切片。
+type templateSeed struct {
+	Name        string
+	Label       string
+	Description string
+	FieldNames  []string
+}
+
+// seedTemplates 幂等写入 4 个模板（warrior_base / ranger_base / passive_npc / tpl_guard）
+// 并补建 field_refs（ref_type='template'）。
+//
+// 冲突策略：templates 表 INSERT IGNORE，冲突跳过不覆盖运营手改的 label/description/fields。
+// 无论 templates 是否新插入，都对现有 template_id 尝试 INSERT IGNORE field_refs，
+// 确保引用关系总能补齐（field_refs PK 天然幂等）。
+func seedTemplates(ctx context.Context, db *sqlx.DB) error {
+	templates := []templateSeed{
+		{
+			Name: templateNameWarriorBase, Label: "战士基础模板",
+			Description: "战士类 NPC 的字段集合",
+			FieldNames: []string{
+				fieldNameAggression, fieldNameAttackPower, fieldNameDefense,
+				fieldNameIsBoss, fieldNameLootTable, fieldNameMaxHp,
+				fieldNameMoveSpeed, fieldNamePerceptionRange,
+			},
+		},
+		{
+			Name: templateNameRangerBase, Label: "游侠基础模板",
+			Description: "游侠类 NPC 字段集合（无 is_boss）",
+			FieldNames: []string{
+				fieldNameAggression, fieldNameAttackPower, fieldNameDefense,
+				fieldNameLootTable, fieldNameMaxHp, fieldNameMoveSpeed,
+				fieldNamePerceptionRange,
+			},
+		},
+		{
+			Name: templateNamePassiveNPC, Label: "被动 NPC 模板",
+			Description: "非战斗 NPC 最小字段集",
+			FieldNames: []string{
+				fieldNameAggression, fieldNameMaxHp,
+				fieldNameMoveSpeed, fieldNamePerceptionRange,
+			},
+		},
+		{
+			Name: templateNameTplGuard, Label: "守卫历史模板",
+			Description: "历史遗留占位模板，仅为兼容 guard_basic；41008 解封后一次性清除",
+			FieldNames: []string{}, // tpl_guard.fields = []（make([]TemplateFieldEntry, 0) 避免 nil→null）
+		},
+	}
+
+	// 一次性加载 9 字段 name→id 映射，避免逐模板反复查询
+	fieldIDs, err := loadFieldIDMap(ctx, db)
+	if err != nil {
+		return fmt.Errorf("load field ids for templates: %w", err)
+	}
+
+	const insertSQL = `
+INSERT IGNORE INTO templates (name, label, description, fields, enabled, version, deleted, created_at, updated_at)
+VALUES (?, ?, ?, ?, 1, 1, 0, NOW(), NOW())`
+
+	const selectIDSQL = `SELECT id FROM templates WHERE name = ? AND deleted = 0`
+
+	const insertRefSQL = `
+INSERT IGNORE INTO field_refs (field_id, ref_type, ref_id) VALUES (?, ?, ?)`
+
+	inserted := 0
+	skipped := 0
+	refInserted := 0
+	for _, t := range templates {
+		// 构造 template.fields JSON：保持顺序 + 非 nil（空数组也用 []TemplateFieldEntry{}）
+		entries := make([]model.TemplateFieldEntry, 0, len(t.FieldNames))
+		for _, fname := range t.FieldNames {
+			id, ok := fieldIDs[fname]
+			if !ok {
+				return fmt.Errorf("template %q references unknown field %q (seedFields must run first)", t.Name, fname)
+			}
+			entries = append(entries, model.TemplateFieldEntry{FieldID: id, Required: false})
+		}
+		fieldsJSON, err := json.Marshal(entries)
+		if err != nil {
+			return fmt.Errorf("marshal template fields for %q: %w", t.Name, err)
+		}
+
+		result, err := db.ExecContext(ctx, insertSQL, t.Name, t.Label, t.Description, string(fieldsJSON))
+		if err != nil {
+			return fmt.Errorf("insert template %q: %w", t.Name, err)
+		}
+		rows, _ := result.RowsAffected()
+		if rows == 0 {
+			skipped++
+			slog.Info("seed.模板.跳过", "name", t.Name, "reason", "已存在")
+			fmt.Printf("  [跳过] 模板 %s（已存在）\n", t.Name)
+		} else {
+			inserted++
+		}
+
+		// 取 template_id（新插入或已存在都要拿到）用于 field_refs 补建
+		var templateID int64
+		if err := db.GetContext(ctx, &templateID, selectIDSQL, t.Name); err != nil {
+			if err == sql.ErrNoRows {
+				return fmt.Errorf("template %q not found after insert (concurrent delete?)", t.Name)
+			}
+			return fmt.Errorf("lookup template id for %q: %w", t.Name, err)
+		}
+
+		// 对每个 field 补 field_refs（ref_type='template'），INSERT IGNORE 幂等
+		for _, entry := range entries {
+			refResult, err := db.ExecContext(ctx, insertRefSQL, entry.FieldID, util.RefTypeTemplate, templateID)
+			if err != nil {
+				return fmt.Errorf("insert field_ref (field=%d, template=%d): %w", entry.FieldID, templateID, err)
+			}
+			if refRows, _ := refResult.RowsAffected(); refRows > 0 {
+				refInserted++
+			}
+		}
+	}
+
+	fmt.Printf("模板写入完成：新增 %d 条，跳过 %d 条（已存在），field_refs 新增 %d 条\n",
+		inserted, skipped, refInserted)
+	return nil
+}
+
+// ──────────────────────────────────────────────
+// NPC seed
+// ──────────────────────────────────────────────
+
+// npcFieldValue 描述 NPC fields 快照中的单个字段取值。
+type npcFieldValue struct {
+	FieldName string
+	Value     json.RawMessage
+}
+
+// npcSeed 描述一个 NPC 实例的 seed 数据。
+// FieldValues 顺序即 fields JSON 数组顺序（与模板 FieldNames 对齐；guard_basic 例外：
+// 引用的是孤儿 hp 字段，不在 tpl_guard.fields 内）。
+type npcSeed struct {
+	Name         string
+	Label        string
+	TemplateName string
+	FieldValues  []npcFieldValue
+	FsmRef       string
+	BtRefs       map[string]string
+}
+
+// seedNPCs 幂等写入 6 个 NPC（snapshot §4 冻结数据）并展开 npc_bt_refs。
+//
+// guard_basic 的 fields 仅含 hp（OQ3 方案 A：hp 孤儿字段 enabled=0 但仍可被 NPC 引用）。
+// 其余 NPC 按模板 FieldNames 顺序组装快照（snapshot §4 数值）。
+func seedNPCs(ctx context.Context, db *sqlx.DB) error {
+	// 预加载 field/template name→id
+	fieldIDs, err := loadFieldIDMap(ctx, db)
+	if err != nil {
+		return fmt.Errorf("load field ids for npcs: %w", err)
+	}
+	templateIDs, err := loadTemplateIDMap(ctx, db)
+	if err != nil {
+		return fmt.Errorf("load template ids for npcs: %w", err)
+	}
+
+	// 4 个战斗 NPC 共用的 bt_refs（warrior_base / ranger_base）
+	combatBtRefs := map[string]string{
+		"attack": btTreeCombatAttack,
+		"chase":  btTreeCombatChase,
+		"idle":   btTreeCombatIdle,
+		"patrol": btTreeCombatPatrol,
+	}
+
+	npcs := []npcSeed{
+		{
+			Name: npcNameWolfCommon, Label: "普通狼",
+			TemplateName: templateNameWarriorBase,
+			FieldValues: []npcFieldValue{
+				{FieldName: fieldNameAggression, Value: json.RawMessage(`"aggressive"`)},
+				{FieldName: fieldNameAttackPower, Value: json.RawMessage(`18.5`)},
+				{FieldName: fieldNameDefense, Value: json.RawMessage(`8.0`)},
+				{FieldName: fieldNameIsBoss, Value: json.RawMessage(`false`)},
+				{FieldName: fieldNameLootTable, Value: json.RawMessage(`"loot_wolf_common"`)},
+				{FieldName: fieldNameMaxHp, Value: json.RawMessage(`120`)},
+				{FieldName: fieldNameMoveSpeed, Value: json.RawMessage(`5.5`)},
+				{FieldName: fieldNamePerceptionRange, Value: json.RawMessage(`20.0`)},
+			},
+			FsmRef: fsmRefCombatBasic, BtRefs: combatBtRefs,
+		},
+		{
+			Name: npcNameWolfAlpha, Label: "头狼",
+			TemplateName: templateNameWarriorBase,
+			FieldValues: []npcFieldValue{
+				{FieldName: fieldNameAggression, Value: json.RawMessage(`"aggressive"`)},
+				{FieldName: fieldNameAttackPower, Value: json.RawMessage(`45.0`)},
+				{FieldName: fieldNameDefense, Value: json.RawMessage(`25.0`)},
+				{FieldName: fieldNameIsBoss, Value: json.RawMessage(`true`)},
+				{FieldName: fieldNameLootTable, Value: json.RawMessage(`"loot_wolf_alpha"`)},
+				{FieldName: fieldNameMaxHp, Value: json.RawMessage(`800`)},
+				{FieldName: fieldNameMoveSpeed, Value: json.RawMessage(`6.0`)},
+				{FieldName: fieldNamePerceptionRange, Value: json.RawMessage(`30.0`)},
+			},
+			FsmRef: fsmRefCombatBasic, BtRefs: combatBtRefs,
+		},
+		{
+			Name: npcNameGoblinArcher, Label: "哥布林弓手",
+			TemplateName: templateNameRangerBase,
+			FieldValues: []npcFieldValue{
+				{FieldName: fieldNameAggression, Value: json.RawMessage(`"aggressive"`)},
+				{FieldName: fieldNameAttackPower, Value: json.RawMessage(`22.0`)},
+				{FieldName: fieldNameDefense, Value: json.RawMessage(`3.0`)},
+				{FieldName: fieldNameLootTable, Value: json.RawMessage(`"loot_goblin"`)},
+				{FieldName: fieldNameMaxHp, Value: json.RawMessage(`60`)},
+				{FieldName: fieldNameMoveSpeed, Value: json.RawMessage(`4.0`)},
+				{FieldName: fieldNamePerceptionRange, Value: json.RawMessage(`35.0`)},
+			},
+			FsmRef: fsmRefCombatBasic, BtRefs: combatBtRefs,
+		},
+		{
+			Name: npcNameVillagerMerchant, Label: "村庄商人",
+			TemplateName: templateNamePassiveNPC,
+			FieldValues: []npcFieldValue{
+				{FieldName: fieldNameAggression, Value: json.RawMessage(`"passive"`)},
+				{FieldName: fieldNameMaxHp, Value: json.RawMessage(`100`)},
+				{FieldName: fieldNameMoveSpeed, Value: json.RawMessage(`2.0`)},
+				{FieldName: fieldNamePerceptionRange, Value: json.RawMessage(`10.0`)},
+			},
+			FsmRef: fsmRefPassive,
+			BtRefs: map[string]string{
+				"idle":   btTreeCombatIdle,
+				"wander": btTreePassiveWander,
+			},
+		},
+		{
+			Name: npcNameVillagerGuard, Label: "村卫兵",
+			TemplateName: templateNameWarriorBase,
+			FieldValues: []npcFieldValue{
+				{FieldName: fieldNameAggression, Value: json.RawMessage(`"neutral"`)},
+				{FieldName: fieldNameAttackPower, Value: json.RawMessage(`15.0`)},
+				{FieldName: fieldNameDefense, Value: json.RawMessage(`20.0`)},
+				{FieldName: fieldNameIsBoss, Value: json.RawMessage(`false`)},
+				{FieldName: fieldNameLootTable, Value: json.RawMessage(`""`)},
+				{FieldName: fieldNameMaxHp, Value: json.RawMessage(`200`)},
+				{FieldName: fieldNameMoveSpeed, Value: json.RawMessage(`3.0`)},
+				{FieldName: fieldNamePerceptionRange, Value: json.RawMessage(`25.0`)},
+			},
+			FsmRef: fsmRefCombatBasic, BtRefs: combatBtRefs,
+		},
+		// guard_basic：唯一引用孤儿 hp 字段的 NPC（tpl_guard.fields=[] 但本 NPC 快照带 hp）
+		{
+			Name: npcNameGuardBasic, Label: "基础守卫",
+			TemplateName: templateNameTplGuard,
+			FieldValues: []npcFieldValue{
+				{FieldName: fieldNameHp, Value: json.RawMessage(`100`)},
+			},
+			FsmRef: fsmRefGuard,
+			BtRefs: map[string]string{"patrol": btTreeGuardPatrol},
+		},
+	}
+
+	const insertNPCSQL = `
+INSERT IGNORE INTO npcs (name, label, description, template_id, template_name, fields, fsm_ref, bt_refs,
+                         enabled, version, created_at, updated_at, deleted)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1, NOW(), NOW(), 0)`
+
+	const selectNPCIDSQL = `SELECT id FROM npcs WHERE name = ? AND deleted = 0`
+
+	const insertBtRefSQL = `
+INSERT IGNORE INTO npc_bt_refs (npc_id, bt_tree_name) VALUES (?, ?)`
+
+	inserted := 0
+	skipped := 0
+	btRefInserted := 0
+	for _, n := range npcs {
+		templateID, ok := templateIDs[n.TemplateName]
+		if !ok {
+			return fmt.Errorf("npc %q references unknown template %q (seedTemplates must run first)", n.Name, n.TemplateName)
+		}
+
+		// 组装 fields JSON: []{field_id, name, required, value}
+		entries := make([]model.NPCFieldEntry, 0, len(n.FieldValues))
+		for _, v := range n.FieldValues {
+			fid, ok := fieldIDs[v.FieldName]
+			if !ok {
+				return fmt.Errorf("npc %q references unknown field %q", n.Name, v.FieldName)
+			}
+			entries = append(entries, model.NPCFieldEntry{
+				FieldID:  fid,
+				Name:     v.FieldName,
+				Required: false,
+				Value:    v.Value,
+			})
+		}
+		fieldsJSON, err := json.Marshal(entries)
+		if err != nil {
+			return fmt.Errorf("marshal npc fields for %q: %w", n.Name, err)
+		}
+
+		// bt_refs JSON（非 nil：空 map 也 marshal 为 {}，但本 seed 数据中 BtRefs 永不为空）
+		btRefsJSON, err := json.Marshal(n.BtRefs)
+		if err != nil {
+			return fmt.Errorf("marshal npc bt_refs for %q: %w", n.Name, err)
+		}
+
+		result, err := db.ExecContext(ctx, insertNPCSQL,
+			n.Name, n.Label, "", templateID, n.TemplateName,
+			string(fieldsJSON), n.FsmRef, string(btRefsJSON),
+		)
+		if err != nil {
+			return fmt.Errorf("insert npc %q: %w", n.Name, err)
+		}
+		rows, _ := result.RowsAffected()
+		if rows == 0 {
+			skipped++
+			slog.Info("seed.NPC.跳过", "name", n.Name, "reason", "已存在")
+			fmt.Printf("  [跳过] NPC %s（已存在）\n", n.Name)
+		} else {
+			inserted++
+		}
+
+		// 取 npc_id（新插入或已存在都要拿到）用于 npc_bt_refs 补建
+		var npcID int64
+		if err := db.GetContext(ctx, &npcID, selectNPCIDSQL, n.Name); err != nil {
+			if err == sql.ErrNoRows {
+				return fmt.Errorf("npc %q not found after insert (concurrent delete?)", n.Name)
+			}
+			return fmt.Errorf("lookup npc id for %q: %w", n.Name, err)
+		}
+
+		// 展开 bt_refs 到 npc_bt_refs（去重：多个 state 可引用同一棵树）
+		seen := make(map[string]struct{}, len(n.BtRefs))
+		for _, tree := range n.BtRefs {
+			if tree == "" {
+				continue
+			}
+			if _, dup := seen[tree]; dup {
+				continue
+			}
+			seen[tree] = struct{}{}
+			btResult, err := db.ExecContext(ctx, insertBtRefSQL, npcID, tree)
+			if err != nil {
+				return fmt.Errorf("insert npc_bt_ref (npc=%d, tree=%q): %w", npcID, tree, err)
+			}
+			if btRows, _ := btResult.RowsAffected(); btRows > 0 {
+				btRefInserted++
+			}
+		}
+	}
+
+	fmt.Printf("NPC 写入完成：新增 %d 条，跳过 %d 条（已存在），npc_bt_refs 新增 %d 条\n",
+		inserted, skipped, btRefInserted)
+	return nil
+}
+
+// ──────────────────────────────────────────────
+// 辅助：name→id 映射加载
+// ──────────────────────────────────────────────
+
+// loadFieldIDMap 查询本 seed 涉及的 9 个字段 name→id 映射。
+// 包括 hp 孤儿字段（enabled=0 但 deleted=0 仍可查到）。
+func loadFieldIDMap(ctx context.Context, db *sqlx.DB) (map[string]int64, error) {
+	names := []string{
+		fieldNameMaxHp, fieldNameMoveSpeed, fieldNamePerceptionRange,
+		fieldNameAttackPower, fieldNameDefense, fieldNameAggression,
+		fieldNameIsBoss, fieldNameLootTable, fieldNameHp,
+	}
+	query, args, err := sqlx.In(`SELECT id, name FROM fields WHERE name IN (?) AND deleted=0`, names)
+	if err != nil {
+		return nil, fmt.Errorf("build field IN query: %w", err)
+	}
+	query = db.Rebind(query)
+
+	type row struct {
+		ID   int64  `db:"id"`
+		Name string `db:"name"`
+	}
+	var rows []row
+	if err := db.SelectContext(ctx, &rows, query, args...); err != nil {
+		return nil, fmt.Errorf("query field ids: %w", err)
+	}
+	result := make(map[string]int64, len(rows))
+	for _, r := range rows {
+		result[r.Name] = r.ID
+	}
+	return result, nil
+}
+
+// loadTemplateIDMap 查询本 seed 涉及的 4 个模板 name→id 映射。
+func loadTemplateIDMap(ctx context.Context, db *sqlx.DB) (map[string]int64, error) {
+	names := []string{
+		templateNameWarriorBase, templateNameRangerBase,
+		templateNamePassiveNPC, templateNameTplGuard,
+	}
+	query, args, err := sqlx.In(`SELECT id, name FROM templates WHERE name IN (?) AND deleted=0`, names)
+	if err != nil {
+		return nil, fmt.Errorf("build template IN query: %w", err)
+	}
+	query = db.Rebind(query)
+
+	type row struct {
+		ID   int64  `db:"id"`
+		Name string `db:"name"`
+	}
+	var rows []row
+	if err := db.SelectContext(ctx, &rows, query, args...); err != nil {
+		return nil, fmt.Errorf("query template ids: %w", err)
+	}
+	result := make(map[string]int64, len(rows))
+	for _, r := range rows {
+		result[r.Name] = r.ID
+	}
+	return result, nil
 }

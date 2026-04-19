@@ -47,7 +47,7 @@
 
 ---
 
-## T3：追加模板 seed + NPC 实例 seed + field_refs 维护
+## T3：追加模板 seed + NPC 实例 seed + field_refs 维护  `[x]` 完成 2026-04-19
 
 **关联需求**：R3、R4、R5、R7、R11（snapshot 对齐）
 
