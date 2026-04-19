@@ -84,4 +84,5 @@ const (
 	FieldCategoryMovement    = "movement"
 	FieldCategoryInteraction = "interaction"
 	FieldCategoryPersonality = "personality"
+	FieldCategoryComponent   = "component" // 5 个 enable_* 能力开关字段，见 api-contract.md §组件 opt-in 依赖矩阵
 )

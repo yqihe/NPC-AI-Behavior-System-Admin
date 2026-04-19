@@ -119,6 +119,7 @@ func main() {
 		{GroupName: util.DictGroupFieldCategory, Name: "movement", Label: "移动属性", SortOrder: 4},
 		{GroupName: util.DictGroupFieldCategory, Name: "interaction", Label: "交互属性", SortOrder: 5},
 		{GroupName: util.DictGroupFieldCategory, Name: "personality", Label: "个性属性", SortOrder: 6},
+		{GroupName: util.DictGroupFieldCategory, Name: "component", Label: "能力开关", SortOrder: 7},
 	}
 
 	// field_properties: 4 种动态表单属性

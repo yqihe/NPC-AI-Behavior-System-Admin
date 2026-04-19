@@ -28,6 +28,12 @@ const (
 	fieldNameIsBoss          = "is_boss"
 	fieldNameLootTable       = "loot_table"
 	fieldNameHp              = "hp"
+	// 5 个组件 opt-in bool 字段（api-contract.md v1.1 §组件 opt-in 依赖矩阵）
+	fieldNameEnableMemory      = "enable_memory"
+	fieldNameEnableEmotion     = "enable_emotion"
+	fieldNameEnableNeeds       = "enable_needs"
+	fieldNameEnablePersonality = "enable_personality"
+	fieldNameEnableSocial      = "enable_social"
 )
 
 // 模板 name 常量（NPC seed 通过 TemplateName 引用）
@@ -157,6 +163,43 @@ func seedFields(ctx context.Context, db *sqlx.DB) error {
 			Category: util.FieldCategoryInteraction, ExposeBB: false, Enabled: true,
 			Description:  "死亡后掉落表 ref，由服务端 loot 系统查询解析",
 			DefaultValue: json.RawMessage(`""`),
+			Constraints:  json.RawMessage(`{}`),
+		},
+		// 5 个组件 opt-in bool 字段（api-contract.md v1.1 §组件 opt-in 依赖矩阵）
+		// expose_bb=false：服务端启动期读取，不进 BB；default_value=false 锁定 absent≡false 语义
+		{
+			Name: fieldNameEnableMemory, Label: "启用记忆", Type: util.FieldTypeBoolean,
+			Category: util.FieldCategoryComponent, ExposeBB: false, Enabled: true,
+			Description:  "是否启用记忆能力（写入威胁记忆，是 emotion 的前置）",
+			DefaultValue: json.RawMessage(`false`),
+			Constraints:  json.RawMessage(`{}`),
+		},
+		{
+			Name: fieldNameEnableEmotion, Label: "启用情绪", Type: util.FieldTypeBoolean,
+			Category: util.FieldCategoryComponent, ExposeBB: false, Enabled: true,
+			Description:  "是否启用情绪能力（读记忆累积 fear，需同时启用 memory）",
+			DefaultValue: json.RawMessage(`false`),
+			Constraints:  json.RawMessage(`{}`),
+		},
+		{
+			Name: fieldNameEnableNeeds, Label: "启用需求", Type: util.FieldTypeBoolean,
+			Category: util.FieldCategoryComponent, ExposeBB: false, Enabled: true,
+			Description:  "是否启用需求能力（计算最低需求，驱动决策）",
+			DefaultValue: json.RawMessage(`false`),
+			Constraints:  json.RawMessage(`{}`),
+		},
+		{
+			Name: fieldNameEnablePersonality, Label: "启用性格", Type: util.FieldTypeBoolean,
+			Category: util.FieldCategoryComponent, ExposeBB: false, Enabled: true,
+			Description:  "是否启用性格能力（覆盖默认决策权重）",
+			DefaultValue: json.RawMessage(`false`),
+			Constraints:  json.RawMessage(`{}`),
+		},
+		{
+			Name: fieldNameEnableSocial, Label: "启用社交", Type: util.FieldTypeBoolean,
+			Category: util.FieldCategoryComponent, ExposeBB: false, Enabled: true,
+			Description:  "是否启用社交能力（group/follower/leader 机制）",
+			DefaultValue: json.RawMessage(`false`),
 			Constraints:  json.RawMessage(`{}`),
 		},
 		// 孤儿字段：仅为 guard_basic 兼容 snapshot §4 的 {hp: 100}
