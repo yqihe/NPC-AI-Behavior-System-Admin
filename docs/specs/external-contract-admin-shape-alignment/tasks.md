@@ -107,7 +107,7 @@
 
 ---
 
-## T5：新建 `docs/architecture/api-contract.md`
+## T5：新建 `docs/architecture/api-contract.md`  `[x]` 完成 2026-04-19
 
 **关联需求**：R6、R10
 
