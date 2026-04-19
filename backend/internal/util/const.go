@@ -72,3 +72,16 @@ const (
 	DictGroupFieldProperties  = "field_properties"
 	DictGroupFsmStateCategory = "fsm_state_category"
 )
+
+// ──────────────────────────────────────────────
+// 字段 category（DictGroupFieldCategory 下的字典 name 值）
+// ──────────────────────────────────────────────
+
+const (
+	FieldCategoryBasic       = "basic"
+	FieldCategoryCombat      = "combat"
+	FieldCategoryPerception  = "perception"
+	FieldCategoryMovement    = "movement"
+	FieldCategoryInteraction = "interaction"
+	FieldCategoryPersonality = "personality"
+)
