@@ -22,7 +22,7 @@
 
 ---
 
-## T2：新建 seed 数据文件 + 字段 seed 函数（9 个字段含 hp 孤儿）
+## T2：新建 seed 数据文件 + 字段 seed 函数（9 个字段含 hp 孤儿）  `[x]` 完成 2026-04-19
 
 **关联需求**：R2、R7、R8、R12、OQ3 方案 A
 
@@ -30,7 +30,7 @@
 
 **产出**：
 - 文件顶部 `package main` + import 块（对齐 `main.go` 风格）
-- 导出函数 `SeedFieldsTemplatesNPCs(ctx context.Context, db *sqlx.DB) error`（聚合入口，T3 追加其内部步骤）
+- 聚合函数 `seedFieldsTemplatesNPCs(ctx context.Context, db *sqlx.DB) error`（package main 内 lowercase，T3 追加其内部步骤）
 - 本任务内实现第一步 `seedFields(ctx, db) error`：
   - 9 个字段切片字面量（按 design.md §3.1 表）含 **hp 孤儿字段 `enabled=0`**
   - 每个字段的 `properties` 用 `mustRawJSON`（复用 `main.go` 里已有 helper，若非 export 则在本文件复制一份同名 unexported）
@@ -66,7 +66,7 @@
   - guard_basic 的 `fields` JSON 为 `[{field_id:<hp_id>, name:"hp", required:false, value:100}]`
   - 其余 NPC 的 `fields` 按其模板 fields 顺序组装（field_id + name + required=false + snapshot §4 原值）
   - `INSERT IGNORE INTO npcs`，对新插入 NPC 的 bt_refs 展开写 `npc_bt_refs`
-- `SeedFieldsTemplatesNPCs` 聚合函数依次调用 `seedFields` → `seedTemplates` → `seedNPCs`
+- `seedFieldsTemplatesNPCs` 聚合函数依次调用 `seedFields` → `seedTemplates` → `seedNPCs`
 - 每步打印 `新增 X 条，跳过 Y 条`
 
 **做完了是什么样**：
@@ -89,7 +89,7 @@
 **产出**：
 - 在 `seedBtNodeTypes` 调用之后、`os.Exit` 之前追加：
   ```go
-  if err := SeedFieldsTemplatesNPCs(ctx, db); err != nil {
+  if err := seedFieldsTemplatesNPCs(ctx, db); err != nil {
       slog.Error("seed.外部契约数据写入失败", "error", err)
       os.Exit(1)
   }
