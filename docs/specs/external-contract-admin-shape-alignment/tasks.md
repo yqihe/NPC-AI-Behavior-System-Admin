@@ -152,7 +152,7 @@
 
 ---
 
-## T7：verify 脚本 + ops runbook（guard_basic 重建路径）
+## T7：verify 脚本 + ops runbook（guard_basic 重建路径）  `[x]` 完成 2026-04-19
 
 **关联需求**：R1、R2、R3、R4、R5、R13.1（用户 tasks 层追加的 runbook 要求）
 
