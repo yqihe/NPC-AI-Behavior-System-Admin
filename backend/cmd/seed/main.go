@@ -176,6 +176,22 @@ func main() {
 		slog.Error("seed.内置节点类型写入失败", "error", err)
 		os.Exit(1)
 	}
+
+	// 外部契约数据种子（字段 + 模板 + NPC），对齐联调 snapshot §4
+	// 见 docs/specs/external-contract-admin-shape-alignment/
+	if err := seedFieldsTemplatesNPCs(ctx, db); err != nil {
+		slog.Error("seed.外部契约数据写入失败", "error", err)
+		os.Exit(1)
+	}
+
+	printPostSeedWarning()
+}
+
+// printPostSeedWarning 提示运行者 seed 完成后需同步缓存状态，
+// 避免已启动的 admin-backend 读到旧数据。
+func printPostSeedWarning() {
+	fmt.Println()
+	fmt.Println("⚠️  若 admin-backend 已启动，请重启或清 Redis 缓存以同步新数据")
 }
 
 func mustRawJSON(v any) *json.RawMessage {
