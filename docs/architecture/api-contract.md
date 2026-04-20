@@ -99,14 +99,14 @@
 
 #### 社交字段（opt-in `enable_social=true` 时启用）
 
-| 字段 | 类型 | 服务端消费位置 | 语义 | default |
+| 字段 | 类型 | 服务端消费链路 | 语义 | default |
 |---|---|---|---|---|
-| `group_id` | string | `admin_template.go:296` → `GroupManager` 按 group_id 聚合 | NPC 所属 group 自由标识（如 `"merchant_guild"` / `"village_guard"`）。空串时 `GroupManager` 对该 NPC 不可见（逐 NPC 跳过，不影响其他 NPC）| 可选（空串默认）|
-| `social_role` | string | `admin_template.go:298` → `SocialComponent.Role` | group 内角色（`"leader"` / `"follower"` 触发队形逻辑；其他自由值如 `"trader"` / `"guard"` 在 group 中但无队形行为，未知 role 静默 skip）| 可选（空串默认）|
+| `group_id` | string | `admin_template.go:298-299` 反序列化到 `SocialComponent.GroupID` → `admin_template.go:122-126` `blackboard.Set(bb, KeyGroupID, ...)` 镜像至 BB → `GroupManager` 按 `KeyGroupID` 聚合 | NPC 所属 group 自由标识（如 `"merchant_guild"` / `"village_guard"`）。空串时 `GroupManager` 对该 NPC 不可见（逐 NPC 跳过，不影响其他 NPC）| 可选（空串默认）|
+| `social_role` | string | `admin_template.go:298-299` 反序列化到 `SocialComponent.Role` → `admin_template.go:122-126` `blackboard.Set(bb, KeySocialRole, ...)` 镜像至 BB | group 内角色（`"leader"` / `"follower"` 触发队形逻辑；其他自由值如 `"trader"` / `"guard"` 在 group 中但无队形行为，未知 role 静默 skip）| 可选（空串默认）|
 
 **Role 白名单放宽锚点**：Server PR [#32](https://github.com/yqihe/npc-ai-behavior-system-server/pull/32) —— `SocialFactory` 去掉 `{"leader","follower"}` 硬限制；`group_manager` 内 `role == "leader"` / `role != "follower"` 分支保留。PR URL 稳定引用（不引 merge hash —— squash/rebase 后 hash 变，PR 号永远不变）。
 
-**字段归属**：`group_id` / `social_role` **是 Admin `fields` 内的 string 字段（category=component），不是 BB runtime key**。服务端从 `config.fields.group_id` / `config.fields.social_role` 读，不注册到 blackboard 的 runtime key 表。
+**字段归属**：`group_id` / `social_role` 在 **Admin `fields` 表中 `category=component` 而非 `blackboard_key`**（Admin 字段模型层面不当做 runtime key 管理）。服务端实例化 `SocialComponent` 后会 **mirror 到 BB key**（`KeyGroupID` / `KeySocialRole` 由 `blackboard/keys.go` 定义），供 `GroupManager` 读取。
 
 ### 双边契约锚定
 
