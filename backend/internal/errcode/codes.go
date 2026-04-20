@@ -185,6 +185,22 @@ const (
 	ErrRuntimeBBKeyDisabledRef           = 46011 // 不能引用已停用的运行时 Key
 )
 
+// --- 区域（region）配置 470xx ---
+
+const (
+	ErrRegionIDExists            = 47001 // region_id 已存在（含软删除）
+	ErrRegionIDInvalid           = 47002 // region_id 格式非法（^[a-z][a-z0-9_]*$）
+	ErrRegionNotFound            = 47003 // region 不存在
+	ErrRegionTypeInvalid         = 47004 // region_type 不在字典枚举内
+	ErrRegionSpawnEntryInvalid   = 47005 // spawn_entry 自洽性校验失败（count<1 / spawn_points<count / 字段非法）
+	ErrRegionTemplateRefNotFound = 47006 // spawn_entry.template_ref 指向不存在的 NPC 模板
+	ErrRegionTemplateRefDisabled = 47007 // spawn_entry.template_ref 指向未启用的 NPC 模板
+	ErrRegionDeleteNotDisabled   = 47008 // 删除前必须先停用
+	ErrRegionEditNotDisabled     = 47009 // 编辑前必须先停用
+	ErrRegionVersionConflict     = 47010 // 版本冲突（乐观锁）
+	ErrRegionExportDanglingRef   = 47011 // 导出期发现悬空 NPC 模板引用
+)
+
 // --- 错误消息 ---
 
 var messages = map[int]string{
@@ -321,6 +337,18 @@ var messages = map[int]string{
 	ErrRuntimeBBKeyEditNotDisabled:       "请先停用该运行时 Key 再编辑",
 	ErrRuntimeBBKeyVersionConflict:       "该运行时 Key 已被其他人修改，请刷新后重试",
 	ErrRuntimeBBKeyDisabledRef:           "不能引用已停用的运行时 Key",
+
+	ErrRegionIDExists:            "区域标识已存在",
+	ErrRegionIDInvalid:           "区域标识格式不合法，需小写字母开头，仅允许 a-z、0-9、下划线",
+	ErrRegionNotFound:            "区域不存在",
+	ErrRegionTypeInvalid:         "区域类型必须在字典枚举内",
+	ErrRegionSpawnEntryInvalid:   "刷怪配置不合法，请检查模板、数量、刷怪点与数值范围",
+	ErrRegionTemplateRefNotFound: "刷怪配置引用的 NPC 模板不存在",
+	ErrRegionTemplateRefDisabled: "刷怪配置引用的 NPC 模板未启用，请先在模板管理中启用",
+	ErrRegionDeleteNotDisabled:   "请先停用该区域再删除",
+	ErrRegionEditNotDisabled:     "请先停用该区域再编辑",
+	ErrRegionVersionConflict:     "该区域已被其他人修改，请刷新后重试",
+	ErrRegionExportDanglingRef:   "区域导出失败：存在悬空的 NPC 模板引用，请按 details 修复",
 }
 
 // Msg 获取错误码对应的默认消息

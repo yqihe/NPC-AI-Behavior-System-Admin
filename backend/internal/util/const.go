@@ -71,6 +71,7 @@ const (
 	DictGroupFieldCategory    = "field_category"
 	DictGroupFieldProperties  = "field_properties"
 	DictGroupFsmStateCategory = "fsm_state_category"
+	DictGroupRegionType       = "region_type"
 )
 
 // ──────────────────────────────────────────────
@@ -86,3 +87,18 @@ const (
 	FieldCategoryPersonality = "personality"
 	FieldCategoryComponent   = "component" // 5 个 enable_* 能力开关字段，见 api-contract.md §组件 opt-in 依赖矩阵
 )
+
+// ──────────────────────────────────────────────
+// 区域类型（DictGroupRegionType 下的字典 name 值）
+// ──────────────────────────────────────────────
+
+const (
+	RegionTypeWilderness = "wilderness" // 野外
+	RegionTypeTown       = "town"       // 城镇
+)
+
+// ValidRegionTypes 合法枚举集合（service 层校验用，数据源仍以字典表为准）
+var ValidRegionTypes = map[string]bool{
+	RegionTypeWilderness: true,
+	RegionTypeTown:       true,
+}
