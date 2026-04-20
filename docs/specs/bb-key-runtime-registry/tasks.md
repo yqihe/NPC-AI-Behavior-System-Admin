@@ -53,7 +53,13 @@ smoke：`docker compose up -d mysql` + 手工 apply → `DESCRIBE` + `SHOW INDEX
 
 ---
 
-## T2：model 层结构  `[ ]`
+## T2：model 层结构  `[x]` 完成 2026-04-20
+
+**落地**：[`backend/internal/model/runtime_bb_key.go`](../../backend/internal/model/runtime_bb_key.go) 103 行。7 类型：`RuntimeBbKey` / `RuntimeBbKeyRef` / `RuntimeBbKeyListItem` / `RuntimeBbKeyListQuery` / `CreateRuntimeBbKeyRequest` / `UpdateRuntimeBbKeyRequest` / `RuntimeBbKeyListData` + `RuntimeBbKeyReferenceDetail`。复用既有 `IDRequest` / `IDVersionRequest` / `ToggleEnabledRequest` / `CheckNameRequest` / `ReferenceItem` 通用类型（在 model/field.go 定义，跨模块共享），不重复声明。
+
+smoke：`go build ./internal/model/...` 通过。
+
+
 
 **关联**：R1 / design §1.2
 
@@ -71,7 +77,17 @@ smoke：`docker compose up -d mysql` + 手工 apply → `DESCRIBE` + `SHOW INDEX
 
 ---
 
-## T3：errcode 新增 7 码  `[ ]`
+## T3：errcode 新增 12 码（T2/T3 合并 commit）  `[x]` 完成 2026-04-20
+
+**实施要点**：段位按真实 codes.go 落定（design §1.3 已吸收 T3 修订）：
+- Field 段追加 **40018** `ErrFieldNameConflictWithRuntimeBBKey`（原 design 写 41020 误判）
+- RuntimeBbKey 新段 **460xx**（46001-46011 共 11 码，原 design 写 47001-47006 误判 + 数量扩到 11 对齐 field/fsm/bt 细化 pattern）
+
+messages map 同步 12 条中文提示。
+
+smoke：`go build ./internal/errcode/...` + `go test ./internal/errcode/...` 全绿（含 BtNode 4 码 regression test）。
+
+
 
 **关联**：R5, R6, R9 / design §1.3
 

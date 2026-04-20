@@ -32,6 +32,7 @@ const (
 	ErrFieldEditNotDisabled   = 40015 // 编辑前必须先停用
 	ErrFieldRefNested         = 40016 // reference 字段禁止嵌套引用
 	ErrFieldRefEmpty          = 40017 // reference 字段 refs 不能为空
+	ErrFieldNameConflictWithRuntimeBBKey = 40018 // 字段名与运行时 BB Key 冲突
 )
 
 // --- 模板管理 410xx ---
@@ -168,6 +169,22 @@ const (
 	ErrNPCExportDanglingRef = 45016 // 导出 NPC 时发现悬空 FSM/BT 引用
 )
 
+// --- 运行时 BB Key 管理 460xx ---
+
+const (
+	ErrRuntimeBBKeyNotFound              = 46001 // 运行时 Key 不存在
+	ErrRuntimeBBKeyNameInvalid           = 46002 // name 格式非法（^[a-z][a-z0-9_]*$）
+	ErrRuntimeBBKeyNameExists            = 46003 // name 已存在（含软删除）
+	ErrRuntimeBBKeyNameConflictWithField = 46004 // name 与 fields 冲突
+	ErrRuntimeBBKeyTypeInvalid           = 46005 // type 不在 integer/float/string/bool 内
+	ErrRuntimeBBKeyGroupNameInvalid      = 46006 // group_name 不在 11 组枚举内
+	ErrRuntimeBBKeyHasRefs               = 46007 // 删除时存在 FSM/BT 引用
+	ErrRuntimeBBKeyDeleteNotDisabled     = 46008 // 删除前必须先停用
+	ErrRuntimeBBKeyEditNotDisabled       = 46009 // 编辑前必须先停用
+	ErrRuntimeBBKeyVersionConflict       = 46010 // 版本冲突（乐观锁）
+	ErrRuntimeBBKeyDisabledRef           = 46011 // 不能引用已停用的运行时 Key
+)
+
 // --- 错误消息 ---
 
 var messages = map[int]string{
@@ -192,6 +209,7 @@ var messages = map[int]string{
 	ErrFieldEditNotDisabled:   "请先停用该字段再编辑",
 	ErrFieldRefNested:         "不能引用 reference 类型字段，禁止嵌套",
 	ErrFieldRefEmpty:          "reference 字段必须至少引用一个目标字段",
+	ErrFieldNameConflictWithRuntimeBBKey: "字段标识已被运行时 Key 占用，请换一个名称",
 
 	ErrTemplateNameExists:        "模板标识已存在",
 	ErrTemplateNameInvalid:       "模板标识格式不合法，需小写字母开头，仅允许 a-z、0-9、下划线",
@@ -291,6 +309,18 @@ var messages = map[int]string{
 	ErrNPCVersionConflict:   "该 NPC 已被其他人修改，请刷新后重试",
 	ErrNPCBtWithoutFsm:      "配置行为树前请先选择状态机",
 	ErrNPCExportDanglingRef: "NPC 导出失败：存在悬空的状态机/行为树引用，请按 details 修复",
+
+	ErrRuntimeBBKeyNotFound:              "运行时 Key 不存在",
+	ErrRuntimeBBKeyNameInvalid:           "运行时 Key 标识格式不合法，需小写字母开头，仅允许 a-z、0-9、下划线",
+	ErrRuntimeBBKeyNameExists:            "运行时 Key 标识已存在",
+	ErrRuntimeBBKeyNameConflictWithField: "运行时 Key 标识已被字段占用，请换一个名称",
+	ErrRuntimeBBKeyTypeInvalid:           "运行时 Key 类型必须是 integer / float / string / bool 之一",
+	ErrRuntimeBBKeyGroupNameInvalid:      "运行时 Key 分组必须是 threat/event/fsm/npc/action/need/emotion/memory/social/decision/move 之一",
+	ErrRuntimeBBKeyHasRefs:               "该运行时 Key 正被 FSM/BT 引用，无法删除",
+	ErrRuntimeBBKeyDeleteNotDisabled:     "请先停用该运行时 Key 再删除",
+	ErrRuntimeBBKeyEditNotDisabled:       "请先停用该运行时 Key 再编辑",
+	ErrRuntimeBBKeyVersionConflict:       "该运行时 Key 已被其他人修改，请刷新后重试",
+	ErrRuntimeBBKeyDisabledRef:           "不能引用已停用的运行时 Key",
 }
 
 // Msg 获取错误码对应的默认消息

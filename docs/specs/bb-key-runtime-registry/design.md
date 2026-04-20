@@ -170,27 +170,37 @@ type RuntimeBbKeyRef struct {
 }
 ```
 
-### 1.3 错误码新增（6 个）
+### 1.3 错误码新增（T3 实施期修订，段位按真实 codes.go 落定）
 
-[`backend/internal/errcode/codes.go`](../../backend/internal/errcode/codes.go) RuntimeBbKey 段新开一个编号块（避免与 field/fsm/bt 段冲突，取 **47000 段**）：
+**T3 实施期发现原 design 错误码段位误判**：
+- 原写 "Field 段 41xxx" → 实际 **400xx**（40001-40017）；反向冲突码落 `40018`
+- 原写 "RuntimeBbKey 取 47000 段" → 实际下一个空段为 **460xx**（45xxx NPC 段已满到 45016）；新段落 `46001-46011`
+- 原 plan 6 个错误码 → 实施期按 field/fsm/bt 模块"细化 pattern"扩到 11 个（含 `NameExists` / `NameInvalid` / `NotFound` / `NotDisabled` / `VersionConflict` / `DisabledRef` 等常见动作的语义分离，与其他模块行动一致）
 
-```go
-// RuntimeBbKey 段 47000-47099
-ErrRuntimeBBKeyNotFound               = 47001 // 运行时 Key 不存在
-ErrRuntimeBBKeyNameRequired           = 47002 // name 必填
-ErrRuntimeBBKeyNameInvalid            = 47003 // name 格式非法（对齐 ^[a-z][a-z0-9_]*$）
-ErrRuntimeBBKeyNameConflictWithField  = 47004 // name 与 fields 冲突
-ErrRuntimeBBKeyTypeInvalid            = 47005 // type 不在 4 枚举内
-ErrRuntimeBBKeyHasRefs                = 47006 // 删除时有 FSM/BT 引用
-```
-
-[`errcode/messages.go`](../../backend/internal/errcode/messages.go) 同文件追加中文提示。
-
-**反向冲突码**在 field 段追加（复用既有 4101x 段）：
+[`backend/internal/errcode/codes.go`](../../backend/internal/errcode/codes.go) Field 段追加 1 个：
 
 ```go
-ErrFieldNameConflictWithRuntimeBBKey = 41020 // 新增，name 与 runtime_bb_keys 冲突
+ErrFieldNameConflictWithRuntimeBBKey = 40018 // 字段名与运行时 BB Key 冲突
 ```
+
+同文件 NPC 段后新开 RuntimeBbKey 段：
+
+```go
+// --- 运行时 BB Key 管理 460xx ---
+ErrRuntimeBBKeyNotFound              = 46001
+ErrRuntimeBBKeyNameInvalid           = 46002
+ErrRuntimeBBKeyNameExists            = 46003
+ErrRuntimeBBKeyNameConflictWithField = 46004
+ErrRuntimeBBKeyTypeInvalid           = 46005
+ErrRuntimeBBKeyGroupNameInvalid     = 46006
+ErrRuntimeBBKeyHasRefs               = 46007
+ErrRuntimeBBKeyDeleteNotDisabled     = 46008
+ErrRuntimeBBKeyEditNotDisabled       = 46009
+ErrRuntimeBBKeyVersionConflict       = 46010
+ErrRuntimeBBKeyDisabledRef           = 46011
+```
+
+messages map 同文件追加 12 条中文提示（11 + 反向冲突码）。
 
 ### 1.4 Service 层签名
 
