@@ -61,7 +61,6 @@ const (
 	ErrEventTypeTTLInvalid       = 42005 // TTL <= 0
 	ErrEventTypeRangeInvalid     = 42006 // 传播范围 < 0
 	ErrEventTypeExtValueInvalid  = 42007 // 扩展字段值不符合 schema 约束
-	ErrEventTypeRefDelete        = 42008 // 被引用无法删除（占位，本期 ref_count 恒 0）
 	ErrEventTypeVersionConflict  = 42010 // 版本冲突（乐观锁）
 	ErrEventTypeNotFound         = 42011 // 事件类型不存在
 	ErrEventTypeDeleteNotDisabled = 42012 // 删除前必须先停用
@@ -74,7 +73,6 @@ const (
 	ErrExtSchemaNameExists         = 42020 // field_name 已存在（含软删除）
 	ErrExtSchemaNameInvalid        = 42021 // field_name 格式不合法
 	ErrExtSchemaNotFound           = 42022 // 扩展字段定义不存在
-	ErrExtSchemaDisabled           = 42023 // 扩展字段已停用，不能被引用
 	ErrExtSchemaTypeInvalid        = 42024 // field_type 枚举非法
 	ErrExtSchemaConstraintsInvalid = 42025 // constraints 不自洽
 	ErrExtSchemaDefaultInvalid     = 42026 // default_value 不符合 constraints
@@ -82,7 +80,6 @@ const (
 	ErrExtSchemaRefTighten         = 42028 // 被引用时约束收紧
 	ErrExtSchemaRefDelete          = 42029 // 被引用时无法删除
 	ErrExtSchemaVersionConflict    = 42030 // 版本冲突（乐观锁）
-	ErrExtSchemaEditNotDisabled    = 42031 // 编辑前必须先停用
 )
 
 // --- 状态机管理 430xx ---
@@ -164,7 +161,6 @@ const (
 	ErrNPCFsmNotFound       = 45008 // 引用的状态机不存在
 	ErrNPCFsmDisabled       = 45009 // 引用的状态机未启用
 	ErrNPCBtNotFound        = 45010 // 引用的行为树不存在
-	ErrNPCBtDisabled        = 45011 // 引用的行为树未启用
 	ErrNPCBtStateInvalid    = 45012 // bt_refs 状态名不在 FSM 状态列表中
 	ErrNPCDeleteNotDisabled = 45013 // 删除前必须先停用
 	ErrNPCVersionConflict   = 45014 // 版本冲突（乐观锁）
@@ -217,7 +213,6 @@ var messages = map[int]string{
 	ErrEventTypeTTLInvalid:       "默认 TTL 必须大于 0",
 	ErrEventTypeRangeInvalid:     "传播范围不能小于 0",
 	ErrEventTypeExtValueInvalid:  "扩展字段的值不符合约束",
-	ErrEventTypeRefDelete:        "当前事件类型仍被引用，不能删除",
 	ErrEventTypeVersionConflict:  "该事件类型已被其他人修改，请刷新后重试",
 	ErrEventTypeNotFound:         "事件类型不存在",
 	ErrEventTypeDeleteNotDisabled: "请先停用该事件类型再删除",
@@ -226,7 +221,6 @@ var messages = map[int]string{
 	ErrExtSchemaNameExists:         "扩展字段标识已存在",
 	ErrExtSchemaNameInvalid:        "扩展字段标识格式不合法，需小写字母开头，仅允许 a-z、0-9、下划线",
 	ErrExtSchemaNotFound:           "扩展字段定义不存在",
-	ErrExtSchemaDisabled:           "扩展字段已停用",
 	ErrExtSchemaTypeInvalid:        "扩展字段类型必须是 int / float / string / bool / select 之一",
 	ErrExtSchemaConstraintsInvalid: "约束配置不自洽",
 	ErrExtSchemaDefaultInvalid:     "默认值不符合约束",
@@ -234,7 +228,6 @@ var messages = map[int]string{
 	ErrExtSchemaRefTighten:         "该扩展字段已被事件类型引用，约束只能放宽不能收紧",
 	ErrExtSchemaRefDelete:          "该扩展字段正被事件类型引用，无法删除",
 	ErrExtSchemaVersionConflict:    "该扩展字段已被其他人修改，请刷新后重试",
-	ErrExtSchemaEditNotDisabled:    "请先停用该扩展字段再编辑",
 
 	ErrFsmConfigNameExists:        "状态机标识已存在",
 	ErrFsmConfigNameInvalid:       "状态机标识格式不合法，需小写字母开头，仅允许 a-z、0-9、下划线",
@@ -293,7 +286,6 @@ var messages = map[int]string{
 	ErrNPCFsmNotFound:       "引用的状态机不存在",
 	ErrNPCFsmDisabled:       "引用的状态机未启用，请先在状态机管理中启用",
 	ErrNPCBtNotFound:        "引用的行为树不存在",
-	ErrNPCBtDisabled:        "引用的行为树未启用，请先在行为树管理中启用",
 	ErrNPCBtStateInvalid:    "行为树绑定的状态名与所选状态机不匹配",
 	ErrNPCDeleteNotDisabled: "请先停用该 NPC 再删除",
 	ErrNPCVersionConflict:   "该 NPC 已被其他人修改，请刷新后重试",

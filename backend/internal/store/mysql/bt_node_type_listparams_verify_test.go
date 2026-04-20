@@ -15,7 +15,9 @@ import (
 // 若本地未启 docker compose，测试会在 Connect 时 Skip。
 func TestListParamSchemas_VerifyLiveDB(t *testing.T) {
 	const dsn = "root:root@tcp(127.0.0.1:3306)/npc_ai_admin?charset=utf8mb4&parseTime=true&loc=Local"
-	db, err := sqlx.ConnectContext(ctxDial(), "mysql", dsn)
+	dialCtx, dialCancel := ctxDial()
+	defer dialCancel()
+	db, err := sqlx.ConnectContext(dialCtx, "mysql", dsn)
 	if err != nil {
 		t.Skipf("docker MySQL 未就绪，跳过：%v", err)
 	}
@@ -77,9 +79,8 @@ func TestListParamSchemas_VerifyLiveDB(t *testing.T) {
 	}
 }
 
-func ctxDial() context.Context {
-	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
-	return ctx
+func ctxDial() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), 3*time.Second)
 }
 
 func keysOf(m map[string]json.RawMessage) []string {
