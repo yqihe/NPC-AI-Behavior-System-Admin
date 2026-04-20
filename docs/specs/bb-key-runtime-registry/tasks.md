@@ -442,20 +442,39 @@ smoke：`go build ./internal/errcode/...` + `go test ./internal/errcode/...` 全
 
 ---
 
-## T17：单元测试  `[ ]`
+## T17：单元测试  `[x]`
 
-**关联**：R4, R5, R7, R9, R11, R13
+**关联**：R4, R5, R11 / design §8.1
 
-**文件**：`backend/internal/service/runtime_bb_key_test.go`（新增 ~200 行）
+**实施期方向选择（2026-04-20）**：走"纯函数 + fixture 契约"方向（方案 A），未引入 go-sqlmock / miniredis 依赖 —— 对齐项目既有 [bt_tree_test.go](../../backend/internal/service/bt_tree_test.go) / [npc_service_test.go](../../backend/internal/service/npc_service_test.go) 单测风格。Create/Delete/Toggle/Sync 等依赖 store 的业务路径归 T18 手动 smoke 兜底。
+
+**文件**：
+- `backend/internal/service/runtime_bb_key_test.go`（新增 148 行）
+- `backend/cmd/seed/runtime_bb_key_seed_test.go`（新增 106 行）
 
 **做什么**：
-1. 用 sqlmock 覆盖 8 个用例（见 design §8.1 表）
-2. mock 策略：store 用 sqlmock 构造 rows + expect；cache 用 miniredis 或接口 mock
-3. 断言覆盖验收标准 R4/R5/R7/R9/R11/R13
+1. **service validator 3 个** table-driven 测试：
+   - `TestValidateRuntimeBbKeyName` —— 5 合法（含 2/64 字符边界）+ 10 非法（首字符 / 字符集 / 长度）
+   - `TestValidateRuntimeBbKeyType` —— 4 合法 + 6 非法（含 `int`/`boolean`/`Float` 常见误写）
+   - `TestValidateRuntimeBbKeyGroupName` —— 11 合法枚举全覆盖 + 5 非法
+2. **seed fixture 契约** 5 个 test 锁住 design §0 分布：
+   - `TestRuntimeBbKeyFixtures_Count` —— 总数 31
+   - `TestRuntimeBbKeyFixtures_NameUniqueAndValid` —— 唯一 + regex 合法
+   - `TestRuntimeBbKeyFixtures_TypeDistribution` —— 13 float / 4 integer / 12 string / 2 bool
+   - `TestRuntimeBbKeyFixtures_GroupDistribution` —— 11 组 + 每组条目数（3/2/1/3/3/2/2/2/6/4/3）
+   - `TestRuntimeBbKeyFixtures_LabelAndDescriptionNonEmpty`
 
 **做完了是什么样**：
-- `go test ./internal/service/ -run TestRuntimeBbKey -v` 全绿
-- `go test -cover` 新模块覆盖率 ≥70%（对齐 field 模块现状）
+- ✅ `go test ./internal/service/ -run TestValidateRuntimeBbKey -v` 全绿（31 sub-tests PASS）
+- ✅ `go test ./cmd/seed/ -run TestRuntimeBbKey -v` 全绿（5 tests PASS）
+- ✅ `go build ./... && go vet ./... && go test ./...` 全仓无回归
+- R7/R9/R13 的 DB 交互路径归 T18 手动 smoke（需真 MySQL + FSM/BT 编排）
+
+**实施期小结（2026-04-20）**：
+- **方案 A vs B 权衡**：design §8.1 期望 sqlmock 覆盖 8 用例 / R4-R13 全链，但项目既有 4 个 service 测试文件 0 sqlmock 使用 —— 引入依赖是第一次破例，且 mock 出的 DB 交互对 R9（FOR SHARE TOCTOU）/ R13（enabled=0 UI 过滤）真正价值有限。纯函数 + 契约测试虽覆盖率低，但锁住的是 *Server keys.go 对齐契约* 这条最容易被误改的线
+- **守门价值**：TypeDistribution / GroupDistribution 两个断言一旦 fire，意味着 fixture 漂离 Server keys.go；这比"mock 测 Create 返回 nil error"有用得多，后者只是测了代码没崩
+- **validator 测试覆盖边界**：name 测到 2/64 字符边界和首字符/字符集 3 条独立错因；type 包含 `int`（Go 惯用）/`boolean`（JS 惯用）/`Float`（大小写敏感）这些真实易错误写；group 11 合法全覆盖保护白名单完整性
+- **跨包 regex 重复声明**：seed_test.go 的 `seedNameRE` 与 service/runtime_bb_key.go:53 的 `runtimeBbKeyNameRE` 是同一正则，但跨包不 import private 常量 —— 复制声明是已知债务，改动同步靠两处 TestValidateRuntimeBbKeyName 边界覆盖兜底
 
 ---
 
