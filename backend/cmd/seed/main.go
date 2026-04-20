@@ -210,6 +210,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 区域类型字典 + village_outskirts fixture（必须在 seedFieldsTemplatesNPCs 之后）
+	// 见 docs/specs/regions-module/
+	if err := seedRegionTypeDict(ctx, db); err != nil {
+		slog.Error("seed.区域类型字典写入失败", "error", err)
+		os.Exit(1)
+	}
+	if err := seedRegions(ctx, db); err != nil {
+		slog.Error("seed.区域种子写入失败", "error", err)
+		os.Exit(1)
+	}
+
 	printPostSeedWarning()
 }
 
