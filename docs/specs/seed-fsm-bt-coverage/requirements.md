@@ -131,6 +131,6 @@ Server CC 本地 `docker compose up --build` 拉 ADMIN `0aa77b2` live → 6 ADMI
 
 ## 阶段产出物一览
 
-- `requirements.md`（本文件，Phase 1 产出，**未 commit**）
-- `design.md`（Phase 2 产出，等 OQ1 答复 + Server CC 提供 fixture 原始数据后开工）
+- `requirements.md`（本文件，Phase 1 产出，已随 commit `869dc64` 一并落库）
+- `design.md`（Phase 2 产出，OQ1 已由 Server CC 答复：锁 4 态 combat FSM + police→combat 翻译路径；等 Server CC 交付 7 个 JSON 后开工）
 - `tasks.md`（Phase 3 产出）
