@@ -178,6 +178,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	// FSM 配置 + 行为树种子（冷启动覆盖，填平 NPC 硬引用的 3 FSM + 6 BT）
+	// 见 docs/specs/seed-fsm-bt-coverage/
+	if err := seedFsmConfigs(ctx, db); err != nil {
+		slog.Error("seed.FSM 配置写入失败", "error", err)
+		os.Exit(1)
+	}
+	if err := seedBtTrees(ctx, db); err != nil {
+		slog.Error("seed.行为树写入失败", "error", err)
+		os.Exit(1)
+	}
+
 	// 外部契约数据种子（字段 + 模板 + NPC），对齐联调 snapshot §4
 	// 见 docs/specs/external-contract-admin-shape-alignment/
 	if err := seedFieldsTemplatesNPCs(ctx, db); err != nil {

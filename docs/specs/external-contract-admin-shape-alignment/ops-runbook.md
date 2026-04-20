@@ -9,7 +9,9 @@
 1. **字典数据**：字段类型 / 分类 / 属性 / FSM 状态分类
 2. **FSM 状态字典**：31 条
 3. **内置行为树节点类型**：10 条
-4. **外部契约数据（本 spec 新增）**：9 字段 + 4 模板 + 6 NPC（对齐联调 snapshot §4）
+4. **FSM 配置（seed-fsm-bt-coverage 新增）**：3 条（`fsm_combat_basic` / `fsm_passive` / `guard`），enabled=1
+5. **行为树（seed-fsm-bt-coverage 新增）**：6 棵（`bt/combat/{idle,patrol,chase,attack}` / `bt/passive/wander` / `guard/patrol`），enabled=1
+6. **外部契约数据**：14 字段（9 seeded + 5 opt-in bool，api-contract v1.1）+ 4 模板 + 6 NPC（对齐联调 snapshot §4）
 
 执行方式：
 

@@ -8,9 +8,11 @@
 - 服务端仓发 PR 时 description 引用 ADMIN 对应 commit hash 作为契约版本锚
 - 若 ADMIN 改契约未通知服务端，由 `docs/development/standards/red-lines/general.md` "禁止协作失序"红线兜底
 
-**当前版本**：v1.1（2026-04-19，新增组件 opt-in 依赖矩阵；对齐服务端仓 spec `external-contract-server-adaptation` R17-R21）
+**当前版本**：v1.1.1（2026-04-20，文档层补齐；非 shape 变更）
+- v1.1.1：seed-fsm-bt-coverage 补齐 3 FSM + 6 BT 冷启动覆盖；契约 shape 未变
+- v1.1：2026-04-19，新增组件 opt-in 依赖矩阵；对齐服务端仓 spec `external-contract-server-adaptation` R17-R21
 
-**当前仅覆盖**：`GET /api/configs/npc_templates`。其他导出接口（event_types / fsm_configs / bt_trees / regions）按实际契约演进再补。
+**当前仅覆盖**：`GET /api/configs/npc_templates`。其他导出接口（event_types / fsm_configs / bt_trees / regions）按实际契约演进再补。`fsm_configs` / `bt_trees` 实际导出由 seed-fsm-bt-coverage 产生的数据支撑，返回 shape 由后端 export handler 固化（本文件暂未形式化）。
 
 ---
 

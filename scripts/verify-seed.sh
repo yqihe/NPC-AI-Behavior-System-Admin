@@ -4,7 +4,8 @@
 # 对齐 docs/specs/external-contract-admin-shape-alignment/ 的 R1-R11 + R13.1-R13.2
 #
 # 本脚本非破坏性：不 wipe DB；依赖 docker compose 已启动（admin-backend + mysql + redis）。
-# 首次运行（空 DB）会看到"新增 9 条"；后续运行（含数据）看到"跳过 9 条"——均为 PASS。
+# 首次运行（空 DB）和重跑（含数据）均 PASS。seed-fsm-bt-coverage spec（2026-04-20）
+# 补齐冷启动 FSM + BT 覆盖后，空 DB 首跑真实有效。
 #
 # Windows Git Bash 适配：所有 jq 提取必须经 `tr -d '\r'` 去除 CRLF 污染
 #   （对齐 memory feedback_bash_utf8_curl.md 精神）
@@ -95,6 +96,17 @@ NPC_COUNT=$(mysql_q "SELECT COUNT(*) FROM npcs WHERE name IN ('wolf_common','wol
 	|| { echo "✗ R4 失败：期望 6 NPC，实际 $NPC_COUNT"; exit 1; }
 echo "[✓] R4: npcs 表含 6 目标 NPC"
 
+# seed-fsm-bt-coverage：3 FSM + 6 BT 冷启动覆盖（R1 / R2 / R4）
+FSM_COUNT=$(mysql_q "SELECT COUNT(*) FROM fsm_configs WHERE name IN ('fsm_combat_basic','fsm_passive','guard') AND enabled=1 AND deleted=0")
+[ "$FSM_COUNT" = "3" ] \
+	|| { echo "✗ seed-fsm-bt-coverage R1 失败：期望 3 FSM enabled=1，实际 $FSM_COUNT"; exit 1; }
+echo "[✓] seed-fsm-bt-coverage R1: fsm_configs 表含 3 目标 FSM (enabled)"
+
+BT_COUNT=$(mysql_q "SELECT COUNT(*) FROM bt_trees WHERE name IN ('bt/combat/idle','bt/combat/patrol','bt/combat/chase','bt/combat/attack','bt/passive/wander','guard/patrol') AND enabled=1 AND deleted=0")
+[ "$BT_COUNT" = "6" ] \
+	|| { echo "✗ seed-fsm-bt-coverage R2 失败：期望 6 BT enabled=1，实际 $BT_COUNT"; exit 1; }
+echo "[✓] seed-fsm-bt-coverage R2: bt_trees 表含 6 目标 BT (enabled)"
+
 # 模板引用应 ≥ 19（warrior_base 8 + ranger_base 7 + passive_npc 4 + tpl_guard 0 = 19）
 TEMPLATE_FIELD_REFS=$(mysql_q "SELECT COUNT(*) FROM field_refs WHERE ref_type='template'")
 [ "$TEMPLATE_FIELD_REFS" -ge "19" ] \
@@ -165,13 +177,17 @@ echo
 echo "=== Step 5: 幂等重跑 ==="
 (cd backend && go run ./cmd/seed -config config.yaml) 2>&1 | tee /tmp/verify_seed_run2.log
 
-grep -q "字段写入完成：新增 0 条，跳过 9 条" /tmp/verify_seed_run2.log \
+grep -q "字段写入完成：新增 0 条，跳过 14 条" /tmp/verify_seed_run2.log \
 	|| { echo "✗ R7 失败：字段重跑非全跳过"; exit 1; }
 grep -q "模板写入完成：新增 0 条，跳过 4 条" /tmp/verify_seed_run2.log \
 	|| { echo "✗ R7 失败：模板重跑非全跳过"; exit 1; }
 grep -q "NPC 写入完成：新增 0 条，跳过 6 条" /tmp/verify_seed_run2.log \
 	|| { echo "✗ R7 失败：NPC 重跑非全跳过"; exit 1; }
-echo "[✓] R7: 幂等重跑全跳过（9+4+6）"
+grep -q "FSM 配置写入完成：新增 0 条，跳过 3 条" /tmp/verify_seed_run2.log \
+	|| { echo "✗ seed-fsm-bt-coverage R6 失败：FSM 重跑非全跳过"; exit 1; }
+grep -q "行为树写入完成：新增 0 条，跳过 6 条" /tmp/verify_seed_run2.log \
+	|| { echo "✗ seed-fsm-bt-coverage R6 失败：BT 重跑非全跳过"; exit 1; }
+echo "[✓] R7: 幂等重跑全跳过（字段 14 + 模板 4 + NPC 6 + FSM 3 + BT 6）"
 
 # ──────────────────────────────────────────────
 # 收尾
