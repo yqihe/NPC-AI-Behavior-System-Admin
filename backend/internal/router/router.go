@@ -148,6 +148,19 @@ func Setup(r *gin.Engine, h *setup.Handlers) {
 		npcs.POST("/toggle-enabled", handler.WrapCtx(h.Npc.ToggleEnabled))
 	}
 
+	// 运行时 BB Key 管理（8 个接口）
+	runtimeBbKeys := v1.Group("/runtime-bb-keys")
+	{
+		runtimeBbKeys.POST("/list", handler.WrapCtx(h.RuntimeBbKey.List))
+		runtimeBbKeys.POST("/create", handler.WrapCtx(h.RuntimeBbKey.Create))
+		runtimeBbKeys.POST("/detail", handler.WrapCtx(h.RuntimeBbKey.Get))
+		runtimeBbKeys.POST("/update", handler.WrapCtx(h.RuntimeBbKey.Update))
+		runtimeBbKeys.POST("/delete", handler.WrapCtx(h.RuntimeBbKey.Delete))
+		runtimeBbKeys.POST("/check-name", handler.WrapCtx(h.RuntimeBbKey.CheckName))
+		runtimeBbKeys.POST("/references", handler.WrapCtx(h.RuntimeBbKey.GetReferences))
+		runtimeBbKeys.POST("/toggle-enabled", handler.WrapCtx(h.RuntimeBbKey.ToggleEnabled))
+	}
+
 	// 配置导出 API
 	configs := r.Group("/api/configs")
 	{

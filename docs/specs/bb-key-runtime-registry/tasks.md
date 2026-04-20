@@ -226,26 +226,36 @@ smoke：`go build ./internal/errcode/...` + `go test ./internal/errcode/...` 全
 
 ---
 
-## T8：handler + 路由  `[ ]`
+## T8：handler + 路由  `[x]`
 
 **关联**：R4 / design §1.5
 
 **文件**：
-- `backend/internal/handler/runtime_bb_key.go`（新增 ~180 行）
-- `backend/internal/router/router.go`（+10 行路由注册）
-- `backend/internal/setup/*.go`（+30 行装配 store/service/handler）
+- `backend/internal/handler/runtime_bb_key.go`（新增 186 行）
+- `backend/internal/router/router.go`（+13 行路由注册）
+- `backend/internal/setup/stores.go`（+4 行）
+- `backend/internal/setup/caches.go`（+2 行）
+- `backend/internal/setup/services.go`（+2 行）
+- `backend/internal/setup/handlers.go`（+2 行）
 
 **做什么**：
-1. Handler 方法对齐 [`handler/field.go`](../../backend/internal/handler/field.go) 模式：`List / Detail / Create / Update / Delete / Toggle / CheckName / References`，用 `wrap.go` 统一包装
-2. Detail 响应填充 `has_refs` / `ref_count`
-3. References 响应：`{items: [{ref_type, ref_id, ref_name}]}`，ref_name 通过 join `fsm_configs` / `bt_trees` 得到（handler 编排，调对应 store 方法查 name）
-4. Router 新增 `/api/v1/runtime-bb-keys` 下 8 个端点（见 design §1.5）
-5. Setup 装配：`NewRuntimeBbKeyStore` / `NewRuntimeBbKeyRefStore` / `NewRuntimeBbKeyCache` / `NewRuntimeBbKeyService` / `NewRuntimeBbKeyHandler` + 注入 router
+1. Handler 方法对齐 [`handler/field.go`](../../backend/internal/handler/field.go) 模式：`List / Get / Create / Update / Delete / ToggleEnabled / CheckName / GetReferences` 共 8 方法，统一 `wrap.go` 包装
+2. Detail 由 service 层实时填充 `has_refs / ref_count`（handler 透传）
+3. GetReferences 跨模块补齐 FSM/BT 的 `display_name` —— handler 调 `fsmConfigService.GetByID` + `btTreeService.GetByID`（对齐 FieldHandler 既有 pattern）
+4. CheckName 将 service 的 `(conflict, source)` 翻译成 `CheckNameResult{Available, Message}`，按 `source="field"` / `"runtime_bb_key"` 给出不同中文提示
+5. Router 注册 `/api/v1/runtime-bb-keys` 下 8 个 POST 端点（对齐 fields/bt-trees 既有 `/action` 风格，而非 design §1.5 草稿的 RESTful `GET/PUT/DELETE`）
+6. Setup 装配：Stores/Caches/Services/Handlers 四层对应 `+2 行` 结构体字段 + 初始化调用；router 通过 `h.RuntimeBbKey.*` 消费
 
 **做完了是什么样**：
-- `go build ./...` 通过
-- 手动 curl 8 端点 200 / 400 / 409 按 design §1.5 返回
-- 响应 JSON 含 `code` 字段（red-lines/general §HTTP 响应格式）
+- ✅ `go build ./...` 全仓通过
+- ✅ `go vet ./...` 全仓无告警
+- 手动 curl 端到端测试延后（需真 MySQL，放 T18 e2e smoke）
+
+**实施期小结（2026-04-20）**：
+- **路由风格偏 design §1.5**：design 草稿给了 `GET /:id` / `POST /` / `PUT /:id` / `DELETE /:id` / `POST /:id/toggle` / `GET /:id/references` 的 RESTful 版本，但项目约定所有配置类端点走 `POST /action` 风格（见 fields/bt-trees/fsm-configs 路由块 17 行 × 10+ 模块），本 T8 完全沿用项目风格，避免单模块偏离
+- **Validation 配置复用**：name/label 长度校验直接用 `valCfg.FieldNameMaxLength / FieldLabelMaxLength`（同为 VARCHAR(64)），不在 config 加 `RuntimeBbKeyNameMaxLength`，避免 9 种配置类型膨胀；handler 构造 godoc 注明复用原因
+- **handler.CheckName 翻译层**：service 返回三元组 `(conflict, source, err)` 便于单测 + FSM/BT handler 复用；handler 自己转成 `CheckNameResult` 对前端自然，两种 conflict 源各对应一条中文提示
+- **setup 四层连线**：Stores 加 `RuntimeBbKey / RuntimeBbKeyRef` 两个 store，其他三层各加一个 service/cache/handler；依赖注入顺序 `st.Field` 传进 `NewRuntimeBbKeyService` 做反向 name 冲突查询
 
 ---
 

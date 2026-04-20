@@ -16,6 +16,7 @@ type Services struct {
 	BtTree          *service.BtTreeService
 	BtNodeType      *service.BtNodeTypeService
 	Npc             *service.NpcService
+	RuntimeBbKey    *service.RuntimeBbKeyService
 }
 
 // NewServices 一次性初始化所有 service
@@ -30,5 +31,6 @@ func NewServices(st *Stores, rc *Caches, mc *MemCaches, cfg *config.Config) *Ser
 		BtTree:          service.NewBtTreeService(st.BtTree, st.BtNodeType, rc.BtTree, &cfg.Pagination, &cfg.BtTree),
 		BtNodeType:      service.NewBtNodeTypeService(st.BtNodeType, st.BtTree, rc.BtNodeType, &cfg.Pagination, &cfg.BtNodeType),
 		Npc:             service.NewNpcService(st.Npc, rc.Npc, &cfg.Pagination),
+		RuntimeBbKey:    service.NewRuntimeBbKeyService(st.RuntimeBbKey, st.RuntimeBbKeyRef, rc.RuntimeBbKey, st.Field, &cfg.Pagination),
 	}
 }
