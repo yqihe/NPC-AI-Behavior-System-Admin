@@ -193,7 +193,7 @@ echo
 echo "=== Step 5: 幂等重跑 ==="
 (cd backend && go run ./cmd/seed -config config.yaml) 2>&1 | tee /tmp/verify_seed_run2.log
 
-grep -q "字段写入完成：新增 0 条，跳过 14 条" /tmp/verify_seed_run2.log \
+grep -q "字段写入完成：新增 0 条，跳过 16 条" /tmp/verify_seed_run2.log \
 	|| { echo "✗ R7 失败：字段重跑非全跳过"; exit 1; }
 grep -q "模板写入完成：新增 0 条，跳过 4 条" /tmp/verify_seed_run2.log \
 	|| { echo "✗ R7 失败：模板重跑非全跳过"; exit 1; }
@@ -205,7 +205,7 @@ grep -q "行为树写入完成：新增 0 条，跳过 6 条" /tmp/verify_seed_r
 	|| { echo "✗ seed-fsm-bt-coverage R6 失败：BT 重跑非全跳过"; exit 1; }
 grep -q "事件类型写入完成：新增 0 条，跳过 5 条" /tmp/verify_seed_run2.log \
 	|| { echo "✗ seed-fsm-bt-coverage(batch2) 失败：事件类型重跑非全跳过"; exit 1; }
-echo "[✓] R7: 幂等重跑全跳过（字段 14 + 模板 4 + NPC 6 + FSM 3 + BT 6 + Event 5）"
+echo "[✓] R7: 幂等重跑全跳过（字段 16 + 模板 4 + NPC 6 + FSM 3 + BT 6 + Event 5）"
 
 # ──────────────────────────────────────────────
 # 收尾
