@@ -180,5 +180,6 @@ func Setup(r *gin.Engine, h *setup.Handlers) {
 		configs.GET("/fsm_configs", h.Export.FsmConfigs)
 		configs.GET("/bt_trees", h.Export.BTTrees)
 		configs.GET("/npc_templates", h.Export.NPCTemplates)
+		configs.GET("/regions", h.Export.Regions)
 	}
 }

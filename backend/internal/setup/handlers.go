@@ -34,7 +34,7 @@ func NewHandlers(st *Stores, svc *Services, mc *MemCaches, cfg *config.Config) *
 		FsmStateDict:    handler.NewFsmStateDictHandler(svc.FsmStateDict, &cfg.FsmStateDict),
 		BtTree:          handler.NewBtTreeHandler(st.DB, svc.BtTree, svc.Field, svc.EventTypeSchema, svc.Npc, svc.RuntimeBbKey, &cfg.BtTree),
 		BtNodeType:      handler.NewBtNodeTypeHandler(svc.BtNodeType, &cfg.BtNodeType),
-		Export:          handler.NewExportHandler(svc.EventType, svc.FsmConfig, svc.BtTree, svc.Npc),
+		Export:          handler.NewExportHandler(svc.EventType, svc.FsmConfig, svc.BtTree, svc.Npc, svc.Region),
 		Npc:             handler.NewNpcHandler(svc.Npc, svc.Template, svc.Field, svc.FsmConfig, svc.BtTree, &cfg.Validation),
 		RuntimeBbKey:    handler.NewRuntimeBbKeyHandler(svc.RuntimeBbKey, svc.FsmConfig, svc.BtTree, &cfg.Validation),
 		Region:          handler.NewRegionHandler(svc.Region, &cfg.Region),
