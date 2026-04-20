@@ -458,25 +458,33 @@ smoke：`go build ./internal/errcode/...` + `go test ./internal/errcode/...` 全
 
 ---
 
-## T18：e2e 手动 smoke  `[ ]`
+## T18：e2e 手动 smoke  `[ ]` 留给用户手动验收
 
 **关联**：全部 R1-R16 / design §8.2
 
-**做什么**：
-1. `docker compose down -v && docker compose up -d && go run ./backend/cmd/seed`
-2. 按 design §8.2 的 curl 清单逐条跑（R4 CRUD / R5 冲突 / R7 FSM 引用 / R13 停用拦截）
-3. 前端浏览器手测：
-   - 进入"运行时 Key 管理"页：31 条列表
-   - 新建 `test_key`：成功
-   - 再建同名字段 `test_key`：预期 409 + 提示
-   - 打开 FSM 编辑器，BB Key 下拉看到三组 + 31 运行时 key + 类型映射正确
-   - FSM 引用 `threat_level` 保存 → 数据库 refs 表命中
-   - 停用 `threat_level`，再建 FSM 引用它 → 400 + 正确错误提示
+**当前状态（2026-04-20）**：代码层面 T1-T17 全部完成并推 origin/main（后端 + 前端全链闭环）；T18 属于 spec 原定义的"手动 smoke（不进 CI）"，由用户在本地 docker compose 环境下主动跑。Claude 不自动执行原因：
+- auto 部分（`docker compose down -v` + seed + verify-seed.sh）会清 MySQL volume，有覆盖 dev 数据风险
+- curl 烟测需要先拉起 admin-backend 镜像构建（~3min）+ MySQL/Redis 启动
+- 浏览器 UI 手测（FSM/BT 编辑器下拉、Sidebar 菜单、Form 新建）必须人工完成
 
-**做完了是什么样**：
-- 所有 R1-R16 验收标准手工覆盖 PASS
-- 前端 0 console error
-- `scripts/verify-seed.sh` 冷启通过
+**手测清单**：
+1. `docker compose down -v && docker compose up -d && go run ./backend/cmd/seed`
+2. 按 design §8.2 的 curl 清单逐条跑：
+   - R4 CRUD：POST /runtime-bb-keys/create + /list
+   - R5 冲突：先建字段 foo → 再建 runtime key foo 预期 46004；反向先建 runtime key bar → 再建字段 bar 预期 40018
+   - R7 FSM 引用：FSM 配置里引用 threat_level → `SELECT * FROM runtime_bb_key_refs WHERE ref_type='fsm'` 应有 1 行
+   - R13 停用拦截：toggle off threat_level → 再建 FSM 引用它预期 400 + 46011
+3. 前端浏览器手测：
+   - Sidebar 左侧菜单"NPC 配置管理 / 运行时 Key 管理"可点开
+   - 列表页 31 条 + 11 组筛选正常
+   - 新建 `test_key` type=float group=threat：成功
+   - 再建同名字段 `test_key`：预期 409 + 提示"与运行时 BB Key 冲突"
+   - 打开 FSM 编辑器 BB Key 下拉：三组 + 运行时 Key 下 11 个分组标签（"运行时 Key — 威胁"等）+ 共 32 个 option（31 内置 + 新建 test_key）
+   - FSM 引用 `threat_level` 保存 → MySQL runtime_bb_key_refs 命中
+   - 停用 `threat_level`，再建 FSM 引用它 → 400 + 正确提示
+4. `scripts/verify-seed.sh` 冷启断言：31 条 + 11 组 + 幂等重跑
+
+**验收标准**：所有 R1-R16 手工覆盖 PASS，前端 0 console error，verify-seed.sh 冷启通过。
 
 ---
 
