@@ -458,14 +458,45 @@ smoke：`go build ./internal/errcode/...` + `go test ./internal/errcode/...` 全
 
 ---
 
-## T18：e2e 手动 smoke  `[ ]` 留给用户手动验收
+## T18：e2e 手动 smoke  `[x]` 后端部分通过 2026-04-20；UI 手测留给用户
 
 **关联**：全部 R1-R16 / design §8.2
 
-**当前状态（2026-04-20）**：代码层面 T1-T17 全部完成并推 origin/main（后端 + 前端全链闭环）；T18 属于 spec 原定义的"手动 smoke（不进 CI）"，由用户在本地 docker compose 环境下主动跑。Claude 不自动执行原因：
-- auto 部分（`docker compose down -v` + seed + verify-seed.sh）会清 MySQL volume，有覆盖 dev 数据风险
-- curl 烟测需要先拉起 admin-backend 镜像构建（~3min）+ MySQL/Redis 启动
-- 浏览器 UI 手测（FSM/BT 编辑器下拉、Sidebar 菜单、Form 新建）必须人工完成
+**执行（2026-04-20）**：用户指令"你直接在本地 docker compose 跑"后，Claude 在本地完成 backend 自动化部分 smoke，顺带闭环两个 spec 实施坑。浏览器 UI 手测清单仍需用户主动跑。
+
+**后端 smoke 结果**（`docker compose down -v && up -d` + seed + curl）：
+
+| 测试项 | 预期 | 实际 | 结果 |
+|---|---|---|---|
+| R4 list | total=31 | total=31 | ✅ |
+| R4 create test_key | code=0 | id=94 | ✅ |
+| R5a 反向冲突（runtime 占位 → 建同名字段） | 40018 | 40018 "字段标识 'conflict_runtime' 与运行时 BB Key 冲突" | ✅ |
+| R5b 正向冲突（字段占位 → 建同名 runtime） | 46004 | 46004 "运行时 BB Key 标识 'new_field_xyz' 与字段标识冲突" | ✅ |
+| R5c check-name runtime 侧反向 | source=field | "该标识与运行时 BB Key 冲突" | ✅ |
+| R5d check-name field 侧反向 | source=runtime | "该标识与运行时 BB Key 冲突" | ✅ |
+| R7 FSM 引用 threat_level → refs 命中 | 1 行 | ref_type=fsm ref_id=10 | ✅ |
+| R7 FSM 删除 → refs 级联清理 | 0 行 | 0 行 | ✅ |
+| R7b BT 引用 threat_level → refs 命中 | 1 行 | ref_type=bt ref_id=20 | ✅（修 bug 后） |
+| R13.1 toggle off threat_level | code=0 | code=0 | ✅ |
+| R13.2 FSM 引用停用 key | 46011 | 46011 "FSM 引用了已停用的运行时 Key: [threat_level]" | ✅（修 bug 后） |
+| R13.2b BT 引用停用 key | 46011 | 46011 "行为树引用了已停用的运行时 Key: [threat_level]" | ✅（修 bug 后） |
+| R13.2c 正向 FSM 引用启用的 npc_pos_x | code=0 | id=13 | ✅ |
+| R13.3 list(enabled=true) 过滤 | 排除 threat_level | total=30 已排除 | ✅ |
+| verify-seed.sh 冷启 + 11 组断言 | PASS | 自动化验收 PASS | ✅ |
+| verify-seed.sh 幂等重跑 | 0 新增 31 跳过 | 0/31 | ✅ |
+
+**smoke 期修复的两个 spec 实施坑**（commit `7638738`）：
+
+1. **R13 前置拦截缺失**：spec §0 toggle 语义明确要求"停用后新建引用拒绝"，T11 实施期备注"未新增 pre-validation"但漏接这一环。修：`service/runtime_bb_key.go` 加 `CheckDisabledRefs`（筛出 runtime 表内 enabled=0 的子集，不在表的 silent skip），FSM/BT handler Create/Update 4 处加前置校验 → 46011
+2. **BT extractBBKeys pre-existing bug**（非本 spec 引入）：`store/mysql/bt_tree.go:294` 读 `node[paramName]`，但 BT 节点保存格式是 `{"type":"...","params":{"key":"..."}}`，bb_key 参数嵌在 `params` 子对象。修前 seed 的 6 个 BT 都没 `check_bb_*` 节点，bug 潜伏至今 —— 若不修则 R7 BT 路径 + R13.2b 永远失败。修后读 `node.params[paramName]`
+
+**手动 smoke 待补**（用户本地 docker compose 仍在跑，http://localhost:3000 / 9821 可用）：
+- Sidebar 菜单"NPC 配置管理 / 运行时 Key 管理"可点开，跳转到 RuntimeBbKeyList
+- 列表页 31 条 + 11 组筛选 + 分页正常
+- 新建 test_key_ui 并测同名字段冲突 → 前端提示"该标识与运行时 BB Key 冲突"
+- FSM 编辑器 BB Key 下拉可见 3 组（NPC 字段 / 事件扩展字段 / 运行时 Key — 分 11 个 group 标签）
+- 选运行时 key 后 FsmConditionEditor 运算符按 type 过滤正确
+- 前端 0 console error
 
 **手测清单**：
 1. `docker compose down -v && docker compose up -d && go run ./backend/cmd/seed`
