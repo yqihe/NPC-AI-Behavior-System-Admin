@@ -235,6 +235,24 @@ const router = createRouter({
       component: () => import('@/views/RegionList.vue'),
       meta: { title: '区域管理' },
     },
+    {
+      path: '/regions/create',
+      name: 'region-create',
+      component: () => import('@/views/RegionForm.vue'),
+      meta: { title: '新建区域', isCreate: true, isView: false },
+    },
+    {
+      path: '/regions/:id/view',
+      name: 'region-view',
+      component: () => import('@/views/RegionForm.vue'),
+      meta: { title: '查看区域', isCreate: false, isView: true },
+    },
+    {
+      path: '/regions/:id/edit',
+      name: 'region-edit',
+      component: () => import('@/views/RegionForm.vue'),
+      meta: { title: '编辑区域', isCreate: false, isView: false },
+    },
     // ── 节点类型管理（已隐藏，内置节点由 seed 管理，无需前端页面）──
     // {
     //   path: '/bt-node-types',
