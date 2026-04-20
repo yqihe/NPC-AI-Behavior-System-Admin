@@ -18,12 +18,13 @@ import (
 
 // FsmConfigHandler 状态机管理 HTTP handler
 type FsmConfigHandler struct {
-	db               *sqlx.DB
-	fsmConfigService *service.FsmConfigService
-	fieldService     *service.FieldService
-	schemaService    *service.EventTypeSchemaService
-	npcService       *service.NpcService
-	fsmCfg           *config.FsmConfigConfig
+	db                  *sqlx.DB
+	fsmConfigService    *service.FsmConfigService
+	fieldService        *service.FieldService
+	schemaService       *service.EventTypeSchemaService
+	npcService          *service.NpcService
+	runtimeBbKeyService *service.RuntimeBbKeyService
+	fsmCfg              *config.FsmConfigConfig
 }
 
 // NewFsmConfigHandler 创建 FsmConfigHandler
@@ -33,15 +34,17 @@ func NewFsmConfigHandler(
 	fieldService *service.FieldService,
 	schemaService *service.EventTypeSchemaService,
 	npcService *service.NpcService,
+	runtimeBbKeyService *service.RuntimeBbKeyService,
 	fsmCfg *config.FsmConfigConfig,
 ) *FsmConfigHandler {
 	return &FsmConfigHandler{
-		db:               db,
-		fsmConfigService: fsmConfigService,
-		fieldService:     fieldService,
-		schemaService:    schemaService,
-		npcService:       npcService,
-		fsmCfg:           fsmCfg,
+		db:                  db,
+		fsmConfigService:    fsmConfigService,
+		fieldService:        fieldService,
+		schemaService:       schemaService,
+		npcService:          npcService,
+		runtimeBbKeyService: runtimeBbKeyService,
+		fsmCfg:              fsmCfg,
 	}
 }
 
@@ -81,7 +84,7 @@ func (h *FsmConfigHandler) Create(ctx context.Context, req *model.CreateFsmConfi
 		return nil, err
 	}
 
-	// BB Key 引用追踪（field_refs + schema_refs）
+	// BB Key 引用追踪（field_refs + schema_refs + runtime_bb_key_refs 三路并行）
 	newKeys := service.ExtractBBKeys(req.Transitions)
 	emptyKeys := make(map[string]bool)
 	affected, err := h.fieldService.SyncFsmBBKeyRefs(ctx, tx, id, emptyKeys, newKeys)
@@ -91,10 +94,15 @@ func (h *FsmConfigHandler) Create(ctx context.Context, req *model.CreateFsmConfi
 	if _, err := h.schemaService.SyncFsmSchemaRefs(ctx, tx, id, emptyKeys, newKeys); err != nil {
 		return nil, fmt.Errorf("sync fsm schema refs: %w", err)
 	}
+	affectedRBK, err := h.runtimeBbKeyService.SyncFsmRefs(ctx, tx, id, emptyKeys, newKeys)
+	if err != nil {
+		return nil, fmt.Errorf("sync fsm runtime bb key refs: %w", err)
+	}
 
 	// 先清缓存再 Commit（消除 Commit 后清缓存窗口期的脏读风险）
 	h.fsmConfigService.InvalidateList(ctx)
 	h.fieldService.InvalidateDetails(ctx, affected)
+	h.runtimeBbKeyService.InvalidateDetails(ctx, affectedRBK)
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit: %w", err)
@@ -173,7 +181,7 @@ func (h *FsmConfigHandler) Update(ctx context.Context, req *model.UpdateFsmConfi
 		return nil, err
 	}
 
-	// BB Key diff（field_refs + schema_refs）
+	// BB Key diff（field_refs + schema_refs + runtime_bb_key_refs 三路并行）
 	oldKeys := service.ExtractBBKeysFromConfigJSON(oldFc.ConfigJSON)
 	newKeys := service.ExtractBBKeys(req.Transitions)
 	affected, err := h.fieldService.SyncFsmBBKeyRefs(ctx, tx, req.ID, oldKeys, newKeys)
@@ -183,11 +191,16 @@ func (h *FsmConfigHandler) Update(ctx context.Context, req *model.UpdateFsmConfi
 	if _, err := h.schemaService.SyncFsmSchemaRefs(ctx, tx, req.ID, oldKeys, newKeys); err != nil {
 		return nil, fmt.Errorf("sync fsm schema refs: %w", err)
 	}
+	affectedRBK, err := h.runtimeBbKeyService.SyncFsmRefs(ctx, tx, req.ID, oldKeys, newKeys)
+	if err != nil {
+		return nil, fmt.Errorf("sync fsm runtime bb key refs: %w", err)
+	}
 
 	// 先清缓存再 Commit（消除 Commit 后清缓存窗口期的脏读风险）
 	h.fsmConfigService.InvalidateDetail(ctx, req.ID)
 	h.fsmConfigService.InvalidateList(ctx)
 	h.fieldService.InvalidateDetails(ctx, affected)
+	h.runtimeBbKeyService.InvalidateDetails(ctx, affectedRBK)
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit: %w", err)
@@ -237,7 +250,7 @@ func (h *FsmConfigHandler) Delete(ctx context.Context, req *model.IDRequest) (*m
 		return nil, err
 	}
 
-	// 清理 BB Key 引用（field_refs + schema_refs）
+	// 清理 BB Key 引用（field_refs + schema_refs + runtime_bb_key_refs 三路并行）
 	affected, err := h.fieldService.CleanFsmBBKeyRefs(ctx, tx, req.ID)
 	if err != nil {
 		return nil, fmt.Errorf("clean bb key refs: %w", err)
@@ -245,11 +258,16 @@ func (h *FsmConfigHandler) Delete(ctx context.Context, req *model.IDRequest) (*m
 	if _, err := h.schemaService.CleanFsmSchemaRefs(ctx, tx, req.ID); err != nil {
 		return nil, fmt.Errorf("clean fsm schema refs: %w", err)
 	}
+	affectedRBK, err := h.runtimeBbKeyService.DeleteRefsByFsmID(ctx, tx, req.ID)
+	if err != nil {
+		return nil, fmt.Errorf("clean fsm runtime bb key refs: %w", err)
+	}
 
 	// 先清缓存再 Commit（消除 Commit 后清缓存窗口期的脏读风险）
 	h.fsmConfigService.InvalidateDetail(ctx, req.ID)
 	h.fsmConfigService.InvalidateList(ctx)
 	h.fieldService.InvalidateDetails(ctx, affected)
+	h.runtimeBbKeyService.InvalidateDetails(ctx, affectedRBK)
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit: %w", err)

@@ -22,12 +22,13 @@ var btTreeNameRe = regexp.MustCompile(`^[a-z][a-z0-9_/]*$`)
 
 // BtTreeHandler 行为树管理 HTTP handler
 type BtTreeHandler struct {
-	db            *sqlx.DB
-	svc           *service.BtTreeService
-	fieldService  *service.FieldService
-	schemaService *service.EventTypeSchemaService
-	npcService    *service.NpcService
-	btCfg         *config.BtTreeConfig
+	db                  *sqlx.DB
+	svc                 *service.BtTreeService
+	fieldService        *service.FieldService
+	schemaService       *service.EventTypeSchemaService
+	npcService          *service.NpcService
+	runtimeBbKeyService *service.RuntimeBbKeyService
+	btCfg               *config.BtTreeConfig
 }
 
 // NewBtTreeHandler 创建 BtTreeHandler
@@ -37,9 +38,10 @@ func NewBtTreeHandler(
 	fieldService *service.FieldService,
 	schemaService *service.EventTypeSchemaService,
 	npcService *service.NpcService,
+	runtimeBbKeyService *service.RuntimeBbKeyService,
 	btCfg *config.BtTreeConfig,
 ) *BtTreeHandler {
-	return &BtTreeHandler{db: db, svc: svc, fieldService: fieldService, schemaService: schemaService, npcService: npcService, btCfg: btCfg}
+	return &BtTreeHandler{db: db, svc: svc, fieldService: fieldService, schemaService: schemaService, npcService: npcService, runtimeBbKeyService: runtimeBbKeyService, btCfg: btCfg}
 }
 
 // checkBtTreeName 校验 bt_tree name 格式（允许斜杠）
@@ -91,7 +93,7 @@ func (h *BtTreeHandler) Create(ctx context.Context, req *model.CreateBtTreeReque
 		return nil, err
 	}
 
-	// BB Key 引用追踪
+	// BB Key 引用追踪（field_refs + schema_refs + runtime_bb_key_refs 三路并行）
 	newKeys, err := h.svc.ExtractBBKeys(ctx, req.Config)
 	if err != nil {
 		return nil, fmt.Errorf("extract bb keys: %w", err)
@@ -104,10 +106,15 @@ func (h *BtTreeHandler) Create(ctx context.Context, req *model.CreateBtTreeReque
 	if _, err := h.schemaService.SyncBtSchemaRefs(ctx, tx, id, emptyKeys, newKeys); err != nil {
 		return nil, fmt.Errorf("sync bt schema refs: %w", err)
 	}
+	affectedRBK, err := h.runtimeBbKeyService.SyncBtRefs(ctx, tx, id, emptyKeys, newKeys)
+	if err != nil {
+		return nil, fmt.Errorf("sync bt runtime bb key refs: %w", err)
+	}
 
 	// 先清缓存再 Commit
 	h.svc.InvalidateList(ctx)
 	h.fieldService.InvalidateDetails(ctx, affected)
+	h.runtimeBbKeyService.InvalidateDetails(ctx, affectedRBK)
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit: %w", err)
@@ -155,7 +162,7 @@ func (h *BtTreeHandler) Update(ctx context.Context, req *model.UpdateBtTreeReque
 		return nil, err
 	}
 
-	// BB Key diff
+	// BB Key diff（field_refs + schema_refs + runtime_bb_key_refs 三路并行）
 	oldKeys, err := h.svc.ExtractBBKeys(ctx, oldBt.Config)
 	if err != nil {
 		return nil, fmt.Errorf("extract old bb keys: %w", err)
@@ -171,11 +178,16 @@ func (h *BtTreeHandler) Update(ctx context.Context, req *model.UpdateBtTreeReque
 	if _, err := h.schemaService.SyncBtSchemaRefs(ctx, tx, req.ID, oldKeys, newKeys); err != nil {
 		return nil, fmt.Errorf("sync bt schema refs: %w", err)
 	}
+	affectedRBK, err := h.runtimeBbKeyService.SyncBtRefs(ctx, tx, req.ID, oldKeys, newKeys)
+	if err != nil {
+		return nil, fmt.Errorf("sync bt runtime bb key refs: %w", err)
+	}
 
 	// 先清缓存再 Commit
 	h.svc.InvalidateDetail(ctx, req.ID)
 	h.svc.InvalidateList(ctx)
 	h.fieldService.InvalidateDetails(ctx, affected)
+	h.runtimeBbKeyService.InvalidateDetails(ctx, affectedRBK)
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit: %w", err)
@@ -224,7 +236,7 @@ func (h *BtTreeHandler) Delete(ctx context.Context, req *model.IDRequest) (*mode
 		return nil, err
 	}
 
-	// 清理 BB Key 引用（field_refs + schema_refs）
+	// 清理 BB Key 引用（field_refs + schema_refs + runtime_bb_key_refs 三路并行）
 	affected, err := h.fieldService.CleanBtBBKeyRefs(ctx, tx, req.ID)
 	if err != nil {
 		return nil, fmt.Errorf("clean bb key refs: %w", err)
@@ -232,11 +244,16 @@ func (h *BtTreeHandler) Delete(ctx context.Context, req *model.IDRequest) (*mode
 	if _, err := h.schemaService.CleanBtSchemaRefs(ctx, tx, req.ID); err != nil {
 		return nil, fmt.Errorf("clean bt schema refs: %w", err)
 	}
+	affectedRBK, err := h.runtimeBbKeyService.DeleteRefsByBtID(ctx, tx, req.ID)
+	if err != nil {
+		return nil, fmt.Errorf("clean bt runtime bb key refs: %w", err)
+	}
 
 	// 先清缓存再 Commit
 	h.svc.InvalidateDetail(ctx, req.ID)
 	h.svc.InvalidateList(ctx)
 	h.fieldService.InvalidateDetails(ctx, affected)
+	h.runtimeBbKeyService.InvalidateDetails(ctx, affectedRBK)
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit: %w", err)

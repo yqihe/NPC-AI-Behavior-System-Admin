@@ -543,3 +543,13 @@ func (s *RuntimeBbKeyService) DeleteRefsByFsmID(ctx context.Context, tx *sqlx.Tx
 func (s *RuntimeBbKeyService) DeleteRefsByBtID(ctx context.Context, tx *sqlx.Tx, btTreeID int64) ([]int64, error) {
 	return s.refStore.DeleteByRef(ctx, tx, util.RefTypeBt, btTreeID)
 }
+
+// InvalidateDetails 批量清 runtime_bb_key 详情缓存
+//
+// 用途：FSM/BT 写操作 commit 后由 handler 调用，保证引用关系变更后缓存一致。
+// 对齐 FieldService.InvalidateDetails 语义。
+func (s *RuntimeBbKeyService) InvalidateDetails(ctx context.Context, keyIDs []int64) {
+	for _, id := range keyIDs {
+		s.cache.DelDetail(ctx, id)
+	}
+}

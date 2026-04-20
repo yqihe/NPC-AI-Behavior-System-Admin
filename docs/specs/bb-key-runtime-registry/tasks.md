@@ -312,39 +312,59 @@ smoke：`go build ./internal/errcode/...` + `go test ./internal/errcode/...` 全
 
 ---
 
-## T11：FSM / BT handler 编排集成 runtime key sync  `[ ]`
+## T11：FSM / BT handler 编排集成 runtime key sync  `[x]`
 
 **关联**：R7, R8 / design §1.5, §1.7
 
 **文件**：
-- `backend/internal/handler/fsm_config.go`（+~15 行）
-- `backend/internal/handler/bt_tree.go`（+~15 行）
+- `backend/internal/handler/fsm_config.go`（+14 行：struct +2 / constructor +4 / Create+Update+Delete 各 +3 行）
+- `backend/internal/handler/bt_tree.go`（+14 行：同结构）
+- `backend/internal/service/runtime_bb_key.go`（+9 行：新增 InvalidateDetails 公开方法）
+- `backend/internal/setup/handlers.go`（+2 行：NewFsmConfigHandler/NewBtTreeHandler 传 svc.RuntimeBbKey）
 
 **做什么**：
-1. Create / Update 编排中，在既有 `fieldService.SyncFsmBBKeyRefs` 调用**之后**、`tx.Commit()` **之前**，新增 `runtimeBbKeyService.SyncFsmRefs(ctx, tx, fsmID, oldKeys, newKeys)`
-2. Delete 编排中，在既有 `fieldService.DeleteFieldRefsByFsmID` 之后新增 `runtimeBbKeyService.DeleteRefsByFsmID(ctx, tx, fsmID)`
-3. Commit 后清缓存：原字段缓存清 + 新增 `runtimeBbKeyCache.DelDetail(affectedKeyIDs...)`
-4. BT 对称
+1. FsmConfigHandler / BtTreeHandler struct 加 `runtimeBbKeyService` + 构造函数参数
+2. Create / Update 编排中，在 `fieldService.SyncFsmBBKeyRefs` + `schemaService.SyncFsm/BtSchemaRefs` 两路之后再加一路 `runtimeBbKeyService.SyncFsmRefs / SyncBtRefs`，`tx.Commit` 前的先清缓存区加 `runtimeBbKeyService.InvalidateDetails(affectedRBK)`
+3. Delete 编排中对称加 `runtimeBbKeyService.DeleteRefsByFsmID / DeleteRefsByBtID`
+4. RuntimeBbKeyService 暴露 `InvalidateDetails(ctx, keyIDs []int64)`（对齐 FieldService 既有方法）
 
 **做完了是什么样**：
-- 手动创建 FSM 含 `condition.key="threat_level"` → `SELECT * FROM runtime_bb_key_refs` 命中 1 行
-- 更新 FSM 把 `threat_level` 改为 `max_hp`（字段）→ runtime_bb_key_refs 减 1 行，field_refs 增 1 行
-- 删除 FSM → runtime_bb_key_refs 相关行消失
+- ✅ `go build ./...` 全仓通过
+- ✅ `go vet ./...` 全仓无告警
+- ✅ `go test ./internal/service/...` PASS（5.127s，既有 field/bt_tree 测试未因 FieldService 签名变更退化）
+- E2E 验证（手动 curl / 真 MySQL）落到 T18
+
+**实施期小结（2026-04-20）**：
+- **"三路并行"注释刷新**：原 comment `field_refs + schema_refs` 改为 `field_refs + schema_refs + runtime_bb_key_refs 三路并行`，与 design §1.5 §1.7 对齐 —— 读者一眼看到新增路径
+- **handler struct 字段追加而非重排**：`runtimeBbKeyService` 字段放在既有字段末尾，保留原有字段顺序 + constructor 参数顺序，diff 最小化
+- **InvalidateDetails 公开时机**：本可以在 T6 写 RuntimeBbKeyService 时就公开（对齐 field），但 T6 聚焦 CRUD，公开无调用点；T11 handler 需要才是真实需求，避免投机泛化
+- **未新增 pre-validation**：design §1.7 草稿提到"未识别 name 由 FSM validator 前置 400 拦截"，但 field.go 既有 SyncFsmBBKeyRefs 对未知 name 也是 silent skip（无前置 validator），保持对称性，不扩大 T11 scope
 
 ---
 
-## T12：field handler 反向冲突码集成  `[ ]`
+## T12：field handler 反向冲突码集成  `[x]`
 
 **关联**：R6 / design §1.3
 
-**文件**：`backend/internal/service/field.go`（+~10 行）
+**文件**：
+- `backend/internal/service/field.go`（+22 行：struct +1 / constructor +2 / Create +9 / CheckName +10）
+- `backend/internal/setup/services.go`（+1 行：NewFieldService 加 st.RuntimeBbKey 参数）
 
 **做什么**：
-1. `FieldService.Create` / `Update` 的 name 校验链路加一步：`runtimeBbKeyStore.GetByName(ctx, name)` 命中则返回 `ErrFieldNameConflictWithRuntimeBBKey`（41020）
-2. **FieldService 新持 `runtimeBbKeyStore`**（peer store，非 peer service），`NewFieldService` 签名加一参数；setup 层同步
+1. `FieldService` struct 加 `runtimeBbKeyStore *storemysql.RuntimeBbKeyStore`（仅读），constructor 同步
+2. `FieldService.Create`：在原 `ExistsByName` 分支之后加 `runtimeBbKeyStore.GetByName(ctx, req.Name)` 反向冲突检测 → 命中返回 `ErrFieldNameConflictWithRuntimeBBKey`（40018，T3 段位修订后）
+3. `FieldService.CheckName`：在原 "已存在" 分支之后加同款反向检测 → 命中返回 `CheckNameResult{Available: false, Message: "该标识与运行时 BB Key 冲突"}`
+4. **不改 Update**：`UpdateFieldRequest` 无 name 字段（见 [model/field.go:96](../../backend/internal/model/field.go#L96) 注释），name 不可变，无需反向检测
 
 **做完了是什么样**：
-- 先建 runtime_bb_key `foo_key` → 再 POST field `{"name":"foo_key",...}` → 409 + code 41020
+- ✅ `go build ./...` 全仓通过
+- ✅ `go vet ./...` 全仓无告警
+- E2E 验证场景（先建 runtime_bb_key foo_key → 再 POST field name=foo_key → 40018）延后到 T18
+
+**实施期小结（2026-04-20）**：
+- **错误码段位用 40018（T3 修订段位）**：最初 design 草稿写 41020（41xxx 字段段），T3 实施期发现实际字段段为 400xx，反向冲突码落 40018；本 T12 实施正确使用
+- **Create 冲突检测"fields 先于 runtime"**：这与 RuntimeBbKeyService.CheckName 的"field 先于 self"对称，两个方向都优先报告"与 peer table 冲突"而非"与自身表冲突"—— 让用户看到更有信息量的错误（fields/runtime 哪一边已占用）
+- **CheckName 层也反向检测**：Create 写入前有冲突检测，但 CheckName handler 是前端保存前的"占位预检"，同样必须反向检测，否则 UI 会显示"可用"但提交时 400；两处对称
 
 ---
 

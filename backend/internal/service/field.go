@@ -22,11 +22,12 @@ import (
 
 // FieldService 字段管理业务逻辑
 type FieldService struct {
-	fieldStore    *storemysql.FieldStore
-	fieldRefStore *storemysql.FieldRefStore
-	fieldCache    *storeredis.FieldCache
-	dictCache     *cache.DictCache
-	pagCfg        *config.PaginationConfig
+	fieldStore        *storemysql.FieldStore
+	fieldRefStore     *storemysql.FieldRefStore
+	fieldCache        *storeredis.FieldCache
+	dictCache         *cache.DictCache
+	runtimeBbKeyStore *storemysql.RuntimeBbKeyStore // 仅读：Create/CheckName 反向 name 冲突检测
+	pagCfg            *config.PaginationConfig
 }
 
 // NewFieldService 创建 FieldService
@@ -35,14 +36,16 @@ func NewFieldService(
 	fieldRefStore *storemysql.FieldRefStore,
 	fieldCache *storeredis.FieldCache,
 	dictCache *cache.DictCache,
+	runtimeBbKeyStore *storemysql.RuntimeBbKeyStore,
 	pagCfg *config.PaginationConfig,
 ) *FieldService {
 	return &FieldService{
-		fieldStore:    fieldStore,
-		fieldRefStore: fieldRefStore,
-		fieldCache:    fieldCache,
-		dictCache:     dictCache,
-		pagCfg:        pagCfg,
+		fieldStore:        fieldStore,
+		fieldRefStore:     fieldRefStore,
+		fieldCache:        fieldCache,
+		dictCache:         dictCache,
+		runtimeBbKeyStore: runtimeBbKeyStore,
+		pagCfg:            pagCfg,
 	}
 }
 
@@ -150,6 +153,16 @@ func (s *FieldService) Create(ctx context.Context, req *model.CreateFieldRequest
 	}
 	if exists {
 		return 0, errcode.Newf(errcode.ErrFieldNameExists, "字段标识 '%s' 已存在", req.Name)
+	}
+
+	// 业务校验：跨表 name 反向冲突（runtime_bb_keys 同名则拒绝，避免全局 BB Key 命名空间冲突）
+	rbk, err := s.runtimeBbKeyStore.GetByName(ctx, req.Name)
+	if err != nil {
+		slog.Error("service.创建字段-反向冲突查询失败", "error", err, "name", req.Name)
+		return 0, fmt.Errorf("check runtime_bb_key conflict: %w", err)
+	}
+	if rbk != nil {
+		return 0, errcode.Newf(errcode.ErrFieldNameConflictWithRuntimeBBKey, "字段标识 '%s' 与运行时 BB Key 冲突", req.Name)
 	}
 
 	// reference 类型：通过 validateReferenceRefs 统一校验
@@ -464,6 +477,8 @@ func (s *FieldService) Delete(ctx context.Context, id int64) (*model.DeleteResul
 }
 
 // CheckName 校验字段标识是否可用（保留 name，创建前校验）
+//
+// 跨表检测：fields 自身 → runtime_bb_keys 反向冲突 → 可用
 func (s *FieldService) CheckName(ctx context.Context, name string) (*model.CheckNameResult, error) {
 	exists, err := s.fieldStore.ExistsByName(ctx, name)
 	if err != nil {
@@ -473,6 +488,16 @@ func (s *FieldService) CheckName(ctx context.Context, name string) (*model.Check
 	if exists {
 		return &model.CheckNameResult{Available: false, Message: "该字段标识已存在"}, nil
 	}
+
+	rbk, err := s.runtimeBbKeyStore.GetByName(ctx, name)
+	if err != nil {
+		slog.Error("service.校验字段名-反向冲突查询失败", "error", err, "name", name)
+		return nil, fmt.Errorf("check runtime_bb_key conflict: %w", err)
+	}
+	if rbk != nil {
+		return &model.CheckNameResult{Available: false, Message: "该标识与运行时 BB Key 冲突"}, nil
+	}
+
 	return &model.CheckNameResult{Available: true, Message: "该标识可用"}, nil
 }
 
