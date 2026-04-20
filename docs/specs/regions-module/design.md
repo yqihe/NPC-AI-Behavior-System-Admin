@@ -116,17 +116,18 @@ ErrRegionExportDanglingRef   = 47011 // 导出期发现悬空 template 引用
 `backend/internal/service/region.go`：
 - `Create / Update / SoftDelete / ToggleEnabled / GetDetail / List / ExportAll`
 - **关键校验方法** `validateSpawnTable(ctx, rawJSON) error`：
-  1. `json.Unmarshal` 到 `[]SpawnEntry`（格式错误 → ErrRegionSpawnEntryInvalid）
+  1. `json.Unmarshal` 到 `[]SpawnEntry`（格式错误 → ErrRegionSpawnEntryInvalid）；空数组合法
   2. 遍历：`TemplateRef` 非空 / `Count >= 1` / `len(SpawnPoints) >= Count` / `WanderRadius >= 0` / `RespawnSeconds >= 0`
-  3. 收集所有 `TemplateRef`，调 `TemplateService.CheckEnabledByNames(ctx, names)`（复用既有 helper）
-  4. notOK 非空 → 遍历区分"不存在" vs "存在但未启用"：
-     - 调 `TemplateService.GetByNames`（既有）分类
-     - 不存在 → `ErrRegionTemplateRefNotFound`
-     - 存在未启用 → `ErrRegionTemplateRefDisabled`
-     - 两类混合时，按第一条的类型返回 + details 包含全部（对齐 NPCService 错误装配语义）
-- `Create / Update` 均前置调 `validateSpawnTable`
+  3. 收集去重后的 `TemplateRef`，调 **`NpcService.LookupByNames(ctx, names) → map[name]enabled`**（T7 新增 helper）
+  4. 遍历分类：
+     - 不在 map 中 → `ErrRegionTemplateRefNotFound`
+     - 在 map 中但 enabled=false → `ErrRegionTemplateRefDisabled`
+     - 两类同时发生时按"不存在"优先返第一类（未来如需 details 数组再开 spec）
+- `Create / Update` 均前置调 `validateRegionType` + `validateSpawnTable`
 - `Update` 首先校验 `enabled=true` → 返 `ErrRegionEditNotDisabled`（对齐 43010 语义）
 - `SoftDelete` 首先校验 `enabled=true` → 返 `ErrRegionDeleteNotDisabled`
+
+**T7 修订**：原设计写 `TemplateService.CheckEnabledByNames`，经 T7 实施核对：Server 视角的 "NPC template"（`template_ref`）对应 ADMIN `/api/configs/npc_templates` 端点即 ADMIN npcs 表（不是 ADMIN templates 表）。故引用校验走 `NpcService.LookupByNames`，依赖注入从 `TemplateService` 改为 `NpcService`。
 
 ### 1.6 Handler 层
 
