@@ -15,7 +15,7 @@
 
 **13 + 4 + 12 + 2 = 31**，与 Server [`blackboard/keys.go`](../../../../NPC-AI-Behavior-System-Server-v1/internal/core/blackboard/keys.go) 锁定一致。
 
-type 字段在 DB 走 enum CHECK 约束（`CHECK (type IN ('integer','float','string','bool'))`）防止 seed / UI 写入非法值。
+type 字段的 4 枚举在 **service 层**拦截（对齐 field 模块 `checkTypeExists` 走字典组的既有模式；DB CHECK 约束被否决 —— 见下方 T1 实施期修订）。
 
 **补 §R3 grouping 机制**：requirements §场景 1 要求下拉"分节呈现"按 11 组，但没说存哪。本 design 锁定：
 
@@ -23,6 +23,18 @@ type 字段在 DB 走 enum CHECK 约束（`CHECK (type IN ('integer','float','st
 - seed 时硬编码 11 组映射（与 Server `keys.go` 分节注释逐字对齐）
 - 前端 `BBKeySelector` 下拉按 `group_name` 分组渲染
 - **不**做 `runtime_key_groups` 独立表：11 组规模小、变动低频、无管理 UI 需求，过度规范化违反 [red-lines/general.md §禁止过度设计](../../development/standards/red-lines/general.md)
+
+**T1 实施期修订（2026-04-20，migration 落地时对齐项目既有约定）**：
+
+原 §1.2 草稿引入了 3 处偏离项目既有 migration 约定的设计，T1 实施期发现并修订：
+
+1. `UNIQUE KEY uk_name (name, deleted)` → `uk_name (name)`：对齐 [`bt_trees`](../../backend/migrations/011_create_bt_trees.sql) / [`fsm_configs`](../../backend/migrations/006_create_fsm_configs.sql) 既有"软删后 name 仍占唯一性"约定；同名复用不是本 spec 需要的语义
+2. `idx_list` 去掉 `group_name` 列：11 组 31 条数据量前端一次性拉全，不存在"按组分页"查询路径；加索引反而让写路径变慢
+3. 移除 `CHECK (type IN (...))` / `CHECK (ref_type IN (...))`：项目既有 migration 零 CHECK 约束；type 4 枚举走 service 层 `checkTypeExists`（对齐 field 模块 DictGroup 模式），ref_type 2 枚举走 handler 白名单
+
+§1.2 DDL 已同步修订。
+
+---
 
 **补 §R13 toggle 语义**：requirements 说"停用仅阻断新建引用，不影响历史数据"。本 design 锁定：
 
@@ -88,43 +100,44 @@ type 字段在 DB 走 enum CHECK 约束（`CHECK (type IN ('integer','float','st
 
 ### 1.2 数据结构
 
-**表 1：`runtime_bb_keys`**
+**表 1：`runtime_bb_keys`**（T1 实施期对齐项目既有约定，见 §0 增补修订）
 
 ```sql
-CREATE TABLE runtime_bb_keys (
-    id           BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    name         VARCHAR(64)  NOT NULL COMMENT 'BB Key 名，对齐服务端 keys.go',
-    type         VARCHAR(16)  NOT NULL COMMENT 'integer|float|string|bool',
-    label        VARCHAR(64)  NOT NULL COMMENT '中文标签（UI 展示）',
-    description  VARCHAR(255) NOT NULL DEFAULT '' COMMENT '中文描述（UI 展示）',
-    group_name   VARCHAR(32)  NOT NULL COMMENT '分组（threat/event/fsm/npc/action/need/emotion/memory/social/decision/move）',
-    enabled      TINYINT(1)   NOT NULL DEFAULT 1,
-    version      INT UNSIGNED NOT NULL DEFAULT 1,
-    deleted      TINYINT(1)   NOT NULL DEFAULT 0,
-    created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_name (name, deleted),
-    KEY idx_list (deleted, enabled, group_name, id),
-    CHECK (type IN ('integer','float','string','bool'))
+CREATE TABLE IF NOT EXISTS runtime_bb_keys (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name            VARCHAR(64)  NOT NULL,
+    type            VARCHAR(16)  NOT NULL,
+    label           VARCHAR(64)  NOT NULL,
+    description     VARCHAR(255) NOT NULL DEFAULT '',
+    group_name      VARCHAR(32)  NOT NULL,
+    enabled         TINYINT(1)   NOT NULL DEFAULT 1,
+    version         INT          NOT NULL DEFAULT 1,
+    created_at      DATETIME     NOT NULL,
+    updated_at      DATETIME     NOT NULL,
+    deleted         TINYINT(1)   NOT NULL DEFAULT 0,
+    UNIQUE KEY uk_name (name),
+    INDEX idx_list (deleted, enabled, id DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
 **表 2：`runtime_bb_key_refs`**
 
 ```sql
-CREATE TABLE runtime_bb_key_refs (
-    id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    runtime_key_id  BIGINT UNSIGNED NOT NULL,
-    ref_type        VARCHAR(16) NOT NULL COMMENT 'fsm|bt',
-    ref_id          BIGINT UNSIGNED NOT NULL,
-    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_ref (runtime_key_id, ref_type, ref_id),
-    KEY idx_reverse (ref_type, ref_id),
-    CHECK (ref_type IN ('fsm','bt'))
+CREATE TABLE IF NOT EXISTS runtime_bb_key_refs (
+    runtime_key_id  BIGINT      NOT NULL,
+    ref_type        VARCHAR(16) NOT NULL,
+    ref_id          BIGINT      NOT NULL,
+    created_at      DATETIME    NOT NULL,
+    PRIMARY KEY (runtime_key_id, ref_type, ref_id),
+    INDEX idx_reverse (ref_type, ref_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
-**对称决策**：结构与 [`field_refs`](../../backend/migrations/) 并列（三元组 + 反向覆盖索引 + CHECK 约束），策划动作感知一致。
+**三点对齐项目既有约定**（T1 实施期发现原 design 草稿偏离，已修订）：
+
+1. `UNIQUE KEY uk_name (name)` **不含 deleted**：对齐 `bt_trees` / `fsm_configs` 注释 "软删后 name 仍占唯一性，不可复用"
+2. `idx_list (deleted, enabled, id DESC)` **不含 group_name**：现阶段下拉一次性拉全 31 条无需按 group 分页优化；未来若需"按组懒加载"再加索引
+3. **无 CHECK 约束**：项目既有 migration 零 CHECK 约束，type 4 枚举 / ref_type 2 枚举的校验下沉到 service 层（对齐 field 模块 `checkTypeExists` 走字典组的模式）
 
 **不复用 `field_refs` 表的原因**（见 §2.1 详述）：两表语义不同（一个指向 fields 表，一个指向 runtime_bb_keys 表），共用需要 `ref_kind` 区分列 + 外键限定，反而复杂化。
 

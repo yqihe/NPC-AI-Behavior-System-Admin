@@ -26,7 +26,13 @@ T13 (前端 api)  ──→  T14 (BBKeySelector 第 3 组接入)                
 
 ---
 
-## T1：migrations 新建两张表  `[ ]`
+## T1：migrations 新建两张表  `[x]` 完成 2026-04-20
+
+**实施要点**：对齐项目既有 migration 约定，3 处修订（`uk_name` 不含 deleted / `idx_list` 不含 group_name / 无 CHECK 约束，枚举校验下沉 service 层）。详见 design.md §0 "T1 实施期修订"。
+
+smoke：`docker compose up -d mysql` + 手工 apply → `DESCRIBE` + `SHOW INDEX` 逐项核对，11+4 字段齐、3+2 索引齐。
+
+
 
 **关联**：R1, R2 / design §1.2
 
