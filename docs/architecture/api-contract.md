@@ -8,7 +8,8 @@
 - 服务端仓发 PR 时 description 引用 ADMIN 对应 commit hash 作为契约版本锚
 - 若 ADMIN 改契约未通知服务端，由 `docs/development/standards/red-lines/general.md` "禁止协作失序"红线兜底
 
-**当前版本**：v1.1.2（2026-04-20，文档层补齐；非 shape 变更）
+**当前版本**：v1.1.3（2026-04-20，文档层补齐；非 shape 变更）
+- v1.1.3：seed-fsm-bt-coverage Phase 2 doc-only append —— fields 内字段语义表（战斗数值 + 社交），覆盖 Server post-freeze smoke 暴露的契约附录缺口
 - v1.1.2：seed-fsm-bt-coverage batch2 补齐 5 event_types 冷启动覆盖（服务端 HTTPSource 对空 items 硬失败，`earthquake` / `explosion` / `fire` / `gunshot` / `shout`）
 - v1.1.1：seed-fsm-bt-coverage 补齐 3 FSM + 6 BT 冷启动覆盖；契约 shape 未变
 - v1.1：2026-04-19，新增组件 opt-in 依赖矩阵；对齐服务端仓 spec `external-contract-server-adaptation` R17-R21
@@ -79,6 +80,33 @@
 **value 类型约定**：
 - number 保留浮点形态（`8.0` 不归一化为 `8`）。ADMIN 用 `json.RawMessage` 存 `npcs.fields[].value` 字节，MySQL JSON 列不改写数值形态。服务端若做精确 diff 对比 snapshot 需注意此点。
 - 枚举类字段（如 `aggression`）value 为 string；ADMIN 侧 constraint_schema 约束合法枚举值，但**服务端解析时不做再次校验**（ADMIN 为权威）。
+
+### fields 内字段语义（v1.1.3 新增）
+
+`items[].config.fields` 是 `object<string, any>`（top-level shape 详见上表），value 保留 JSON 原类型。本节形式化当前**有 Server 侧消费语义**的 fields 内字段。未在此列出的字段（如 `aggression` / `move_speed` / `perception_range`）由 ADMIN 侧 constraint_schema 约束，**服务端不做解析侧校验**（ADMIN 为权威）。
+
+#### 战斗数值字段
+
+| 字段 | 类型 | 服务端消费位置 | 语义 | default |
+|---|---|---|---|---|
+| `max_hp` | number | `admin_template.go` → NPC 实例初始血量上限 | 战斗/HP 系统基底。历史数据噪声 `guard_basic.fields.hp` 待 41008 解封后统一为 `max_hp`（见 §已知数据噪声）| 必填，无默认 |
+| `attack_power` | number | `admin_template.go` → 战斗系统伤害基值 | 攻击伤害基数（浮点）| 必填，无默认 |
+| `defense` | number | `admin_template.go` → 战斗系统减伤基值 | 防御减伤基数（浮点）| 必填，无默认 |
+| `is_boss` | bool | `admin_template.go` → 影响 decision 权重 + 掉落逻辑 | 是否 boss 类 NPC | 必填，默认 `false` |
+| `loot_table` | string | `admin_template.go` → 死亡掉落表 id | 掉落表字符串 id（服务端视为不透明字符串，不做预声明校验）| 必填非空 |
+
+**note**：当前 Server runtime **无血量系统 / 无 damage 事件 / 无 die 事件**，上述字段写入 NPC 但未被 tick loop 消费。R15 smoke 仅校验"字段存在 + 类型正确"，不校验战斗行为。Flee/Dead 态 + 真实伤害闭环留给后续独立 HP 系统 spec。
+
+#### 社交字段（opt-in `enable_social=true` 时启用）
+
+| 字段 | 类型 | 服务端消费位置 | 语义 | default |
+|---|---|---|---|---|
+| `group_id` | string | `admin_template.go:296` → `GroupManager` 按 group_id 聚合 | NPC 所属 group 自由标识（如 `"merchant_guild"` / `"village_guard"`）。空串时 `GroupManager` 对该 NPC 不可见（逐 NPC 跳过，不影响其他 NPC）| 可选（空串默认）|
+| `social_role` | string | `admin_template.go:298` → `SocialComponent.Role` | group 内角色（`"leader"` / `"follower"` 触发队形逻辑；其他自由值如 `"trader"` / `"guard"` 在 group 中但无队形行为，未知 role 静默 skip）| 可选（空串默认）|
+
+**Role 白名单放宽锚点**：Server PR [#32](https://github.com/yqihe/npc-ai-behavior-system-server/pull/32) —— `SocialFactory` 去掉 `{"leader","follower"}` 硬限制；`group_manager` 内 `role == "leader"` / `role != "follower"` 分支保留。PR URL 稳定引用（不引 merge hash —— squash/rebase 后 hash 变，PR 号永远不变）。
+
+**字段归属**：`group_id` / `social_role` **是 Admin `fields` 内的 string 字段（category=component），不是 BB runtime key**。服务端从 `config.fields.group_id` / `config.fields.social_role` 读，不注册到 blackboard 的 runtime key 表。
 
 ### 双边契约锚定
 
