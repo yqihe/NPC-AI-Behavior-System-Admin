@@ -49,8 +49,7 @@ func (h *ExportHandler) EventTypes(c *gin.Context) {
 
 	items, err := h.eventTypeService.ExportAll(c.Request.Context())
 	if err != nil {
-		slog.Error("handler.export.event_types.error", "error", err)
-		c.JSON(http.StatusInternalServerError, exportResponse{Items: make([]interface{}, 0)})
+		h.respondInternalErr(c, "event_types", "export", err)
 		return
 	}
 
@@ -72,8 +71,7 @@ func (h *ExportHandler) FsmConfigs(c *gin.Context) {
 
 	items, err := h.fsmConfigService.ExportAll(c.Request.Context())
 	if err != nil {
-		slog.Error("handler.export.fsm_configs.error", "error", err)
-		c.JSON(http.StatusInternalServerError, exportResponse{Items: make([]interface{}, 0)})
+		h.respondInternalErr(c, "fsm_configs", "export", err)
 		return
 	}
 
@@ -95,8 +93,7 @@ func (h *ExportHandler) BTTrees(c *gin.Context) {
 
 	items, err := h.btTreeService.ExportAll(c.Request.Context())
 	if err != nil {
-		slog.Error("handler.export.bt_trees.error", "error", err)
-		c.JSON(http.StatusInternalServerError, exportResponse{Items: make([]interface{}, 0)})
+		h.respondInternalErr(c, "bt_trees", "export", err)
 		return
 	}
 
@@ -128,7 +125,7 @@ func (h *ExportHandler) NPCTemplates(c *gin.Context) {
 	// Step 1: 取行
 	rows, err := h.npcService.ExportRows(ctx)
 	if err != nil {
-		h.respondInternalErr(c, "export_rows", err)
+		h.respondInternalErr(c, "npc_templates", "export_rows", err)
 		return
 	}
 	if len(rows) == 0 {
@@ -139,7 +136,7 @@ func (h *ExportHandler) NPCTemplates(c *gin.Context) {
 	// Step 2: 收集引用反查索引
 	refs, err := h.npcService.CollectExportRefs(rows)
 	if err != nil {
-		h.respondInternalErr(c, "collect_refs", err)
+		h.respondInternalErr(c, "npc_templates", "collect_refs", err)
 		return
 	}
 
@@ -150,7 +147,7 @@ func (h *ExportHandler) NPCTemplates(c *gin.Context) {
 	}
 	fsmNotOK, err := h.fsmConfigService.CheckEnabledByNames(ctx, fsmNames)
 	if err != nil {
-		h.respondInternalErr(c, "check_fsm", err)
+		h.respondInternalErr(c, "npc_templates", "check_fsm", err)
 		return
 	}
 	btNames := make([]string, 0, len(refs.BtIndex))
@@ -159,7 +156,7 @@ func (h *ExportHandler) NPCTemplates(c *gin.Context) {
 	}
 	btNotOK, err := h.btTreeService.CheckEnabledByNames(ctx, btNames)
 	if err != nil {
-		h.respondInternalErr(c, "check_bt", err)
+		h.respondInternalErr(c, "npc_templates", "check_bt", err)
 		return
 	}
 
@@ -178,7 +175,7 @@ func (h *ExportHandler) NPCTemplates(c *gin.Context) {
 	// Step 5: 装配
 	items, err := h.npcService.AssembleExportItems(rows)
 	if err != nil {
-		h.respondInternalErr(c, "assemble", err)
+		h.respondInternalErr(c, "npc_templates", "assemble", err)
 		return
 	}
 	c.JSON(http.StatusOK, exportResponse{Items: items})
@@ -186,9 +183,11 @@ func (h *ExportHandler) NPCTemplates(c *gin.Context) {
 
 // respondInternalErr 统一通用 500 响应（含中文 message + slog 原始 error）
 //
-// 修复既有 admin red-line #14 违规：原 NPCTemplates 错误路径返 {"items":[]} 没有 code 字段。
-func (h *ExportHandler) respondInternalErr(c *gin.Context, stage string, err error) {
-	slog.Error("handler.export.npc_templates.error", "stage", stage, "error", err)
+// 符合 admin red-line #14.2：所有 4xx/5xx 响应必须含 code 字段。
+// endpoint：导出端点名（event_types / fsm_configs / bt_trees / npc_templates），用于 slog 分流。
+// stage：NPCTemplates 多步编排的阶段标记；简单端点固定 "export"。
+func (h *ExportHandler) respondInternalErr(c *gin.Context, endpoint, stage string, err error) {
+	slog.Error("handler.export."+endpoint+".error", "stage", stage, "error", err)
 	c.JSON(http.StatusInternalServerError, gin.H{
 		"code":    errcode.ErrInternal,
 		"message": "导出失败，请查看服务端日志",
