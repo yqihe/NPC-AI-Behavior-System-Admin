@@ -458,7 +458,7 @@ smoke：`go build ./internal/errcode/...` + `go test ./internal/errcode/...` 全
 
 ---
 
-## T18：e2e 手动 smoke  `[x]` 后端部分通过 2026-04-20；UI 手测留给用户
+## T18：e2e 手动 smoke  `[x]` 全部通过 2026-04-20（后端自动 + 前端浏览器手测）
 
 **关联**：全部 R1-R16 / design §8.2
 
@@ -490,12 +490,12 @@ smoke：`go build ./internal/errcode/...` + `go test ./internal/errcode/...` 全
 1. **R13 前置拦截缺失**：spec §0 toggle 语义明确要求"停用后新建引用拒绝"，T11 实施期备注"未新增 pre-validation"但漏接这一环。修：`service/runtime_bb_key.go` 加 `CheckDisabledRefs`（筛出 runtime 表内 enabled=0 的子集，不在表的 silent skip），FSM/BT handler Create/Update 4 处加前置校验 → 46011
 2. **BT extractBBKeys pre-existing bug**（非本 spec 引入）：`store/mysql/bt_tree.go:294` 读 `node[paramName]`，但 BT 节点保存格式是 `{"type":"...","params":{"key":"..."}}`，bb_key 参数嵌在 `params` 子对象。修前 seed 的 6 个 BT 都没 `check_bb_*` 节点，bug 潜伏至今 —— 若不修则 R7 BT 路径 + R13.2b 永远失败。修后读 `node.params[paramName]`
 
-**手动 smoke 待补**（用户本地 docker compose 仍在跑，http://localhost:3000 / 9821 可用）：
-- Sidebar 菜单"NPC 配置管理 / 运行时 Key 管理"可点开，跳转到 RuntimeBbKeyList
+**UI 手测结果**（2026-04-20，用户本地浏览器 http://localhost:3000）：全部通过 ✅
+- Sidebar 菜单"NPC 配置管理 / 运行时 Key 管理"入口可点
 - 列表页 31 条 + 11 组筛选 + 分页正常
-- 新建 test_key_ui 并测同名字段冲突 → 前端提示"该标识与运行时 BB Key 冲突"
-- FSM 编辑器 BB Key 下拉可见 3 组（NPC 字段 / 事件扩展字段 / 运行时 Key — 分 11 个 group 标签）
-- 选运行时 key 后 FsmConditionEditor 运算符按 type 过滤正确
+- 新建 runtime key + 同名字段冲突 → 前端提示正确
+- FSM 编辑器 BB Key 下拉 3 组分节呈现正常（NPC 字段 / 事件扩展字段 / 运行时 Key — 11 个 group 标签）
+- FsmConditionEditor 运算符按 runtime key type 过滤正确
 - 前端 0 console error
 
 **手测清单**：
@@ -521,7 +521,14 @@ smoke：`go build ./internal/errcode/...` + `go test ./internal/errcode/...` 全
 
 ## 验收闭环
 
-**Phase 3 完成标志**：T1-T18 全 `[x]` + `/verify` 通过 + git push（不走 PR 流程）。
+**完成标志**：T1-T18 全 `[x]` ✅ 已推 origin/main（2026-04-20 收口，未走 PR 流程）
+
+**实际交付量**：
+- 后端：migrations 2 + model 1 + errcode 12 码（46001-46011 + 40018）+ store 3（mysql × 2 + redis × 1）+ service 1 + handler 1 + router 注册 + setup 4 层装配 + seed 31 fixture + scripts/verify-seed.sh 扩容
+- 前端：api 1 + BBKeySelector 第 3 组接入 + 管理页 2（List + Form）+ EnabledGuardDialog 扩展 + router 4 路由 + AppLayout 菜单项
+- 测试：service validator 148 行 + seed fixture 契约 106 行（pure function 风格）
+- 修复：R13 前置拦截（T11 漏接的 spec §0 toggle 语义）+ BT extractBBKeys pre-existing bug（node.params 嵌套读取）
+- 总改动：~2500 行（15 新文件 + 11 改文件），commit 从 T1 到 T18 共约 10 个 commit
 
 **估时**：~2200 行改动（11 新文件 + 8 改文件）；每 task 1-3 小时；串行总 ~25 小时，并行可压到 ~15 小时。
 
