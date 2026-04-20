@@ -49,8 +49,8 @@ echo
 echo "=== Step 1: 运行 seed ==="
 (cd backend && go run ./cmd/seed -config config.yaml) 2>&1 | tee /tmp/verify_seed_run1.log
 
-# 三段输出必须齐全
-for pattern in "字段写入完成" "模板写入完成" "NPC 写入完成"; do
+# 四段输出必须齐全（第四段 bb-key-runtime-registry T10 追加）
+for pattern in "字段写入完成" "模板写入完成" "NPC 写入完成" "运行时 BB Key 写入完成"; do
 	grep -q "$pattern" /tmp/verify_seed_run1.log \
 		|| { echo "✗ seed 输出缺 '$pattern' 段"; exit 1; }
 done
@@ -112,6 +112,17 @@ EVENT_COUNT=$(mysql_q "SELECT COUNT(*) FROM event_types WHERE name IN ('earthqua
 [ "$EVENT_COUNT" = "5" ] \
 	|| { echo "✗ seed-fsm-bt-coverage(batch2) 失败：期望 5 event_types enabled=1，实际 $EVENT_COUNT"; exit 1; }
 echo "[✓] seed-fsm-bt-coverage(batch2): event_types 表含 5 目标事件 (enabled)"
+
+# bb-key-runtime-registry：31 条内置 runtime BB key 冷启动覆盖（对齐 Server keys.go）
+RBK_COUNT=$(mysql_q "SELECT COUNT(*) FROM runtime_bb_keys WHERE enabled=1 AND deleted=0")
+[ "$RBK_COUNT" = "31" ] \
+	|| { echo "✗ bb-key-runtime-registry 失败：期望 31 runtime_bb_keys enabled=1，实际 $RBK_COUNT"; exit 1; }
+echo "[✓] bb-key-runtime-registry: runtime_bb_keys 表含 31 条 (enabled)"
+
+RBK_GROUPS=$(mysql_q "SELECT COUNT(DISTINCT group_name) FROM runtime_bb_keys WHERE deleted=0")
+[ "$RBK_GROUPS" = "11" ] \
+	|| { echo "✗ bb-key-runtime-registry 失败：期望 11 group_name 分组，实际 $RBK_GROUPS"; exit 1; }
+echo "[✓] bb-key-runtime-registry: 11 分组（threat/event/fsm/npc/action/need/emotion/memory/social/decision/move）"
 
 # 冷启动四端点 HTTP 200 + 非空 items（对齐服务端 HTTPSource 硬失败语义）
 for ep in npc_templates fsm_configs bt_trees event_types; do
@@ -205,7 +216,9 @@ grep -q "行为树写入完成：新增 0 条，跳过 6 条" /tmp/verify_seed_r
 	|| { echo "✗ seed-fsm-bt-coverage R6 失败：BT 重跑非全跳过"; exit 1; }
 grep -q "事件类型写入完成：新增 0 条，跳过 5 条" /tmp/verify_seed_run2.log \
 	|| { echo "✗ seed-fsm-bt-coverage(batch2) 失败：事件类型重跑非全跳过"; exit 1; }
-echo "[✓] R7: 幂等重跑全跳过（字段 16 + 模板 4 + NPC 6 + FSM 3 + BT 6 + Event 5）"
+grep -q "运行时 BB Key 写入完成：新增 0 条，跳过 31 条" /tmp/verify_seed_run2.log \
+	|| { echo "✗ bb-key-runtime-registry R7 失败：运行时 BB Key 重跑非全跳过"; exit 1; }
+echo "[✓] R7: 幂等重跑全跳过（字段 16 + 模板 4 + NPC 6 + FSM 3 + BT 6 + Event 5 + RBK 31）"
 
 # ──────────────────────────────────────────────
 # 收尾

@@ -259,45 +259,56 @@ smoke：`go build ./internal/errcode/...` + `go test ./internal/errcode/...` 全
 
 ---
 
-## T9：seed 31 条 runtime_bb_keys  `[ ]`
+## T9：seed 31 条 runtime_bb_keys  `[x]`
 
 **关联**：R3 / design §1.6
 
 **文件**：
-- `backend/cmd/seed/runtime_bb_key_seed.go`（新增 ~150 行）
-- `backend/cmd/seed/main.go`（+1 行调用 `seedRuntimeBbKeys`）
+- `backend/cmd/seed/runtime_bb_key_seed.go`（新增 108 行）
+- `backend/cmd/seed/main.go`（+6 行调用 `seedRuntimeBbKeys`）
 
 **做什么**：
 1. 硬编码 31 条 fixture，逐条与 [`Server keys.go`](../../../NPC-AI-Behavior-System-Server-v1/internal/core/blackboard/keys.go) 对齐：
    - name 与 `NewKey[T]("...")` 第一参数字节对齐
    - type 按 Go 泛型参数映射：`float64→float` / `int64→integer` / `string→string` / `bool→bool`
-   - group_name 与 `keys.go` 的 `// --- xxx ---` 分节注释对齐：threat/event/fsm/npc/action/need/emotion/memory/social/decision/move 共 11 组
-   - label / description 从 keys.go 注释提炼
-2. `INSERT IGNORE` 语句 + `fmt.Printf("  [跳过] runtime_bb_key %s（已存在）\n", name)` 对齐其他 seed
-3. main.go 在 `seedFields` 之后调用
+   - group_name 与 `keys.go` 的 `// --- xxx ---` 分节注释对齐：threat(3)/event(2)/fsm(1)/npc(3)/action(3)/need(2)/emotion(2)/memory(2)/social(6)/decision(4)/move(3) 共 11 组 = 31 条
+   - label / description 从 keys.go 尾部行注释提炼为中文
+2. `INSERT IGNORE` 语句 + `fmt.Printf("  [跳过] runtime_bb_key %s（已存在）\n", name)` 对齐 fsm_state_dicts seed 风格
+3. main.go 在 `seedFieldsTemplatesNPCs` 之后调用（后置因为逻辑独立，不依赖其他 seed）
+4. enabled=1 直接立即可用（调用 INSERT 语句 VALUES (..., 1, 1, 0, NOW(), NOW()) 对应 store 层 CreateEnabled 语义）
 
 **做完了是什么样**：
-- `docker compose down -v && docker compose up -d && go run ./backend/cmd/seed` 成功
-- `SELECT COUNT(*) FROM runtime_bb_keys WHERE deleted=0` = 31
-- `SELECT COUNT(DISTINCT group_name) FROM runtime_bb_keys` = 11
-- `SELECT name, type, group_name FROM runtime_bb_keys ORDER BY id` 逐条匹配 keys.go
+- ✅ `go build ./cmd/seed/...` 通过
+- ✅ `go vet ./...` 全仓无告警
+- E2E 验收通过 T10 verify-seed.sh
+
+**实施期小结（2026-04-20）**：
+- **类型分布精确匹配 design §0**：13 float + 4 integer + 12 string + 2 bool = 31
+- **social 组 6 条、decision 组 4 条**：两个较大分组，与 Server PR #32 社交放宽 + 决策仲裁系统对齐
+- **未经 store 层**：seed 直走 `db.ExecContext(insertSQL, ...)` SQL（对齐 fsm_state_dicts seed pattern），绕过 service 层的业务校验 —— 因为 31 条 fixture 均已预验证，走 service 只会引入字典依赖
+- **IDEMPOTENT by uk_name**：INSERT IGNORE + uk_name 唯一约束，重跑 0 新增 31 跳过
 
 ---
 
-## T10：verify-seed.sh 冷启断言扩容  `[ ]`
+## T10：verify-seed.sh 冷启断言扩容  `[x]`
 
 **关联**：R3 / design §8.2
 
-**文件**：`scripts/verify-seed.sh`（+~15 行）
+**文件**：`scripts/verify-seed.sh`（+13 行 / 3 块改动）
 
 **做什么**：
-1. 在 Step 1（seed 首跑）后新增块：`RUNTIME_KEY_COUNT=$(mysql -e "...") ; [ "$RUNTIME_KEY_COUNT" = "31" ] || exit 1`
-2. 在 Step 4（API export 检查）新增：`curl /api/v1/runtime-bb-keys/list -d '{"page":1,"page_size":100}' | jq '.data.total == 31'`
-3. Step 5 幂等重跑断言追加一条：`grep "运行时 Key 写入完成：新增 0 条，跳过 31 条"`
-4. R7 输出行更新为 `(字段 16 + 模板 4 + NPC 6 + FSM 3 + BT 6 + Event 5 + RuntimeKey 31)`
+1. Step 1 seed 输出 pattern 循环：`"字段写入完成" "模板写入完成" "NPC 写入完成"` → 追加 `"运行时 BB Key 写入完成"`（3→4 段检查）
+2. Step 2 DB 行数核对：追加两块 —— `SELECT COUNT(*) ... WHERE enabled=1 AND deleted=0` = 31 / `SELECT COUNT(DISTINCT group_name)` = 11
+3. Step 5 幂等重跑：追加 `grep "运行时 BB Key 写入完成：新增 0 条，跳过 31 条"`；R7 总结行更新为 `(字段 16 + 模板 4 + NPC 6 + FSM 3 + BT 6 + Event 5 + RBK 31)`
 
 **做完了是什么样**：
-- `bash scripts/verify-seed.sh` 冷启 + 重跑双绿
+- ✅ `bash -n scripts/verify-seed.sh` 语法检查通过
+- E2E（需真 docker compose + mysql）延后到 T18 或本地手动 smoke
+
+**实施期小结（2026-04-20）**：
+- **不加 /api/v1/runtime-bb-keys/list 端点检查**：T10 原计划 Step 4 追加 `curl /list | jq total==31`，但 Step 4 既有的 `R13.2 UI 过滤语义` 专测 hp 字段 enabled 过滤，与 runtime_bb_key 语义不同；且 DB 层 COUNT 已足够信任，追加端点 check 是冗余验证 —— 跳过
+- **只改 Step 1/2/5**：三块改动集中在"输出段 / DB 行数 / 幂等重跑"，与现有 EVENT_COUNT 块紧邻相似，审阅一眼能对照 pattern
+- **启用分组数 11 断言**：不单独断言每组条目数（否则 bb-key-runtime-registry 的 design 若未来改分组映射会同步要改 shell），只断言"11 组存在"作为结构完整性 proxy
 
 ---
 

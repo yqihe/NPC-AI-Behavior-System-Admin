@@ -203,6 +203,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 运行时 BB Key 种子（31 条内置 key，对齐 Server keys.go）
+	// 见 docs/specs/bb-key-runtime-registry/
+	if err := seedRuntimeBbKeys(ctx, db); err != nil {
+		slog.Error("seed.运行时 BB Key 写入失败", "error", err)
+		os.Exit(1)
+	}
+
 	printPostSeedWarning()
 }
 
