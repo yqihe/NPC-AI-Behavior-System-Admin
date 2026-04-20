@@ -361,15 +361,15 @@ func (s *TemplateService) GetByIDsLite(ctx context.Context, ids []int64) ([]mode
 // IsFieldsChanged 模板 fields 是否变更
 //
 // 集合 + 顺序 + required 任一不同都视为变更。
-func (s *TemplateService) IsFieldsChanged(old, new []model.TemplateFieldEntry) bool {
-	if len(old) != len(new) {
+func (s *TemplateService) IsFieldsChanged(old, curr []model.TemplateFieldEntry) bool {
+	if len(old) != len(curr) {
 		return true
 	}
 	for i := range old {
-		if old[i].FieldID != new[i].FieldID {
+		if old[i].FieldID != curr[i].FieldID {
 			return true
 		}
-		if old[i].Required != new[i].Required {
+		if old[i].Required != curr[i].Required {
 			return true
 		}
 	}
@@ -377,24 +377,24 @@ func (s *TemplateService) IsFieldsChanged(old, new []model.TemplateFieldEntry) b
 }
 
 // DiffFieldIDs 计算字段集合的增删（顺序变化但集合相同时返回空切片）
-func (s *TemplateService) DiffFieldIDs(old, new []model.TemplateFieldEntry) (toAdd, toRemove []int64) {
+func (s *TemplateService) DiffFieldIDs(old, curr []model.TemplateFieldEntry) (toAdd, toRemove []int64) {
 	oldSet := make(map[int64]bool, len(old))
 	for _, e := range old {
 		oldSet[e.FieldID] = true
 	}
-	newSet := make(map[int64]bool, len(new))
-	for _, e := range new {
-		newSet[e.FieldID] = true
+	currSet := make(map[int64]bool, len(curr))
+	for _, e := range curr {
+		currSet[e.FieldID] = true
 	}
 	toAdd = make([]int64, 0)
 	toRemove = make([]int64, 0)
-	for _, e := range new {
+	for _, e := range curr {
 		if !oldSet[e.FieldID] {
 			toAdd = append(toAdd, e.FieldID)
 		}
 	}
 	for _, e := range old {
-		if !newSet[e.FieldID] {
+		if !currSet[e.FieldID] {
 			toRemove = append(toRemove, e.FieldID)
 		}
 	}

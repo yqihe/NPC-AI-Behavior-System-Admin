@@ -62,5 +62,16 @@ issues:
     - path: cmd/seed/
       linters:
         - gosec
+    # TODO: 迁移 SetNX → SetArgs(Mode:"NX")。v9 的 SetArgs 返回 (string,error)+redis.Nil，
+    # 和现有 TryLock 的 (bool,error) 语义不同，需要 8 处谨慎改写 + 测试覆盖。
+    - path: internal/store/redis/.*_cache\.go
+      text: "SA1019.*SetNX is deprecated"
+      linters:
+        - staticcheck
+    # G404: TTL 抖动仅用于缓存雪崩防护，非安全场景，math/rand 足够
+    - path: internal/store/redis/shared/common\.go
+      text: "G404.*weak random"
+      linters:
+        - gosec
   max-issues-per-linter: 0
   max-same-issues: 0

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
@@ -54,8 +55,9 @@ func main() {
 	router.Setup(r, h)
 
 	srv := &http.Server{
-		Addr:    ":" + cfg.Server.Port,
-		Handler: r,
+		Addr:              ":" + cfg.Server.Port,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	go func() {

@@ -68,11 +68,11 @@ func validateInt(cm map[string]json.RawMessage, value json.RawMessage) *errcode.
 	if v != math.Trunc(v) {
 		return errcode.Newf(errcode.ErrBadRequest, "整数字段不能传入小数")
 	}
-	if min, ok := GetFloat(cm["min"]); ok && v < min {
-		return errcode.Newf(errcode.ErrBadRequest, "值 %v 小于最小值 %v", v, min)
+	if minVal, ok := GetFloat(cm["min"]); ok && v < minVal {
+		return errcode.Newf(errcode.ErrBadRequest, "值 %v 小于最小值 %v", v, minVal)
 	}
-	if max, ok := GetFloat(cm["max"]); ok && v > max {
-		return errcode.Newf(errcode.ErrBadRequest, "值 %v 大于最大值 %v", v, max)
+	if maxVal, ok := GetFloat(cm["max"]); ok && v > maxVal {
+		return errcode.Newf(errcode.ErrBadRequest, "值 %v 大于最大值 %v", v, maxVal)
 	}
 	return nil
 }
@@ -82,11 +82,11 @@ func validateFloat(cm map[string]json.RawMessage, value json.RawMessage) *errcod
 	if !ok {
 		return errcode.Newf(errcode.ErrBadRequest, "值必须是数字")
 	}
-	if min, ok := GetFloat(cm["min"]); ok && v < min {
-		return errcode.Newf(errcode.ErrBadRequest, "值 %v 小于最小值 %v", v, min)
+	if minVal, ok := GetFloat(cm["min"]); ok && v < minVal {
+		return errcode.Newf(errcode.ErrBadRequest, "值 %v 小于最小值 %v", v, minVal)
 	}
-	if max, ok := GetFloat(cm["max"]); ok && v > max {
-		return errcode.Newf(errcode.ErrBadRequest, "值 %v 大于最大值 %v", v, max)
+	if maxVal, ok := GetFloat(cm["max"]); ok && v > maxVal {
+		return errcode.Newf(errcode.ErrBadRequest, "值 %v 大于最大值 %v", v, maxVal)
 	}
 	return nil
 }
@@ -182,10 +182,10 @@ func ValidateConstraintsSelf(fieldType string, constraints json.RawMessage, errC
 }
 
 func selfCheckMinMax(cm map[string]json.RawMessage, errCode int) *errcode.Error {
-	min, hasMin := GetFloat(cm["min"])
-	max, hasMax := GetFloat(cm["max"])
-	if hasMin && hasMax && min > max {
-		return errcode.Newf(errCode, "min (%v) 不能大于 max (%v)", min, max)
+	minVal, hasMin := GetFloat(cm["min"])
+	maxVal, hasMax := GetFloat(cm["max"])
+	if hasMin && hasMax && minVal > maxVal {
+		return errcode.Newf(errCode, "min (%v) 不能大于 max (%v)", minVal, maxVal)
 	}
 	return nil
 }

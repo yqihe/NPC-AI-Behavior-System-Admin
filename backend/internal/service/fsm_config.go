@@ -117,7 +117,8 @@ func (s *FsmConfigService) validateConfig(initialState string, states []model.Fs
 	}
 
 	// R14: from/to 必须在 states 中 + R15: priority >= 0
-	for i, tr := range transitions {
+	for i := range transitions {
+		tr := &transitions[i]
 		if !stateSet[tr.From] {
 			return errcode.Newf(errcode.ErrFsmConfigTransitionInvalid, "转换规则 #%d: from 状态 '%s' 不存在", i+1, tr.From)
 		}
@@ -502,8 +503,8 @@ func (s *FsmConfigService) InvalidateList(ctx context.Context) {
 // ExtractBBKeys 从 transitions 中提取 BB Key name 集合
 func ExtractBBKeys(transitions []model.FsmTransition) map[string]bool {
 	keys := make(map[string]bool)
-	for _, tr := range transitions {
-		collectConditionKeys(&tr.Condition, keys)
+	for i := range transitions {
+		collectConditionKeys(&transitions[i].Condition, keys)
 	}
 	return keys
 }
