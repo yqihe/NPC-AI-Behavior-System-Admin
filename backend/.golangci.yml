@@ -1,0 +1,66 @@
+run:
+  timeout: 5m
+  tests: true
+  build-tags: []
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+    - gosimple
+    - misspell
+    - bodyclose
+    - sqlclosecheck
+    - rowserrcheck
+    - gosec
+    - revive
+    - gocyclo
+    - nakedret
+    - prealloc
+    - unconvert
+    - unparam
+  # gofmt/goimports are intentionally disabled: on Windows with
+  # core.autocrlf=true they flag every file due to CRLF/LF mismatch.
+  # Enable them in CI (Linux) via a separate config, or after adding a
+  # .gitattributes that forces LF for Go files.
+
+linters-settings:
+  gocyclo:
+    min-complexity: 20
+  revive:
+    rules:
+      - name: exported
+        disabled: true
+      - name: package-comments
+        disabled: true
+      - name: var-naming
+      - name: indent-error-flow
+      - name: errorf
+      - name: unreachable-code
+      - name: redefines-builtin-id
+  gosec:
+    excludes:
+      - G104
+      - G304
+  goimports:
+    local-prefixes: github.com/yqihe/npc-ai-admin/backend
+
+issues:
+  exclude-dirs:
+    - migrations
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gosec
+        - gocyclo
+        - errcheck
+        - unparam
+    - path: cmd/seed/
+      linters:
+        - gosec
+  max-issues-per-linter: 0
+  max-same-issues: 0
