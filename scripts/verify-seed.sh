@@ -102,7 +102,7 @@ FSM_COUNT=$(mysql_q "SELECT COUNT(*) FROM fsm_configs WHERE name IN ('fsm_combat
 	|| { echo "✗ seed-fsm-bt-coverage R1 失败：期望 3 FSM enabled=1，实际 $FSM_COUNT"; exit 1; }
 echo "[✓] seed-fsm-bt-coverage R1: fsm_configs 表含 3 目标 FSM (enabled)"
 
-BT_COUNT=$(mysql_q "SELECT COUNT(*) FROM bt_trees WHERE name IN ('bt/combat/idle','bt/combat/patrol','bt/combat/chase','bt/combat/attack','bt/passive/wander','guard/patrol') AND enabled=1 AND deleted=0")
+BT_COUNT=$(mysql_q "SELECT COUNT(*) FROM bt_trees WHERE name IN ('bt/combat/idle','bt/combat/patrol','bt/combat/chase','bt/combat/attack','bt/passive/wander','bt/guard/patrol') AND enabled=1 AND deleted=0")
 [ "$BT_COUNT" = "6" ] \
 	|| { echo "✗ seed-fsm-bt-coverage R2 失败：期望 6 BT enabled=1，实际 $BT_COUNT"; exit 1; }
 echo "[✓] seed-fsm-bt-coverage R2: bt_trees 表含 6 目标 BT (enabled)"

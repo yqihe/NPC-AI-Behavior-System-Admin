@@ -38,7 +38,7 @@ Server CC 本地 `docker compose up --build` 拉 ADMIN `0aa77b2` live → 6 ADMI
 **上游依赖（阻塞本 spec）**：
 - **Server CC 提供 3 FSM + 6 BT 的权威结构**：本 spec **最大**的跨项目依赖。ADMIN 侧 seed 硬编码的 FSM/BT 必须与 Server CC `NewInstanceFromADMIN` 的消费期望对齐，否则 spawn 即使成功行为也跑偏。需要 Server CC 出：
   - 3 个 FSM 的 states / transitions 完整 JSON（`fsm_combat_basic` / `fsm_passive` / `guard`）
-  - 6 棵 BT 的节点树完整 JSON（`bt/combat/{idle,chase,attack,patrol}` / `bt/passive/wander` / `guard/patrol`）
+  - 6 棵 BT 的节点树完整 JSON（`bt/combat/{idle,chase,attack,patrol}` / `bt/passive/wander` / `bt/guard/patrol`）
   - 来源建议：服务端仓之前的开发期 snapshot / v2 fixture 翻译层 / 或现编一个最小可 spawn 行为集（足以支持 R15 tick ≥30s 无 WARN）
 - `bt-data-format-unification` (`747b0c3`)：BT 节点格式规范已统一，本 spec 注入的 BT JSON 走严格 validator
 - `export-ref-validation` (`8127657`)：ref-validation 本身工作正常，本 spec 只是给它**正确的数据**
@@ -86,7 +86,7 @@ Server CC 本地 `docker compose up --build` 拉 ADMIN `0aa77b2` live → 6 ADMI
 | 编号 | 标准 | 验证方式 |
 |---|---|---|
 | R1 | `docker compose down -v` + `docker compose up -d` + `go run ./cmd/seed` 后，fsm_configs 表有 3 条（`fsm_combat_basic` / `fsm_passive` / `guard`），全部 enabled=1 / deleted=0 | `SELECT name, enabled FROM fsm_configs` 断言 |
-| R2 | 同上，bt_trees 表有 6 棵（`bt/combat/{idle,chase,attack,patrol}` / `bt/passive/wander` / `guard/patrol`），全部 enabled=1 / deleted=0 | `SELECT name, enabled FROM bt_trees` 断言 |
+| R2 | 同上，bt_trees 表有 6 棵（`bt/combat/{idle,chase,attack,patrol}` / `bt/passive/wander` / `bt/guard/patrol`），全部 enabled=1 / deleted=0 | `SELECT name, enabled FROM bt_trees` 断言 |
 | R3 | 干净环境冷启动 `curl /api/configs/npc_templates` 返回 200 + 6 items，零 45016 | curl + http code + items count 断言 |
 | R4 | 干净环境冷启动 `curl /api/configs/fsm_configs` 返回 200 + 3 items；`curl /api/configs/bt_trees` 返回 200 + 6 items | 同上 |
 | R5 | `GET /api/configs/npc_templates` 导出与 `docs/integration/snapshot-section-4.json` 逐字节一致（不因本 spec 回归） | 沿用 verify-seed.sh Step 3 diff |

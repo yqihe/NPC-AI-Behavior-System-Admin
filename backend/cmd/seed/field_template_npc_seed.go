@@ -34,6 +34,9 @@ const (
 	fieldNameEnableNeeds       = "enable_needs"
 	fieldNameEnablePersonality = "enable_personality"
 	fieldNameEnableSocial      = "enable_social"
+	// Social 组件字段值来源（Server admin_template.go:296-300 从 fields.group_id / fields.social_role 读）
+	fieldNameGroupID    = "group_id"
+	fieldNameSocialRole = "social_role"
 )
 
 // 模板 name 常量（NPC seed 通过 TemplateName 引用）
@@ -68,7 +71,7 @@ const (
 	btTreeCombatIdle     = "bt/combat/idle"
 	btTreeCombatPatrol   = "bt/combat/patrol"
 	btTreePassiveWander  = "bt/passive/wander"
-	btTreeGuardPatrol    = "guard/patrol"
+	btTreeGuardPatrol    = "bt/guard/patrol"
 )
 
 // seedFieldsTemplatesNPCs 外部契约数据 seed 聚合入口。
@@ -202,6 +205,21 @@ func seedFields(ctx context.Context, db *sqlx.DB) error {
 			DefaultValue: json.RawMessage(`false`),
 			Constraints:  json.RawMessage(`{}`),
 		},
+		// Social 组件字段值（启用 social 时配合使用；白名单由 Server 侧 SocialFactory 校验）
+		{
+			Name: fieldNameGroupID, Label: "社交组 ID", Type: util.FieldTypeString,
+			Category: util.FieldCategoryComponent, ExposeBB: false, Enabled: true,
+			Description:  "社交分组标识（如派系名）；仅在 enable_social=true 时生效",
+			DefaultValue: json.RawMessage(`""`),
+			Constraints:  json.RawMessage(`{}`),
+		},
+		{
+			Name: fieldNameSocialRole, Label: "社交角色", Type: util.FieldTypeString,
+			Category: util.FieldCategoryComponent, ExposeBB: false, Enabled: true,
+			Description:  "社交角色标识（如 leader/follower/trader）；仅在 enable_social=true 时生效",
+			DefaultValue: json.RawMessage(`""`),
+			Constraints:  json.RawMessage(`{}`),
+		},
 		// 孤儿字段：仅为 guard_basic 兼容 snapshot §4 的 {hp: 100}
 		// enabled=0 确保 UI 字段选择器默认隐藏；41008 解封后一次性清除
 		// （memory project_guard_basic_hp_deferred.md）
@@ -273,11 +291,12 @@ func seedTemplates(ctx context.Context, db *sqlx.DB) error {
 	templates := []templateSeed{
 		{
 			Name: templateNameWarriorBase, Label: "战士基础模板",
-			Description: "战士类 NPC 的字段集合",
+			Description: "战士类 NPC 的字段集合（含 3 个 opt-in 组件开关，默认 false）",
 			FieldNames: []string{
 				fieldNameAggression, fieldNameAttackPower, fieldNameDefense,
 				fieldNameIsBoss, fieldNameLootTable, fieldNameMaxHp,
 				fieldNameMoveSpeed, fieldNamePerceptionRange,
+				fieldNameEnableMemory, fieldNameEnableEmotion, fieldNameEnablePersonality,
 			},
 		},
 		{
@@ -291,10 +310,11 @@ func seedTemplates(ctx context.Context, db *sqlx.DB) error {
 		},
 		{
 			Name: templateNamePassiveNPC, Label: "被动 NPC 模板",
-			Description: "非战斗 NPC 最小字段集",
+			Description: "非战斗 NPC 最小字段集（含 social opt-in + group_id/social_role 配合字段）",
 			FieldNames: []string{
 				fieldNameAggression, fieldNameMaxHp,
 				fieldNameMoveSpeed, fieldNamePerceptionRange,
+				fieldNameEnableSocial, fieldNameGroupID, fieldNameSocialRole,
 			},
 		},
 		{
@@ -434,6 +454,9 @@ func seedNPCs(ctx context.Context, db *sqlx.DB) error {
 				{FieldName: fieldNameMaxHp, Value: json.RawMessage(`120`)},
 				{FieldName: fieldNameMoveSpeed, Value: json.RawMessage(`5.5`)},
 				{FieldName: fieldNamePerceptionRange, Value: json.RawMessage(`20.0`)},
+				{FieldName: fieldNameEnableMemory, Value: json.RawMessage(`false`)},
+				{FieldName: fieldNameEnableEmotion, Value: json.RawMessage(`false`)},
+				{FieldName: fieldNameEnablePersonality, Value: json.RawMessage(`false`)},
 			},
 			FsmRef: fsmRefCombatBasic, BtRefs: combatBtRefs,
 		},
@@ -449,6 +472,10 @@ func seedNPCs(ctx context.Context, db *sqlx.DB) error {
 				{FieldName: fieldNameMaxHp, Value: json.RawMessage(`800`)},
 				{FieldName: fieldNameMoveSpeed, Value: json.RawMessage(`6.0`)},
 				{FieldName: fieldNamePerceptionRange, Value: json.RawMessage(`30.0`)},
+				// Phase 2 demo：boss 开记忆 + 情绪（记仇 + 愤怒累积）
+				{FieldName: fieldNameEnableMemory, Value: json.RawMessage(`true`)},
+				{FieldName: fieldNameEnableEmotion, Value: json.RawMessage(`true`)},
+				{FieldName: fieldNameEnablePersonality, Value: json.RawMessage(`false`)},
 			},
 			FsmRef: fsmRefCombatBasic, BtRefs: combatBtRefs,
 		},
@@ -474,6 +501,10 @@ func seedNPCs(ctx context.Context, db *sqlx.DB) error {
 				{FieldName: fieldNameMaxHp, Value: json.RawMessage(`100`)},
 				{FieldName: fieldNameMoveSpeed, Value: json.RawMessage(`2.0`)},
 				{FieldName: fieldNamePerceptionRange, Value: json.RawMessage(`10.0`)},
+				// Phase 2 demo：村民派系商人，social 路径覆盖
+				{FieldName: fieldNameEnableSocial, Value: json.RawMessage(`true`)},
+				{FieldName: fieldNameGroupID, Value: json.RawMessage(`"merchant_guild"`)},
+				{FieldName: fieldNameSocialRole, Value: json.RawMessage(`"trader"`)},
 			},
 			FsmRef: fsmRefPassive,
 			BtRefs: map[string]string{
@@ -493,6 +524,10 @@ func seedNPCs(ctx context.Context, db *sqlx.DB) error {
 				{FieldName: fieldNameMaxHp, Value: json.RawMessage(`200`)},
 				{FieldName: fieldNameMoveSpeed, Value: json.RawMessage(`3.0`)},
 				{FieldName: fieldNamePerceptionRange, Value: json.RawMessage(`25.0`)},
+				// Phase 2 demo：中立守卫开性格（复用 aggression=neutral 驱动 decision_weights）
+				{FieldName: fieldNameEnableMemory, Value: json.RawMessage(`false`)},
+				{FieldName: fieldNameEnableEmotion, Value: json.RawMessage(`false`)},
+				{FieldName: fieldNameEnablePersonality, Value: json.RawMessage(`true`)},
 			},
 			FsmRef: fsmRefCombatBasic, BtRefs: combatBtRefs,
 		},
@@ -606,13 +641,17 @@ INSERT IGNORE INTO npc_bt_refs (npc_id, bt_tree_name) VALUES (?, ?)`
 // 辅助：name→id 映射加载
 // ──────────────────────────────────────────────
 
-// loadFieldIDMap 查询本 seed 涉及的 9 个字段 name→id 映射。
-// 包括 hp 孤儿字段（enabled=0 但 deleted=0 仍可查到）。
+// loadFieldIDMap 查询本 seed 涉及的 16 个字段 name→id 映射。
+// 包括 hp 孤儿字段（enabled=0 但 deleted=0 仍可查到）以及 Phase 2 新增的 5 opt-in
+// bool + 2 social string 字段。
 func loadFieldIDMap(ctx context.Context, db *sqlx.DB) (map[string]int64, error) {
 	names := []string{
 		fieldNameMaxHp, fieldNameMoveSpeed, fieldNamePerceptionRange,
 		fieldNameAttackPower, fieldNameDefense, fieldNameAggression,
 		fieldNameIsBoss, fieldNameLootTable, fieldNameHp,
+		fieldNameEnableMemory, fieldNameEnableEmotion, fieldNameEnableNeeds,
+		fieldNameEnablePersonality, fieldNameEnableSocial,
+		fieldNameGroupID, fieldNameSocialRole,
 	}
 	query, args, err := sqlx.In(`SELECT id, name FROM fields WHERE name IN (?) AND deleted=0`, names)
 	if err != nil {
