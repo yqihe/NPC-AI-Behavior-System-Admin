@@ -66,10 +66,11 @@ import { fsmConfigApi, FSM_ERR } from '@/api/fsmConfigs'
 import { btTreeApi, BT_TREE_ERR } from '@/api/btTrees'
 import { btNodeTypeApi, BT_NODE_TYPE_ERR } from '@/api/btNodeTypes'
 import { npcApi, NPC_ERRORS } from '@/api/npc'
+import { runtimeBbKeyApi, RUNTIME_BB_KEY_ERR } from '@/api/runtimeBbKeys'
 import type { BizError } from '@/api/request'
 
 type GuardAction = 'edit' | 'delete'
-type EntityType = 'field' | 'template' | 'event-type' | 'event-type-schema' | 'fsm-state-dict' | 'fsm-config' | 'bt-tree' | 'bt-node-type' | 'npc'
+type EntityType = 'field' | 'template' | 'event-type' | 'event-type-schema' | 'fsm-state-dict' | 'fsm-config' | 'bt-tree' | 'bt-node-type' | 'npc' | 'runtime-bb-key'
 
 interface GuardEntity {
   id: number
@@ -93,6 +94,7 @@ const entityTypeLabel = computed(() => {
   if (entityType.value === 'bt-tree') return '行为树'
   if (entityType.value === 'bt-node-type') return '节点类型'
   if (entityType.value === 'npc') return 'NPC'
+  if (entityType.value === 'runtime-bb-key') return '运行时 BB Key'
   return '模板'
 })
 
@@ -129,6 +131,9 @@ const reasonText = computed(() => {
     }
     if (entityType.value === 'npc') {
       return '已启用的 NPC 会被游戏服务端导出接口返回，修改期间可能导致服务端拉取到不稳定配置。请先禁用，再进入编辑。'
+    }
+    if (entityType.value === 'runtime-bb-key') {
+      return '已启用的运行时 BB Key 对 FSM/BT 编辑器可见，允许任意修改可能导致引用方看到不稳定的配置。请先禁用，再进入编辑。'
     }
     return '已启用的模板对 NPC 管理页可见，允许任意修改可能导致策划在配置不稳定时选用。请先禁用，再进入编辑。'
   }
@@ -191,6 +196,9 @@ async function onActOnce() {
     } else if (entityType.value === 'npc') {
       const detail = await npcApi.detail(id)
       await npcApi.toggleEnabled(id, false, detail.data.version)
+    } else if (entityType.value === 'runtime-bb-key') {
+      const detail = await runtimeBbKeyApi.detail(id)
+      await runtimeBbKeyApi.toggleEnabled(id, false, detail.data.version)
     } else {
       const detail = await templateApi.detail(id)
       await templateApi.toggleEnabled(id, false, detail.data.version)
@@ -216,6 +224,8 @@ async function onActOnce() {
         path = `/bt-node-types/${id}/edit`
       } else if (entityType.value === 'npc') {
         path = `/npcs/${id}/edit`
+      } else if (entityType.value === 'runtime-bb-key') {
+        path = `/runtime-bb-keys/${id}/edit`
       } else {
         path = `/templates/${id}/edit`
       }
@@ -244,6 +254,8 @@ async function onActOnce() {
       conflictCode = BT_NODE_TYPE_ERR.VERSION_CONFLICT
     } else if (entityType.value === 'npc') {
       conflictCode = NPC_ERRORS.VERSION_CONFLICT
+    } else if (entityType.value === 'runtime-bb-key') {
+      conflictCode = RUNTIME_BB_KEY_ERR.VERSION_CONFLICT
     } else {
       conflictCode = TEMPLATE_ERR.VERSION_CONFLICT
     }

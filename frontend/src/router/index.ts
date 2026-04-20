@@ -86,6 +86,30 @@ const router = createRouter({
       meta: { title: '编辑模板' },
     },
     {
+      path: '/runtime-bb-keys',
+      name: 'runtime-bb-key-list',
+      component: () => import('@/views/RuntimeBbKeyList.vue'),
+      meta: { title: '运行时 BB Key 管理' },
+    },
+    {
+      path: '/runtime-bb-keys/create',
+      name: 'runtime-bb-key-create',
+      component: () => import('@/views/RuntimeBbKeyForm.vue'),
+      meta: { title: '新建运行时 Key', isCreate: true },
+    },
+    {
+      path: '/runtime-bb-keys/:id/view',
+      name: 'runtime-bb-key-view',
+      component: () => import('@/views/RuntimeBbKeyForm.vue'),
+      meta: { title: '查看运行时 Key', isCreate: false, isView: true },
+    },
+    {
+      path: '/runtime-bb-keys/:id/edit',
+      name: 'runtime-bb-key-edit',
+      component: () => import('@/views/RuntimeBbKeyForm.vue'),
+      meta: { title: '编辑运行时 Key', isCreate: false },
+    },
+    {
       path: '/event-types',
       name: 'event-type-list',
       component: () => import('@/views/EventTypeList.vue'),

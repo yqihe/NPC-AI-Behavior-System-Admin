@@ -30,6 +30,10 @@
             <el-icon><List /></el-icon>
             <span>字段管理</span>
           </el-menu-item>
+          <el-menu-item index="/runtime-bb-keys">
+            <el-icon><Link /></el-icon>
+            <span>运行时 Key 管理</span>
+          </el-menu-item>
         </el-sub-menu>
         <el-sub-menu index="group-event">
           <template #title>
@@ -75,7 +79,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { List, Files, Lightning, Tickets, User, Cpu, Collection, Operation, Share, Grid } from '@element-plus/icons-vue'
+import { List, Files, Lightning, Tickets, User, Cpu, Collection, Operation, Share, Grid, Link } from '@element-plus/icons-vue'
 
 const route = useRoute()
 

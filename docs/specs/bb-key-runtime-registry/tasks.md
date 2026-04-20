@@ -368,77 +368,57 @@ smoke：`go build ./internal/errcode/...` + `go test ./internal/errcode/...` 全
 
 ---
 
-## T13：前端 api 模块  `[ ]`
+## T13：前端 api 模块  `[x]` 完成 2026-04-20
 
-**关联**：R4 / design §1.8
+**文件**：`frontend/src/api/runtimeBbKeys.ts`（新增 111 行）
 
-**文件**：`frontend/src/api/runtimeBbKeys.ts`（新增 ~60 行）
-
-**做什么**：
-1. 对齐 [`frontend/src/api/fields.ts`](../../frontend/src/api/fields.ts) 结构：`list / detail / create / update / delete / toggle / checkName / references`
-2. TypeScript 接口 `RuntimeBbKey` 与 Go `model.RuntimeBbKey` json tag 逐字对齐（red-lines/frontend §JSON 子结构 key）
-3. 所有响应走项目既有 `ApiResponse<T>` wrap
-
-**做完了是什么样**：
-- `npx vue-tsc --noEmit` 零报错
+**实施要点**：对齐 [fields.ts](../../frontend/src/api/fields.ts) 结构，8 API 方法 + TS 接口（RuntimeBbKey/ListItem/ListQuery/ReferenceDetail）+ 常量导出（RUNTIME_BB_KEY_ERR 11 码 / RUNTIME_BB_KEY_TYPES 4 枚举 / RUNTIME_BB_KEY_GROUPS 11 组）。复用 fields.ts 的 `ListData/ReferenceItem/CheckNameResult/DeleteResult` 通用类型。`npm run build` 零报错。
 
 ---
 
-## T14：BBKeySelector.vue 第 3 组接入  `[ ]`
+## T14：BBKeySelector.vue 第 3 组接入  `[x]` 完成 2026-04-20
 
-**关联**：R10, R11 / design §1.8
+**文件**：`frontend/src/components/BBKeySelector.vue`（107 → 156 行）
 
-**文件**：`frontend/src/components/BBKeySelector.vue`（+~50 行）
+**实施要点**：
+- `runtimeOptions` ref + Promise.all 三路并行加载（fieldApi / eventTypeApi.schemaList / runtimeBbKeyApi.list enabled=true）
+- `runtimeGroupedOptions` computed 按 `RUNTIME_BB_KEY_GROUPS` 声明顺序组织，每组一个 `<el-option-group label="运行时 Key — {label}">`（el-option-group 不支持嵌套，扁平化分节呈现），空组自动跳过
+- 空态文案覆盖三路全空："暂无可用 BB Key（请先配置字段、事件类型或运行时 Key）"
+- **不改 BBKeyField interface**：runtime.type 已是 4 枚举与 NPC 字段 normalizeType 后对齐，`field-selected` 消费方（[FsmConditionEditor.vue:229](../../frontend/src/components/FsmConditionEditor.vue#L229)）只看 type，无需 source 字段
 
-**做什么**：
-1. 新增 `runtimeKeys` ref，Promise.all 并行加载字段 / 事件扩展字段 / 运行时 key 三路
-2. `<el-option-group label="运行时 Key">` 分节渲染；内部按 `group_name` 次级分组（用 lodash `groupBy` 或纯 reduce）
-3. `field-selected` emit 时 `source: 'runtime'` 与 `'field' / 'event_extra'` 并列
-4. 空态处理：三组全空时显示"暂无可用 BB Key"
-5. 类型透传：runtime_bb_key.type 已是 4 枚举，直接给 BBKeyField.type 不转换
-
-**做完了是什么样**：
-- FSM 条件编辑器下拉打开，能看到三组 + 运行时 Key 下 11 个 group + 31 个 option
-- 选 `threat_level` → FsmConditionEditor 运算符下拉只显示数值运算符
-- `vue-tsc` 无新增报错
+**smoke**：`npm run build` 零报错。
 
 ---
 
-## T15：RuntimeBbKeyList.vue + RuntimeBbKeyForm.vue 管理页  `[ ]`
-
-**关联**：R10, R14 / design §1.1
+## T15：RuntimeBbKeyList.vue + RuntimeBbKeyForm.vue 管理页  `[x]` 完成 2026-04-20
 
 **文件**：
-- `frontend/src/views/RuntimeBbKeyList.vue`（新增 ~220 行）
-- `frontend/src/views/RuntimeBbKeyForm.vue`（新增 ~180 行）
+- `frontend/src/views/RuntimeBbKeyList.vue`（新增 352 行）
+- `frontend/src/views/RuntimeBbKeyForm.vue`（新增 259 行）
+- `frontend/src/components/EnabledGuardDialog.vue`（+15 行：`runtime-bb-key` 实体支持）
 
-**做什么**：
-1. List 页面对齐 [`FieldList.vue`](../../frontend/src/views/FieldList.vue) 结构：分页 + 搜索（name/label/type/group_name/enabled）+ 批量启用 + 编辑/删除操作
-2. Form 页面：4 字段（name / type 下拉 / label / description / group_name 下拉）+ 复用 `EnabledGuardDialog`（delete/toggle 前二次确认）
-3. 删除前走 `GET /:id` 取 `has_refs`，=true 时按钮 disabled + tooltip 显示引用摘要
+**实施要点**：
+- **List** 对齐 [FieldList.vue](../../frontend/src/views/FieldList.vue)：筛选栏 5 条件（name/label/type/group_name/enabled）+ 表格 + 分页 + 启用开关 + 引用详情弹窗（fsms/bts 两分组）
+- **Form** 简化自 FieldForm：5 字段（name / label / type / group_name / description），**无** constraint / default_value / expose_bb / category；name 创建后不可改；hasRefs 时锁 type
+- **EnabledGuardDialog 扩展**：EntityType 联合加 `'runtime-bb-key'` / entityTypeLabel / reasonText / onActOnce toggle 分支 / path 分支 / VERSION_CONFLICT 映射 —— 共 5 处编辑保持 9 种实体统一 pattern
+- 错误码覆盖 NAME_EXISTS / NAME_INVALID / **NAME_CONFLICT_WITH_FIELD（46004 跨表冲突）** / VERSION_CONFLICT / EDIT_NOT_DISABLED / TYPE_INVALID / GROUP_NAME_INVALID / HAS_REFS
+- 全局样式复用：list-layout.css / form-layout.css 已含所有容器类，无需复制
 
-**做完了是什么样**：
-- 页面跑通 CRUD
-- `vue-tsc` 零报错
-- 样式对齐 FieldList（使用项目既有 scss 变量）
+**smoke**：`npm run build` 零报错；RuntimeBbKeyList-*.{js,css} / RuntimeBbKeyForm-*.{js,css} chunk 正常产出。
 
 ---
 
-## T16：Vue Router + Sidebar 菜单接入  `[ ]`
-
-**关联**：R10 / design §1.1
+## T16：Vue Router + Sidebar 菜单接入  `[x]` 完成 2026-04-20
 
 **文件**：
-- `frontend/src/router/index.ts`（+~10 行）
-- `frontend/src/components/Sidebar.vue`（+~10 行）
+- `frontend/src/router/index.ts`（+24 行：4 条路由）
+- `frontend/src/components/AppLayout.vue`（+2 行菜单项 + `Link` icon import；项目侧边栏集成在 AppLayout 内，无独立 Sidebar.vue）
 
-**做什么**：
-1. 加 `/runtime-bb-keys` 路由映射到 RuntimeBbKeyList；加 `/runtime-bb-keys/:id/edit` 映射到 Form
-2. Sidebar 加菜单项"运行时 Key 管理"，放在"字段管理"之后
-
-**做完了是什么样**：
-- 左侧菜单可点开新页面，URL 正确切换
-- Sidebar 激活样式对齐其他菜单
+**实施要点**：
+- 路由 4 条对齐 fields pattern：`/runtime-bb-keys`（List）/ `create` / `:id/view` / `:id/edit`；位置插在 `/fields/*` 与 `/event-types/*` 之间
+- 侧边栏插在"NPC 配置管理"分组下、"字段管理"之后（语义"第三类 BB Key 源"）；使用 `Link` 图标
+- `meta.isCreate / isView` 与 FieldForm 完全对齐，Form 组件零修改复用 route.meta 读取
+- AppLayout.vue:82-86 的 activeMenu computed 按 `/` 前缀匹配，新菜单项自动高亮
 
 ---
 
