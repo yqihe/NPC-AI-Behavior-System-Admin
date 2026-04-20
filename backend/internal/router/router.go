@@ -148,6 +148,18 @@ func Setup(r *gin.Engine, h *setup.Handlers) {
 		npcs.POST("/toggle-enabled", handler.WrapCtx(h.Npc.ToggleEnabled))
 	}
 
+	// 区域管理（7 个接口）
+	regions := v1.Group("/regions")
+	{
+		regions.POST("/list", handler.WrapCtx(h.Region.List))
+		regions.POST("/create", handler.WrapCtx(h.Region.Create))
+		regions.POST("/detail", handler.WrapCtx(h.Region.Get))
+		regions.POST("/update", handler.WrapCtx(h.Region.Update))
+		regions.POST("/delete", handler.WrapCtx(h.Region.Delete))
+		regions.POST("/check-name", handler.WrapCtx(h.Region.CheckName))
+		regions.POST("/toggle-enabled", handler.WrapCtx(h.Region.ToggleEnabled))
+	}
+
 	// 运行时 BB Key 管理（8 个接口）
 	runtimeBbKeys := v1.Group("/runtime-bb-keys")
 	{

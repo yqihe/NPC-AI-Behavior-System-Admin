@@ -23,6 +23,7 @@ type Config struct {
 	FsmStateDict    FsmStateDictConfig    `yaml:"fsm_state_dict"`
 	BtTree          BtTreeConfig          `yaml:"bt_tree"`
 	BtNodeType      BtNodeTypeConfig      `yaml:"bt_node_type"`
+	Region          RegionConfig          `yaml:"region"`
 }
 
 // ServerConfig HTTP 服务配置
@@ -155,6 +156,13 @@ type BtNodeTypeConfig struct {
 	CacheDetailTTL time.Duration `yaml:"cache_detail_ttl"`
 	CacheListTTL   time.Duration `yaml:"cache_list_ttl"`
 	CacheLockTTL   time.Duration `yaml:"cache_lock_ttl"`
+}
+
+// RegionConfig 区域管理配置
+// 缓存 TTL 由 store/redis/shared/keys.go 的 rcfg 常量控制，此处仅保留长度限制。
+type RegionConfig struct {
+	NameMaxLength        int `yaml:"name_max_length"`
+	DisplayNameMaxLength int `yaml:"display_name_max_length"`
 }
 
 // Load 从文件加载配置

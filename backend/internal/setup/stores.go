@@ -26,6 +26,7 @@ type Stores struct {
 	Npc             *storemysql.NpcStore
 	RuntimeBbKey    *storemysql.RuntimeBbKeyStore
 	RuntimeBbKeyRef *storemysql.RuntimeBbKeyRefStore
+	Region          *storemysql.RegionStore
 }
 
 // NewStores 连接 MySQL + 一次性初始化所有 store
@@ -54,6 +55,7 @@ func NewStores(cfg *config.MySQLConfig) (*Stores, error) {
 		Npc:             storemysql.NewNpcStore(db),
 		RuntimeBbKey:    storemysql.NewRuntimeBbKeyStore(db),
 		RuntimeBbKeyRef: storemysql.NewRuntimeBbKeyRefStore(db),
+		Region:          storemysql.NewRegionStore(db),
 	}, nil
 }
 

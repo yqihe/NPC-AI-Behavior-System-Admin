@@ -66,3 +66,7 @@ bt_node_type:
   cache_detail_ttl: 30m
   cache_list_ttl: 15m
   cache_lock_ttl: 3s
+
+region:
+  name_max_length: 64
+  display_name_max_length: 128

@@ -149,6 +149,20 @@ func (s *RegionService) validateSpawnTable(ctx context.Context, raw json.RawMess
 
 // ---- CRUD ----
 
+// CheckName 校验 region_id 是否可用（创建前置）
+//
+// 含软删除记录的唯一性检查（软删的 region_id 复用需先硬删，当前不支持硬删）。
+func (s *RegionService) CheckName(ctx context.Context, regionID string) (*model.CheckNameResult, error) {
+	exists, err := s.store.ExistsByRegionID(ctx, regionID)
+	if err != nil {
+		return nil, fmt.Errorf("check region_id exists: %w", err)
+	}
+	if exists {
+		return &model.CheckNameResult{Available: false, Message: "区域标识已存在"}, nil
+	}
+	return &model.CheckNameResult{Available: true, Message: "可用"}, nil
+}
+
 // List 分页列表
 func (s *RegionService) List(ctx context.Context, q *model.RegionListQuery) (*model.ListData, error) {
 	shared.NormalizePagination(&q.Page, &q.PageSize, s.pagCfg.DefaultPage, s.pagCfg.DefaultPageSize, s.pagCfg.MaxPageSize)

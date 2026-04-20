@@ -19,6 +19,7 @@ type Handlers struct {
 	Export          *handler.ExportHandler
 	Npc             *handler.NpcHandler
 	RuntimeBbKey    *handler.RuntimeBbKeyHandler
+	Region          *handler.RegionHandler
 }
 
 // NewHandlers 一次性初始化所有 handler
@@ -36,5 +37,6 @@ func NewHandlers(st *Stores, svc *Services, mc *MemCaches, cfg *config.Config) *
 		Export:          handler.NewExportHandler(svc.EventType, svc.FsmConfig, svc.BtTree, svc.Npc),
 		Npc:             handler.NewNpcHandler(svc.Npc, svc.Template, svc.Field, svc.FsmConfig, svc.BtTree, &cfg.Validation),
 		RuntimeBbKey:    handler.NewRuntimeBbKeyHandler(svc.RuntimeBbKey, svc.FsmConfig, svc.BtTree, &cfg.Validation),
+		Region:          handler.NewRegionHandler(svc.Region, &cfg.Region),
 	}
 }

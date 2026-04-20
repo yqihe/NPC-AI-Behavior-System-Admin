@@ -21,6 +21,7 @@ type Caches struct {
 	BtNodeType   *storeredis.BtNodeTypeCache
 	Npc          *storeredis.NPCCache
 	RuntimeBbKey *storeredis.RuntimeBbKeyCache
+	Region       *storeredis.RegionCache
 }
 
 // NewCaches 连接 Redis + 一次性初始化所有 cache
@@ -49,6 +50,7 @@ func NewCaches(ctx context.Context, cfg *config.RedisConfig) *Caches {
 		BtNodeType:   storeredis.NewBtNodeTypeCache(rdb),
 		Npc:          storeredis.NewNPCCache(rdb),
 		RuntimeBbKey: storeredis.NewRuntimeBbKeyCache(rdb),
+		Region:       storeredis.NewRegionCache(rdb),
 	}
 }
 
