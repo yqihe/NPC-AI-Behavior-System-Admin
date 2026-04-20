@@ -135,23 +135,29 @@ smoke：`go build ./internal/errcode/...` + `go test ./internal/errcode/...` 全
 
 ---
 
-## T5：store/redis cache  `[ ]`
+## T5：store/redis cache  `[x]`
 
 **关联**：R16 / design §6.3
 
 **文件**：
-- `backend/internal/store/redis/runtime_bb_key_cache.go`（新增 ~150 行）
-- `backend/internal/store/redis/shared/` 加 key 常量（`RuntimeBbKeyDetailKey(id)` / `RuntimeBbKeyListKey(req)`）
+- `backend/internal/store/redis/runtime_bb_key_cache.go`（新增 168 行）
+- `backend/internal/store/redis/shared/keys.go` 加 key 常量（3 个 prefix + 1 个 version key + 3 个 key 函数）
 
 **做什么**：
 1. 对齐 [`field_cache.go`](../../backend/internal/store/redis/field_cache.go) 模式：`GetDetail` / `SetDetail` / `DelDetail` / `GetList` / `SetList` / `InvalidateList`
-2. TTL：detail 5min / list 1min（对齐 field）
-3. detail 读路径用 `shared.WithLock` 分布式锁（击穿防护）
-4. `InvalidateList` 清 list 分页缓存（pattern 匹配）
+2. TTL：detail 5min / list 1min（对齐 field，复用 `rcfg.DetailTTLBase/ListTTLBase`）
+3. detail 读路径配 `TryLock` / `Unlock` 分布式锁（击穿防护；服务层 `fetchWithLock` 调用）
+4. `InvalidateList` 走版本号 INCR，旧版本 key 自然过期，无 SCAN
 
 **做完了是什么样**：
-- `go build ./internal/store/redis/...` 通过
-- cache red-lines 自查通过（commit 前清缓存、TOCTOU 保护、nil slice 问题）
+- ✅ `go build ./internal/store/redis/...` 通过
+- ✅ `go vet ./...` 全仓无告警
+- ✅ cache red-lines 自查：NullMarker 防穿透 / TTL 抖动防雪崩 / Lua 原子解锁防误删 / 写缓存 TOCTOU 由服务层 tx.Commit 后 Del 承担
+
+**实施期小结（2026-04-20）**：
+- `RuntimeBbKeyListKey` 签名维度：`(version, name, label, typ, groupName, enabled, page, pageSize)` —— 与 `RuntimeBbKeyListQuery` 字段对称
+- 未引入 `shared.WithLock` 高阶函数（field/template 层也用 `TryLock/Unlock` 双函数），保持既有 pattern 一致
+- 服务层 fetchWithLock 模板将在 T6 实现时按既有 `field.GetByID` 路径复制
 
 ---
 

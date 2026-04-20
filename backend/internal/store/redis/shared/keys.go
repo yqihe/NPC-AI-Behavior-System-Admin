@@ -38,6 +38,10 @@ const (
 	prefixNPCDetail = "npcs:detail:"
 	prefixNPCLock   = "npcs:lock:"
 
+	prefixRuntimeBbKeyList   = "runtime_bb_keys:list:"
+	prefixRuntimeBbKeyDetail = "runtime_bb_keys:detail:"
+	prefixRuntimeBbKeyLock   = "runtime_bb_keys:lock:"
+
 	FieldListVersionKey        = "fields:list:version"
 	TemplateListVersionKey     = "templates:list:version"
 	EventTypeListVersionKey    = "event_types:list:version"
@@ -47,6 +51,8 @@ const (
 	BtNodeTypeListVersionKey = "bt_node_types:list:version"
 
 	NPCListVersionKey = "npcs:list:version"
+
+	RuntimeBbKeyListVersionKey = "runtime_bb_keys:list:version"
 )
 
 // ── Dict ──
@@ -120,6 +126,14 @@ func NPCListKey(version int64, label, name, templateName string, enabled *bool, 
 }
 func NPCDetailKey(id int64) string { return fmt.Sprintf("%s%d", prefixNPCDetail, id) }
 func NPCLockKey(id int64) string   { return fmt.Sprintf("%s%d", prefixNPCLock, id) }
+
+// ── RuntimeBbKey ──
+
+func RuntimeBbKeyListKey(version int64, name, label, typ, groupName string, enabled *bool, page, pageSize int) string {
+	return fmt.Sprintf("%sv%d:%s:%s:%s:%s:%s:%d:%d", prefixRuntimeBbKeyList, version, name, label, typ, groupName, boolStr(enabled), page, pageSize)
+}
+func RuntimeBbKeyDetailKey(id int64) string { return fmt.Sprintf("%s%d", prefixRuntimeBbKeyDetail, id) }
+func RuntimeBbKeyLockKey(id int64) string   { return fmt.Sprintf("%s%d", prefixRuntimeBbKeyLock, id) }
 
 // boolStr 将 *bool 转为 key 分段
 func boolStr(b *bool) string {
