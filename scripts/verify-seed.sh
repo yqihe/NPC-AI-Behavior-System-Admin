@@ -107,6 +107,22 @@ BT_COUNT=$(mysql_q "SELECT COUNT(*) FROM bt_trees WHERE name IN ('bt/combat/idle
 	|| { echo "✗ seed-fsm-bt-coverage R2 失败：期望 6 BT enabled=1，实际 $BT_COUNT"; exit 1; }
 echo "[✓] seed-fsm-bt-coverage R2: bt_trees 表含 6 目标 BT (enabled)"
 
+# seed-fsm-bt-coverage 第二批：5 事件类型冷启动覆盖
+EVENT_COUNT=$(mysql_q "SELECT COUNT(*) FROM event_types WHERE name IN ('earthquake','explosion','fire','gunshot','shout') AND enabled=1 AND deleted=0")
+[ "$EVENT_COUNT" = "5" ] \
+	|| { echo "✗ seed-fsm-bt-coverage(batch2) 失败：期望 5 event_types enabled=1，实际 $EVENT_COUNT"; exit 1; }
+echo "[✓] seed-fsm-bt-coverage(batch2): event_types 表含 5 目标事件 (enabled)"
+
+# 冷启动四端点 HTTP 200 + 非空 items（对齐服务端 HTTPSource 硬失败语义）
+for ep in npc_templates fsm_configs bt_trees event_types; do
+	resp=$(curl -sf "$ADMIN_API/api/configs/$ep") \
+		|| { echo "✗ /api/configs/$ep 请求失败"; exit 1; }
+	len=$(echo "$resp" | jq '.items | length' | tr -d '\r')
+	[ "$len" -gt "0" ] \
+		|| { echo "✗ /api/configs/$ep items 为空（服务端 HTTPSource 会 crashloop）"; exit 1; }
+	echo "[✓] /api/configs/$ep: $len items"
+done
+
 # 模板引用应 ≥ 19（warrior_base 8 + ranger_base 7 + passive_npc 4 + tpl_guard 0 = 19）
 TEMPLATE_FIELD_REFS=$(mysql_q "SELECT COUNT(*) FROM field_refs WHERE ref_type='template'")
 [ "$TEMPLATE_FIELD_REFS" -ge "19" ] \
@@ -187,7 +203,9 @@ grep -q "FSM 配置写入完成：新增 0 条，跳过 3 条" /tmp/verify_seed_
 	|| { echo "✗ seed-fsm-bt-coverage R6 失败：FSM 重跑非全跳过"; exit 1; }
 grep -q "行为树写入完成：新增 0 条，跳过 6 条" /tmp/verify_seed_run2.log \
 	|| { echo "✗ seed-fsm-bt-coverage R6 失败：BT 重跑非全跳过"; exit 1; }
-echo "[✓] R7: 幂等重跑全跳过（字段 14 + 模板 4 + NPC 6 + FSM 3 + BT 6）"
+grep -q "事件类型写入完成：新增 0 条，跳过 5 条" /tmp/verify_seed_run2.log \
+	|| { echo "✗ seed-fsm-bt-coverage(batch2) 失败：事件类型重跑非全跳过"; exit 1; }
+echo "[✓] R7: 幂等重跑全跳过（字段 14 + 模板 4 + NPC 6 + FSM 3 + BT 6 + Event 5）"
 
 # ──────────────────────────────────────────────
 # 收尾

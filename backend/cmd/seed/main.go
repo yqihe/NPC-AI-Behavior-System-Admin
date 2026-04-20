@@ -189,6 +189,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 事件类型种子（服务端 HTTPSource 对空 items 硬失败，冷启动必须非空）
+	// 见 docs/specs/seed-fsm-bt-coverage/（第二批）
+	if err := seedEventTypes(ctx, db); err != nil {
+		slog.Error("seed.事件类型写入失败", "error", err)
+		os.Exit(1)
+	}
+
 	// 外部契约数据种子（字段 + 模板 + NPC），对齐联调 snapshot §4
 	// 见 docs/specs/external-contract-admin-shape-alignment/
 	if err := seedFieldsTemplatesNPCs(ctx, db); err != nil {

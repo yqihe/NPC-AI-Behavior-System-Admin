@@ -8,7 +8,8 @@
 - 服务端仓发 PR 时 description 引用 ADMIN 对应 commit hash 作为契约版本锚
 - 若 ADMIN 改契约未通知服务端，由 `docs/development/standards/red-lines/general.md` "禁止协作失序"红线兜底
 
-**当前版本**：v1.1.1（2026-04-20，文档层补齐；非 shape 变更）
+**当前版本**：v1.1.2（2026-04-20，文档层补齐；非 shape 变更）
+- v1.1.2：seed-fsm-bt-coverage batch2 补齐 5 event_types 冷启动覆盖（服务端 HTTPSource 对空 items 硬失败，`earthquake` / `explosion` / `fire` / `gunshot` / `shout`）
 - v1.1.1：seed-fsm-bt-coverage 补齐 3 FSM + 6 BT 冷启动覆盖；契约 shape 未变
 - v1.1：2026-04-19，新增组件 opt-in 依赖矩阵；对齐服务端仓 spec `external-contract-server-adaptation` R17-R21
 
