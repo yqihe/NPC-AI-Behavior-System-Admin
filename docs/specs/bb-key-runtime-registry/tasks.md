@@ -170,23 +170,31 @@ smoke：`go build ./internal/errcode/...` + `go test ./internal/errcode/...` 全
 
 ---
 
-## T6：service 层 CRUD + 冲突检测  `[ ]`
+## T6：service 层 CRUD + 冲突检测  `[x]`
 
 **关联**：R4, R5, R6, R9, R13 / design §1.4
 
-**文件**：`backend/internal/service/runtime_bb_key.go`（新增 ~180 行）
+**文件**：`backend/internal/service/runtime_bb_key.go`（新增 336 行）
 
 **做什么**：
 1. `RuntimeBbKeyService` 构造：持 `store` / `refStore` / `cache` / `fieldStore`（仅读）/ `pagCfg`；**不持**其他 service
-2. 实现 CRUD：`List / GetByID / Create / Update / Delete / Toggle`
-3. `CheckName(ctx, name)` —— 先查 fields 冲突 → 再查 runtime_bb_keys 自冲突 → 返回 `(conflict, source, err)`；source 在 `"field" / "runtime_bb_key"` 两值之间
-4. `CheckByNames(ctx, names []string) (notOK []string, err error)` —— 空 names → nil, nil；非空 → `store.CheckEnabledByNames` 过滤
-5. Delete 前 has_refs 检查：`refStore.CountByKeyIDs([id]) > 0` → `ErrRuntimeBBKeyHasRefs`
-6. 写路径顺序：tx.Begin → store 写 → **tx.Commit** → cache `DelDetail + InvalidateList`（cache red-lines §写后清缓存顺序）
+2. 实现 CRUD：`List / GetByID / Create / Update / Delete / ToggleEnabled / GetReferences`
+3. `CheckName(ctx, name) (conflict bool, source string, err error)` —— 先 name 格式校验 → 查 fields 冲突 → 查 runtime_bb_keys 自冲突；source 取 `"field" / "runtime_bb_key"`
+4. `CheckByNames(ctx, names) (notOK []string, err error)` —— 空 names → nil, nil；非空 → `store.GetEnabledByNames` 过滤（与 bt_tree/fsm_config 模式对齐）
+5. Delete 前 `refStore.HasRefsTx(tx, id)` 检查（FOR SHARE TOCTOU 防护）→ `ErrRuntimeBBKeyHasRefs`
+6. 写路径顺序：store 写 → cache `DelDetail + InvalidateList` → tx.Commit（cache red-lines §写后清缓存顺序，对齐 field Delete）
+7. 枚举校验：type 4 白名单 / group_name 11 白名单 / name regex `^[a-z][a-z0-9_]{1,63}$`（不走字典，静态锁定对齐 Server keys.go）
 
 **做完了是什么样**：
-- `go build ./internal/service/...` 通过
-- `service/runtime_bb_key_test.go` 覆盖 TestCheckName_FieldConflict / TestCheckName_SelfConflict / TestDelete_HasRefs_Rejected
+- ✅ `go build ./internal/service/...` 通过
+- ✅ `go vet ./...` 全仓无告警
+- 单测（T17 统一批量）
+
+**实施期小结（2026-04-20）**：
+- **签名略偏 design §1.4**：`Delete(ctx, id)` 返 `*model.DeleteResult`（对齐 field 模块，而非 design 草稿的 `Delete(ctx, id, version int) error`），`ToggleEnabled` 收 `*model.ToggleEnabledRequest`（同款复用）—— 便于 handler 层 wrap.go 泛型包装一次性覆盖
+- **枚举白名单静态锁定**：不走 DictCache，`validRuntimeBbKeyTypes` / `validRuntimeBbKeyGroups` 两个 package-level map，理由见 design §0（与 Server keys.go 31 条硬编码对齐，不是 UI 动态下拉项）
+- **fillRefStats 设计**：has_refs / ref_count 不进 detail 缓存（引用随 FSM/BT 写操作变化），每次 `refStore.ListByKeyID` 实时查；失败降级为 0 引用，不阻断主路径
+- **Create 默认 enabled=0**：走 store.Create（非 CreateEnabled）；策划创建后需 admin 审核再 toggle on，对齐 field 模块语义
 
 ---
 
