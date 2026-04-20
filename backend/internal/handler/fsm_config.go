@@ -87,6 +87,18 @@ func (h *FsmConfigHandler) Create(ctx context.Context, req *model.CreateFsmConfi
 	// BB Key 引用追踪（field_refs + schema_refs + runtime_bb_key_refs 三路并行）
 	newKeys := service.ExtractBBKeys(req.Transitions)
 	emptyKeys := make(map[string]bool)
+
+	// R13 前置：拒绝新建引用已停用的 runtime key
+	newKeysSlice := make([]string, 0, len(newKeys))
+	for k := range newKeys {
+		newKeysSlice = append(newKeysSlice, k)
+	}
+	if disabled, derr := h.runtimeBbKeyService.CheckDisabledRefs(ctx, newKeysSlice); derr != nil {
+		return nil, fmt.Errorf("check disabled runtime refs: %w", derr)
+	} else if len(disabled) > 0 {
+		return nil, errcode.Newf(errcode.ErrRuntimeBBKeyDisabledRef, "FSM 引用了已停用的运行时 Key: %v", disabled)
+	}
+
 	affected, err := h.fieldService.SyncFsmBBKeyRefs(ctx, tx, id, emptyKeys, newKeys)
 	if err != nil {
 		return nil, fmt.Errorf("sync bb key refs: %w", err)
@@ -184,6 +196,20 @@ func (h *FsmConfigHandler) Update(ctx context.Context, req *model.UpdateFsmConfi
 	// BB Key diff（field_refs + schema_refs + runtime_bb_key_refs 三路并行）
 	oldKeys := service.ExtractBBKeysFromConfigJSON(oldFc.ConfigJSON)
 	newKeys := service.ExtractBBKeys(req.Transitions)
+
+	// R13 前置：拒绝新建引用已停用的 runtime key（只检查 newKeys - oldKeys 的新增部分）
+	addedKeys := make([]string, 0)
+	for k := range newKeys {
+		if !oldKeys[k] {
+			addedKeys = append(addedKeys, k)
+		}
+	}
+	if disabled, derr := h.runtimeBbKeyService.CheckDisabledRefs(ctx, addedKeys); derr != nil {
+		return nil, fmt.Errorf("check disabled runtime refs: %w", derr)
+	} else if len(disabled) > 0 {
+		return nil, errcode.Newf(errcode.ErrRuntimeBBKeyDisabledRef, "FSM 引用了已停用的运行时 Key: %v", disabled)
+	}
+
 	affected, err := h.fieldService.SyncFsmBBKeyRefs(ctx, tx, req.ID, oldKeys, newKeys)
 	if err != nil {
 		return nil, fmt.Errorf("sync bb key refs: %w", err)

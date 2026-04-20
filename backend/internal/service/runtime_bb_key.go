@@ -259,6 +259,30 @@ func (s *RuntimeBbKeyService) CheckByNames(ctx context.Context, names []string) 
 	return notOK, nil
 }
 
+// CheckDisabledRefs 筛出 names 中"存在于 runtime_bb_keys 表但 enabled=0"的子集
+//
+// 返回 disabled：已停用的 runtime key 名字列表（空 names → nil）。
+// 与 CheckByNames 的区别：本方法只关心 runtime 表内的停用项，对"不在 runtime 表"的 name
+// 保持 silent（它们是 field key 或其它来源，由各自模块管辖）。
+//
+// 用途：FSM/BT Create/Update handler 前置校验，落 R13 toggle 语义（停用后拒绝新建引用）。
+func (s *RuntimeBbKeyService) CheckDisabledRefs(ctx context.Context, names []string) ([]string, error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
+	keys, err := s.store.GetByNames(ctx, names)
+	if err != nil {
+		return nil, fmt.Errorf("get runtime_bb_keys by names: %w", err)
+	}
+	disabled := make([]string, 0)
+	for _, k := range keys {
+		if !k.Enabled {
+			disabled = append(disabled, k.Name)
+		}
+	}
+	return disabled, nil
+}
+
 // Create 创建运行时 BB Key
 func (s *RuntimeBbKeyService) Create(ctx context.Context, req *model.CreateRuntimeBbKeyRequest) (int64, error) {
 	if err := s.validateName(req.Name); err != nil {

@@ -99,6 +99,18 @@ func (h *BtTreeHandler) Create(ctx context.Context, req *model.CreateBtTreeReque
 		return nil, fmt.Errorf("extract bb keys: %w", err)
 	}
 	emptyKeys := make(map[string]bool)
+
+	// R13 前置：拒绝新建引用已停用的 runtime key
+	newKeysSlice := make([]string, 0, len(newKeys))
+	for k := range newKeys {
+		newKeysSlice = append(newKeysSlice, k)
+	}
+	if disabled, derr := h.runtimeBbKeyService.CheckDisabledRefs(ctx, newKeysSlice); derr != nil {
+		return nil, fmt.Errorf("check disabled runtime refs: %w", derr)
+	} else if len(disabled) > 0 {
+		return nil, errcode.Newf(errcode.ErrRuntimeBBKeyDisabledRef, "行为树引用了已停用的运行时 Key: %v", disabled)
+	}
+
 	affected, err := h.fieldService.SyncBtBBKeyRefs(ctx, tx, id, emptyKeys, newKeys)
 	if err != nil {
 		return nil, fmt.Errorf("sync bb key refs: %w", err)
@@ -171,6 +183,20 @@ func (h *BtTreeHandler) Update(ctx context.Context, req *model.UpdateBtTreeReque
 	if err != nil {
 		return nil, fmt.Errorf("extract new bb keys: %w", err)
 	}
+
+	// R13 前置：拒绝新建引用已停用的 runtime key（只检查 newKeys - oldKeys 的新增部分）
+	addedKeys := make([]string, 0)
+	for k := range newKeys {
+		if !oldKeys[k] {
+			addedKeys = append(addedKeys, k)
+		}
+	}
+	if disabled, derr := h.runtimeBbKeyService.CheckDisabledRefs(ctx, addedKeys); derr != nil {
+		return nil, fmt.Errorf("check disabled runtime refs: %w", derr)
+	} else if len(disabled) > 0 {
+		return nil, errcode.Newf(errcode.ErrRuntimeBBKeyDisabledRef, "行为树引用了已停用的运行时 Key: %v", disabled)
+	}
+
 	affected, err := h.fieldService.SyncBtBBKeyRefs(ctx, tx, req.ID, oldKeys, newKeys)
 	if err != nil {
 		return nil, fmt.Errorf("sync bb key refs: %w", err)

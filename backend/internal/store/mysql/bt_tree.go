@@ -291,8 +291,14 @@ func extractBBKeys(node map[string]any, nodeParamTypes map[string][]string) []st
 		if !ok {
 			return
 		}
+		// BB Key 参数嵌在 n["params"] 对象里，对齐 BT 节点保存格式
+		// {"type":"check_bb_float","params":{"key":"xxx","op":">","value":50}}
+		params, _ := n["params"].(map[string]any)
+		if params == nil {
+			return
+		}
 		for _, paramName := range bbParamNames {
-			if val, ok := n[paramName].(string); ok && val != "" {
+			if val, ok := params[paramName].(string); ok && val != "" {
 				keys = append(keys, val)
 			}
 		}
