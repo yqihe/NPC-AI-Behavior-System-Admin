@@ -107,31 +107,40 @@ smoke：`go build ./internal/errcode/...` + `go test ./internal/errcode/...` 全
 
 ---
 
-## T4：store/mysql 两个 store  `[ ]`
+## T4：store/mysql 两个 store  `[x]`
 
 **关联**：R1, R2 / design §1.4
 
 **文件**：
-- `backend/internal/store/mysql/runtime_bb_key.go`（新增 ~200 行）
-- `backend/internal/store/mysql/runtime_bb_key_ref.go`（新增 ~80 行）
+- `backend/internal/store/mysql/runtime_bb_key.go`（新增 296 行）
+- `backend/internal/store/mysql/runtime_bb_key_ref.go`（新增 173 行）
 
 **做什么**：
 1. `RuntimeBbKeyStore` 方法全量（对齐 [`FieldStore`](../../backend/internal/store/mysql/field.go) 模式）：
-   - `GetByID / GetByName / List / Create / Update / Delete / Toggle`
-   - `CheckEnabledByNames(ctx, names []string) (map[string]bool, error)` —— 空 names 直接返回空 map 不发 SQL
-   - List 用 `sqlx.In + Rebind` 展开 IN 查询；LIKE 走 `shared.EscapeLike`
+   - `Create / CreateEnabled / GetByID / GetByName / ExistsByName / List / Update / UpdateTx / SoftDeleteTx / ToggleEnabled / GetByIDs / GetByNames / GetEnabledByNames`
+   - `GetEnabledByNames(ctx, names []string) (map[string]bool, error)` —— 空 names 直接返回空 map 不发 SQL（对齐 bt_tree/fsm_config 既有同名方法）
+   - List 用 `EscapeLike` 转义 + IN 查询走 `sqlx.In + Rebind`
 2. `RuntimeBbKeyRefStore` 方法（对齐 [`FieldRefStore`](../../backend/internal/store/mysql/field_ref.go) 模式）：
-   - `CreateBatch(tx, keyID int64, refs []RuntimeBbKeyRef) error`
-   - `DeleteByKeyIDAndRefIDs(tx, keyID int64, refType string, refIDs []int64) error`
-   - `CountByKeyIDs(ctx, keyIDs []int64) (map[int64]int, error)` —— 给 has_refs 判断用
-   - `ListByKeyID(ctx, keyID int64) ([]RuntimeBbKeyRef, error)` —— 给 /:id/references 端点用
-   - `DeleteByRefTypeAndRefID(tx, refType string, refID int64) error` —— FSM/BT 删除级联
-3. 事务版本：所有写方法首参数 `tx *sqlx.Tx`（无 tx 版本走 `db.ExecContext`）
-4. Delete 前 `SELECT ... FOR SHARE`（TOCTOU 防护，对齐 mysql red-lines）
+   - `AddBatch(tx, refType, refID, keyIDs)` —— 多行 INSERT IGNORE
+   - `DeleteByRefAndKeyIDs(tx, refType, refID, keyIDs)` —— sync diff removedKeys 用
+   - `DeleteByRef(tx, refType, refID)` → `[]int64` —— FSM/BT 删除级联，返回被影响 keyID 列表给缓存失效用
+   - `ListByRef(ctx, refType, refID)` —— sync 前取 oldKeys 集合
+   - `ListByKeyID(ctx, keyID)` —— `/:id/references` 端点
+   - `HasRefs / HasRefsTx`（FOR SHARE TOCTOU 防护）
+   - `CountByKeyIDs(ctx, keyIDs)` —— 列表页 has_refs/ref_count 批量填充
+3. 事务版本：所有写方法都有 `tx *sqlx.Tx` 版本（`AddBatch/DeleteBy*/SoftDeleteTx/UpdateTx`）
+4. `Create` 默认 `enabled=0`（对齐 FieldStore，强制 admin toggle-on 后才可被引用）；`CreateEnabled` 专用 seed 批量写入
 
 **做完了是什么样**：
-- `go build ./internal/store/...` 通过
-- sqlmock 单测覆盖 `CheckEnabledByNames` 空输入 / 多值展开 / 软删过滤 3 场景
+- ✅ `go build ./internal/store/mysql/...` 通过
+- ✅ `go vet ./...` 全仓无告警
+- sqlmock 单测落到 T17 批量处理
+
+**实施期小结（2026-04-20）**：
+- `RuntimeBbKeyRef` model 无 `ID` 字段：表主键是 `(runtime_key_id, ref_type, ref_id)` 三元组复合 PK，design §1.2 草稿的 `ID int64 db:"id"` 属于误抄，store SELECT 语句仅选 4 列
+- `Create / CreateEnabled` 分离：CRUD 路径 enabled=0（对齐 field），seed 路径 enabled=1（31 条内置 key 立即可用）；避免 seed 还要多一次 Toggle 调用
+- `GetEnabledByNames` 命名与 bt_tree/fsm_config 既有方法对齐，而非 design 草稿的 `CheckEnabledByNames`（store 层都叫 GetEnabledByNames，service 层才是 CheckByNames / CheckEnabledByNames）
+- `CountByKeyIDs` 用 `QueryxContext + rows.Scan` 手工组 map（无法直接 SelectContext 进 map）
 
 ---
 
