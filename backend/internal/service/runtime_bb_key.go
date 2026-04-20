@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"regexp"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/yqihe/npc-ai-admin/backend/internal/config"
 	"github.com/yqihe/npc-ai-admin/backend/internal/errcode"
 	"github.com/yqihe/npc-ai-admin/backend/internal/model"
@@ -15,6 +16,7 @@ import (
 	storemysql "github.com/yqihe/npc-ai-admin/backend/internal/store/mysql"
 	storeredis "github.com/yqihe/npc-ai-admin/backend/internal/store/redis"
 	rcfg "github.com/yqihe/npc-ai-admin/backend/internal/store/redis/shared"
+	"github.com/yqihe/npc-ai-admin/backend/internal/util"
 )
 
 // ──────────────────────────────────────────────────────
@@ -429,11 +431,115 @@ func (s *RuntimeBbKeyService) GetReferences(ctx context.Context, id int64) (*mod
 	for _, r := range refs {
 		item := model.ReferenceItem{RefType: r.RefType, RefID: r.RefID}
 		switch r.RefType {
-		case "fsm":
+		case util.RefTypeFsm:
 			result.Fsms = append(result.Fsms, item)
-		case "bt":
+		case util.RefTypeBt:
 			result.Bts = append(result.Bts, item)
 		}
 	}
 	return result, nil
+}
+
+// ──────────────────────────────────────────────────────
+// 引用同步（FSM/BT Create/Update 时 handler 在事务内调用）
+// ──────────────────────────────────────────────────────
+//
+// 算法与 FieldService.SyncFsmBBKeyRefs 对称并行运行：
+//   - field key name → field_refs 表（field 服务负责）
+//   - runtime key name → runtime_bb_key_refs 表（本服务负责）
+//   - 同一份 newKeys 集合 送给两个 service，各筛各的（name 不在自己管辖表时 skip）
+//   - 未匹配任何一方的 name → 由 FSM/BT validator 前置 400 拦截
+
+// SyncFsmRefs 同步 FSM 条件树中对运行时 key 的引用（事务内）
+//
+// oldKeys/newKeys: 条件树提取的 BB Key name 集合。
+// 内部解析 name → runtime_key_id，只追踪 runtime_bb_keys 表的 Key（field 表 Key 跳过）。
+// 返回 affected runtime_key IDs（handler 用于清缓存）。
+func (s *RuntimeBbKeyService) SyncFsmRefs(
+	ctx context.Context, tx *sqlx.Tx, fsmID int64,
+	oldKeys, newKeys map[string]bool,
+) ([]int64, error) {
+	return s.syncRefs(ctx, tx, util.RefTypeFsm, fsmID, oldKeys, newKeys)
+}
+
+// SyncBtRefs 同步行为树节点中对运行时 key 的引用（事务内）
+func (s *RuntimeBbKeyService) SyncBtRefs(
+	ctx context.Context, tx *sqlx.Tx, btTreeID int64,
+	oldKeys, newKeys map[string]bool,
+) ([]int64, error) {
+	return s.syncRefs(ctx, tx, util.RefTypeBt, btTreeID, oldKeys, newKeys)
+}
+
+// syncRefs FSM/BT 引用同步的共用算法（对齐 FieldService 两路对称但提取共同实现）
+func (s *RuntimeBbKeyService) syncRefs(
+	ctx context.Context, tx *sqlx.Tx, refType string, refID int64,
+	oldKeys, newKeys map[string]bool,
+) ([]int64, error) {
+	toAdd := make([]string, 0)
+	toRemove := make([]string, 0)
+	for k := range newKeys {
+		if !oldKeys[k] {
+			toAdd = append(toAdd, k)
+		}
+	}
+	for k := range oldKeys {
+		if !newKeys[k] {
+			toRemove = append(toRemove, k)
+		}
+	}
+
+	if len(toAdd) == 0 && len(toRemove) == 0 {
+		return nil, nil
+	}
+
+	// 批量解析 name → runtime_key_id（合并 toAdd+toRemove 查一次）
+	allNames := make([]string, 0, len(toAdd)+len(toRemove))
+	allNames = append(allNames, toAdd...)
+	allNames = append(allNames, toRemove...)
+	keys, err := s.store.GetByNames(ctx, allNames)
+	if err != nil {
+		return nil, fmt.Errorf("get runtime_bb_keys by names: %w", err)
+	}
+	nameToID := make(map[string]int64, len(keys))
+	for _, k := range keys {
+		nameToID[k.Name] = k.ID
+	}
+
+	// 收集 add/remove 的 runtime_key_id（跳过字段 key，它们不在本表）
+	addIDs := make([]int64, 0, len(toAdd))
+	for _, name := range toAdd {
+		if id, ok := nameToID[name]; ok {
+			addIDs = append(addIDs, id)
+		}
+	}
+	removeIDs := make([]int64, 0, len(toRemove))
+	for _, name := range toRemove {
+		if id, ok := nameToID[name]; ok {
+			removeIDs = append(removeIDs, id)
+		}
+	}
+
+	if err := s.refStore.AddBatch(ctx, tx, refType, refID, addIDs); err != nil {
+		return nil, fmt.Errorf("add runtime_bb_key refs (%s %d): %w", refType, refID, err)
+	}
+	if err := s.refStore.DeleteByRefAndKeyIDs(ctx, tx, refType, refID, removeIDs); err != nil {
+		return nil, fmt.Errorf("delete runtime_bb_key refs (%s %d): %w", refType, refID, err)
+	}
+
+	affected := make([]int64, 0, len(addIDs)+len(removeIDs))
+	affected = append(affected, addIDs...)
+	affected = append(affected, removeIDs...)
+	return affected, nil
+}
+
+// DeleteRefsByFsmID FSM 删除时清理该 FSM 所有 runtime_bb_key 引用（事务内）
+//
+// 返回被影响的 runtime_key IDs（handler 用于清缓存）。
+func (s *RuntimeBbKeyService) DeleteRefsByFsmID(ctx context.Context, tx *sqlx.Tx, fsmID int64) ([]int64, error) {
+	return s.refStore.DeleteByRef(ctx, tx, util.RefTypeFsm, fsmID)
+}
+
+// DeleteRefsByBtID BT 删除时清理该行为树所有 runtime_bb_key 引用（事务内）
+func (s *RuntimeBbKeyService) DeleteRefsByBtID(ctx context.Context, tx *sqlx.Tx, btTreeID int64) ([]int64, error) {
+	return s.refStore.DeleteByRef(ctx, tx, util.RefTypeBt, btTreeID)
 }

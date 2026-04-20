@@ -198,25 +198,31 @@ smoke：`go build ./internal/errcode/...` + `go test ./internal/errcode/...` 全
 
 ---
 
-## T7：service 层引用同步（Sync / Delete Refs）  `[ ]`
+## T7：service 层引用同步（Sync / Delete Refs）  `[x]`
 
 **关联**：R7, R8 / design §1.7
 
-**文件**：`backend/internal/service/runtime_bb_key.go`（接上 T6，+80 行）
+**文件**：`backend/internal/service/runtime_bb_key.go`（接上 T6，+108 行）
 
 **做什么**：
-1. `SyncFsmRefs(ctx, tx, fsmID, oldKeys, newKeys map[string]bool) (affectedKeyIDs []int64, err error)`：
+1. `SyncFsmRefs(ctx, tx, fsmID, oldKeys, newKeys) ([]int64, error)` / `SyncBtRefs(...)` —— 薄包装委托给 `syncRefs` 共用算法：
    - diff oldKeys/newKeys → toAdd / toRemove
-   - 解析 name → runtime_key_id（走 `store.CheckEnabledByNames` 或新建 `GetIDsByNames`，跳过非 runtime key name）
-   - 批量 `refStore.CreateBatch` + `refStore.DeleteByKeyIDAndRefIDs`
-   - 返回受影响 keyID 列表（调用方用于清 detail 缓存）
-2. `SyncBtRefs` 对称
-3. `DeleteRefsByFsmID(tx, fsmID)` / `DeleteRefsByBtID(tx, btID)` —— 走 `refStore.DeleteByRefTypeAndRefID`
-4. 算法完全对称 [`field.go:898 SyncFsmBBKeyRefs`](../../backend/internal/service/field.go#L898)，便于未来阅读
+   - `store.GetByNames(allNames)` 解析 name → runtime_key_id（不在本表的 name 跳过 → 字段 key 自然 filter）
+   - `refStore.AddBatch(tx, refType, refID, addIDs)` + `refStore.DeleteByRefAndKeyIDs(tx, refType, refID, removeIDs)`
+   - 返回 `addIDs + removeIDs`（给 handler 清 detail 缓存用）
+2. `DeleteRefsByFsmID(tx, fsmID) ([]int64, error)` / `DeleteRefsByBtID(tx, btID) ([]int64, error)` —— 委托 `refStore.DeleteByRef`
+3. 使用 `util.RefTypeFsm / util.RefTypeBt` 常量（对齐 field.go）
+4. 算法对称 [`field.go:898 SyncFsmBBKeyRefs`](../../backend/internal/service/field.go#L898)：两表并行运行，同一份 newKeys 各筛各管辖范围
 
 **做完了是什么样**：
-- 4 个新方法 godoc 与 field.go 对称版本字数差 ±3 行内
-- 单测覆盖：TestSyncFsmRefs_AddAndRemove / TestSyncFsmRefs_IgnoresFieldKeys（field key 混入 newKeys 时不误建 ref）
+- ✅ `go build ./internal/service/...` 通过
+- ✅ `go vet ./...` 全仓无告警
+- 单测落到 T17
+
+**实施期小结（2026-04-20）**：
+- **提共 `syncRefs`**：FSM/BT 两路 sync 算法 100% 对称，field.go 代码重复是历史原因；本 spec 新写直接提共用算法节 40 行，FSM/BT 两个公开方法各 3 行薄包装
+- **返回值扩展**：design §1.4 草稿 `DeleteRefsByFsmID` 返 `error`，实际需要 affected IDs 供 handler 清缓存 —— 改为 `([]int64, error)`，对齐 field 模块 CleanFsmBBKeyRefs
+- **util 常量复用**：switch 分支用 `util.RefTypeFsm / util.RefTypeBt` 而非字面量 `"fsm" / "bt"`，同时回改 T6 的 GetReferences 分支
 
 ---
 
