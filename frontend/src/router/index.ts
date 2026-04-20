@@ -229,6 +229,12 @@ const router = createRouter({
       component: () => import('@/views/BtTreeForm.vue'),
       meta: { title: '编辑行为树', isCreate: false, isView: false },
     },
+    {
+      path: '/regions',
+      name: 'region-list',
+      component: () => import('@/views/RegionList.vue'),
+      meta: { title: '区域管理' },
+    },
     // ── 节点类型管理（已隐藏，内置节点由 seed 管理，无需前端页面）──
     // {
     //   path: '/bt-node-types',

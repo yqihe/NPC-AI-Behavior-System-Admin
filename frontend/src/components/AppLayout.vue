@@ -68,6 +68,16 @@
           </el-menu-item>
           <!-- 节点类型管理（已隐藏，内置节点由 seed 管理） -->
         </el-sub-menu>
+        <el-sub-menu index="group-scene">
+          <template #title>
+            <el-icon class="group-icon"><Location /></el-icon>
+            <span class="group-title">场景配置管理</span>
+          </template>
+          <el-menu-item index="/regions">
+            <el-icon><MapLocation /></el-icon>
+            <span>区域管理</span>
+          </el-menu-item>
+        </el-sub-menu>
       </el-menu>
     </el-aside>
     <el-main style="padding: 0; background: #F5F7FA; overflow: hidden">
@@ -79,7 +89,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { List, Files, Lightning, Tickets, User, Cpu, Collection, Operation, Share, Grid, Link } from '@element-plus/icons-vue'
+import { List, Files, Lightning, Tickets, User, Cpu, Collection, Operation, Share, Grid, Link, Location, MapLocation } from '@element-plus/icons-vue'
 
 const route = useRoute()
 
@@ -90,7 +100,7 @@ const activeMenu = computed(() => {
 })
 
 // 哪些分组默认展开（所有一级分组 index）
-const defaultOpeneds = ['group-npc', 'group-event', 'group-behavior']
+const defaultOpeneds = ['group-npc', 'group-event', 'group-behavior', 'group-scene']
 </script>
 
 <style scoped>
