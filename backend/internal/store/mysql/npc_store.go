@@ -64,6 +64,35 @@ func (s *NpcStore) ExistsByName(ctx context.Context, name string) (bool, error) 
 	return count > 0, nil
 }
 
+// LookupByNames 批量查询 npcs 是否存在及启用状态，软删除视为不存在。
+//
+// 返回 map[name]enabled —— name 不在 map 中表示不存在（或已软删）。
+// names 为空时直接返回空 map，不发起 SQL。供跨模块引用校验用（如 regions.spawn_table.template_ref）。
+func (s *NpcStore) LookupByNames(ctx context.Context, names []string) (map[string]bool, error) {
+	result := make(map[string]bool)
+	if len(names) == 0 {
+		return result, nil
+	}
+	query, args, err := sqlx.In(
+		`SELECT name, enabled FROM npcs WHERE name IN (?) AND deleted = 0`, names)
+	if err != nil {
+		return nil, fmt.Errorf("build in query: %w", err)
+	}
+	query = s.db.Rebind(query)
+
+	rows := make([]struct {
+		Name    string `db:"name"`
+		Enabled bool   `db:"enabled"`
+	}, 0)
+	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+		return nil, fmt.Errorf("lookup npcs by names: %w", err)
+	}
+	for _, r := range rows {
+		result[r.Name] = r.Enabled
+	}
+	return result, nil
+}
+
 // List 分页列表查询
 //
 // label/name 两端模糊匹配，template_name 精确匹配，enabled 三态筛选。

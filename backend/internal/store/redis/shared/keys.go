@@ -42,6 +42,10 @@ const (
 	prefixRuntimeBbKeyDetail = "runtime_bb_keys:detail:"
 	prefixRuntimeBbKeyLock   = "runtime_bb_keys:lock:"
 
+	prefixRegionList   = "regions:list:"
+	prefixRegionDetail = "regions:detail:"
+	prefixRegionLock   = "regions:lock:"
+
 	FieldListVersionKey        = "fields:list:version"
 	TemplateListVersionKey     = "templates:list:version"
 	EventTypeListVersionKey    = "event_types:list:version"
@@ -53,6 +57,8 @@ const (
 	NPCListVersionKey = "npcs:list:version"
 
 	RuntimeBbKeyListVersionKey = "runtime_bb_keys:list:version"
+
+	RegionListVersionKey = "regions:list:version"
 )
 
 // ── Dict ──
@@ -134,6 +140,14 @@ func RuntimeBbKeyListKey(version int64, name, label, typ, groupName string, enab
 }
 func RuntimeBbKeyDetailKey(id int64) string { return fmt.Sprintf("%s%d", prefixRuntimeBbKeyDetail, id) }
 func RuntimeBbKeyLockKey(id int64) string   { return fmt.Sprintf("%s%d", prefixRuntimeBbKeyLock, id) }
+
+// ── Region ──
+
+func RegionListKey(version int64, regionID, displayName, regionType string, enabled *bool, page, pageSize int) string {
+	return fmt.Sprintf("%sv%d:%s:%s:%s:%s:%d:%d", prefixRegionList, version, regionID, displayName, regionType, boolStr(enabled), page, pageSize)
+}
+func RegionDetailKey(id int64) string { return fmt.Sprintf("%s%d", prefixRegionDetail, id) }
+func RegionLockKey(id int64) string   { return fmt.Sprintf("%s%d", prefixRegionLock, id) }
 
 // boolStr 将 *bool 转为 key 分段
 func boolStr(b *bool) string {

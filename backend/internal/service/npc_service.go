@@ -570,6 +570,14 @@ func (s *NpcService) CountByFsmRef(ctx context.Context, fsmName string) (int64, 
 	return s.store.CountByFsmRef(ctx, fsmName)
 }
 
+// LookupByNames 批量查询 NPC 是否存在及启用状态（供跨模块引用校验，如 regions.spawn_table.template_ref）。
+//
+// 返回 map[name]enabled —— name 不在 map 中表示不存在。
+// names 为空时返回空 map，不发起 SQL。
+func (s *NpcService) LookupByNames(ctx context.Context, names []string) (map[string]bool, error) {
+	return s.store.LookupByNames(ctx, names)
+}
+
 // ListByTemplateID 分页查询引用了指定模板的 NPC 精简列表（供 TemplateHandler GetReferences）
 func (s *NpcService) ListByTemplateID(ctx context.Context, templateID int64, page, pageSize int) ([]model.NPCLite, int64, error) {
 	return s.store.ListByTemplateID(ctx, templateID, page, pageSize)

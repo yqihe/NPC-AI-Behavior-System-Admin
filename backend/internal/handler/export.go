@@ -18,6 +18,7 @@ type ExportHandler struct {
 	fsmConfigService *service.FsmConfigService
 	btTreeService    *service.BtTreeService
 	npcService       *service.NpcService
+	regionService    *service.RegionService
 }
 
 // NewExportHandler 创建 ExportHandler
@@ -26,12 +27,14 @@ func NewExportHandler(
 	fsmConfigService *service.FsmConfigService,
 	btTreeService *service.BtTreeService,
 	npcService *service.NpcService,
+	regionService *service.RegionService,
 ) *ExportHandler {
 	return &ExportHandler{
 		eventTypeService: eventTypeService,
 		fsmConfigService: fsmConfigService,
 		btTreeService:    btTreeService,
 		npcService:       npcService,
+		regionService:    regionService,
 	}
 }
 
@@ -178,6 +181,74 @@ func (h *ExportHandler) NPCTemplates(c *gin.Context) {
 		h.respondInternalErr(c, "npc_templates", "assemble", err)
 		return
 	}
+	c.JSON(http.StatusOK, exportResponse{Items: items})
+}
+
+// Regions GET /api/configs/regions
+//
+// 返回所有已启用且未删除的区域配置（含 spawn_table + NPC template 引用）。
+// 格式：{name: region_id, config: {region_id, name: display_name, region_type, spawn_table}}
+//
+// 5 步编排（RegionService 不持有 npcService 作导出用途，跨模块校验由 handler 编排，
+// 对齐 NPCTemplates 的分层规则）：
+//  1. ExportRows 取原始 region 行
+//  2. CollectExportRefs 构建 template_ref → region_id 反查索引
+//  3. npcService.LookupByNames 批量查 enabled 状态，分类 notOK（不存在 OR 未启用）
+//  4. BuildExportDanglingError 拼 details，悬空 → 5xx + code 47011
+//  5. AssembleExportItems 装配 → 200
+func (h *ExportHandler) Regions(c *gin.Context) {
+	ctx := c.Request.Context()
+	slog.Debug("handler.export.regions")
+
+	// Step 1: 取行
+	rows, err := h.regionService.ExportRows(ctx)
+	if err != nil {
+		h.respondInternalErr(c, "regions", "export_rows", err)
+		return
+	}
+	if len(rows) == 0 {
+		c.JSON(http.StatusOK, exportResponse{Items: make([]interface{}, 0)})
+		return
+	}
+
+	// Step 2: 收集引用反查索引
+	refs, err := h.regionService.CollectExportRefs(rows)
+	if err != nil {
+		h.respondInternalErr(c, "regions", "collect_refs", err)
+		return
+	}
+
+	// Step 3: 跨模块校验（template_ref 所指 NPC 模板 enabled 状态）
+	templateNames := make([]string, 0, len(refs.TemplateIndex))
+	for name := range refs.TemplateIndex {
+		templateNames = append(templateNames, name)
+	}
+	statusMap, err := h.npcService.LookupByNames(ctx, templateNames)
+	if err != nil {
+		h.respondInternalErr(c, "regions", "check_npc_templates", err)
+		return
+	}
+	templateNotOK := make([]string, 0)
+	for _, name := range templateNames {
+		if enabled, exists := statusMap[name]; !exists || !enabled {
+			templateNotOK = append(templateNotOK, name)
+		}
+	}
+
+	// Step 4: 构建 dangling error
+	if dangling := h.regionService.BuildExportDanglingError(refs, templateNotOK); dangling != nil {
+		slog.Error("handler.export.regions.dangling_refs",
+			"count", len(dangling.Details), "details", dangling.Details)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    errcode.ErrRegionExportDanglingRef,
+			"message": errcode.Msg(errcode.ErrRegionExportDanglingRef),
+			"details": dangling.Details,
+		})
+		return
+	}
+
+	// Step 5: 装配
+	items := h.regionService.AssembleExportItems(rows)
 	c.JSON(http.StatusOK, exportResponse{Items: items})
 }
 
