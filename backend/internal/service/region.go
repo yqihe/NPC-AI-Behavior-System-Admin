@@ -314,6 +314,112 @@ func (s *RegionService) SoftDelete(ctx context.Context, id int64) error {
 	return nil
 }
 
+// ──────────────────────────────────────────────
+// 导出（handler 编排，service 4 个纯方法 + ExportRows 直查）
+//
+// 对齐 NpcService 分层：RegionService 不持有 npcService 作导出引用校验的依赖注入——
+// 跨模块校验（NPC template 启用状态）由 handler 编排（见 ExportHandler.Regions）。
+// 这里 4 个方法中只有 ExportRows 访问 store，其余均为纯函数。
+// ──────────────────────────────────────────────
+
+// RegionExportRefs 导出引用反查索引
+//
+// CollectExportRefs 产物，BuildExportDanglingError 输入。
+// TemplateIndex: template_ref → 引用它的 region_id 列表
+type RegionExportRefs struct {
+	TemplateIndex map[string][]string
+}
+
+// ExportRows 直查 MySQL 取所有已启用未删除 region 原始行
+//
+// 不走缓存（导出场景需要最新数据）。返回原始 model.Region，
+// 由调用方（handler）编排引用校验和最终装配。
+func (s *RegionService) ExportRows(ctx context.Context) ([]model.Region, error) {
+	rows, err := s.store.ExportAll(ctx)
+	if err != nil {
+		slog.Error("service.导出区域.取行失败", "error", err)
+		return nil, fmt.Errorf("export rows: %w", err)
+	}
+	return rows, nil
+}
+
+// CollectExportRefs 纯函数：扫 rows 构建 template_ref 反查索引
+//
+// 解析任一行 spawn_table JSON 失败立即返 error（数据损坏不放行）。
+// 空 spawn_table（'[]'）不进入索引（视为合法的"占位无刷怪"）。
+// 同一 region 内多条 entry 引同一 template_ref 会多次 append 该 region_id，保留重复以反映真实引用。
+func (s *RegionService) CollectExportRefs(rows []model.Region) (*RegionExportRefs, error) {
+	refs := &RegionExportRefs{TemplateIndex: make(map[string][]string)}
+	for _, r := range rows {
+		if len(r.SpawnTable) == 0 {
+			continue
+		}
+		var entries []model.SpawnEntry
+		if err := json.Unmarshal(r.SpawnTable, &entries); err != nil {
+			return nil, fmt.Errorf("collect refs: unmarshal spawn_table (region=%s): %w", r.RegionID, err)
+		}
+		for _, e := range entries {
+			if e.TemplateRef == "" {
+				continue
+			}
+			refs.TemplateIndex[e.TemplateRef] = append(refs.TemplateIndex[e.TemplateRef], r.RegionID)
+		}
+	}
+	return refs, nil
+}
+
+// BuildExportDanglingError 纯函数：notOK 名列表 + 反查索引 → 结构化错误
+//
+// 全部正常返回 nil。notOK 非空时返回 *ExportDanglingRefError，
+// Details 每条 NPCName 字段复用装填 region_id（ExportDanglingRefError.Details 泛用——
+// tasks.md T8 约定：不新建 RegionExportDanglingRef 结构）。
+func (s *RegionService) BuildExportDanglingError(
+	refs *RegionExportRefs,
+	templateNotOK []string,
+) *errcode.ExportDanglingRefError {
+	if len(templateNotOK) == 0 {
+		return nil
+	}
+	details := make([]model.NPCExportDanglingRef, 0, len(templateNotOK))
+	for _, tplName := range templateNotOK {
+		for _, regionID := range refs.TemplateIndex[tplName] {
+			details = append(details, model.NPCExportDanglingRef{
+				NPCName:  regionID,
+				RefType:  model.ExportRefTypeNpcTemplate,
+				RefValue: tplName,
+				Reason:   model.ExportRefReasonMissingOrDisabled,
+			})
+		}
+	}
+	if len(details) == 0 {
+		// 防御：notOK 非空但反查索引找不到 region（理论不可能，因为 handler
+		// 把 keysOf(refs.TemplateIndex) 传进 CheckEnabledByNames 再回来），返 nil 避免空错误。
+		return nil
+	}
+	return &errcode.ExportDanglingRefError{Details: details}
+}
+
+// AssembleExportItems 纯函数：rows → []RegionExportItem
+//
+// envelope.Name 装填 region_id（HTTPSource 路由键），
+// config.Name 装填 display_name（Server Zone.Name 显示名语义）。
+// 双层 Name 分层不冲突。
+func (s *RegionService) AssembleExportItems(rows []model.Region) []model.RegionExportItem {
+	items := make([]model.RegionExportItem, 0, len(rows))
+	for _, r := range rows {
+		items = append(items, model.RegionExportItem{
+			Name: r.RegionID,
+			Config: model.RegionExportConfig{
+				RegionID:   r.RegionID,
+				Name:       r.DisplayName,
+				RegionType: r.RegionType,
+				SpawnTable: r.SpawnTable,
+			},
+		})
+	}
+	return items
+}
+
 // ToggleEnabled 切换启用/停用
 func (s *RegionService) ToggleEnabled(ctx context.Context, req *model.ToggleEnabledRequest) error {
 	slog.Debug("service.切换区域启用", "id", req.ID)

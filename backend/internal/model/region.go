@@ -108,6 +108,10 @@ type RegionExportItem struct {
 	Config RegionExportConfig `json:"config"`
 }
 
+// ExportRefTypeNpcTemplate regions 导出悬空引用的 ref_type 枚举值
+// Reason 字段复用 ExportRefReasonMissingOrDisabled（npc 域定义），跨文件共享避免重复常量。
+const ExportRefTypeNpcTemplate = "npc_template_ref"
+
 // ──────────────────────────────────────────────
 // 请求结构
 // ──────────────────────────────────────────────
