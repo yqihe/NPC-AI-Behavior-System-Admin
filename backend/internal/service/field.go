@@ -750,6 +750,12 @@ func parseProperties(raw json.RawMessage) (*model.FieldProperties, error) {
 
 // ---- 循环引用检测 ----
 
+// fieldLookup 给 detectCyclicRefImpl 做的最小只读抽象：只需要 GetByID。
+// *storemysql.FieldStore 已天然满足；单测可注入 map-backed fake 避免 DB 依赖。
+type fieldLookup interface {
+	GetByID(ctx context.Context, id int64) (*model.Field, error)
+}
+
 // parseRefFieldIDs 从 reference 字段的 constraints 中提取引用字段 ID 列表
 func parseRefFieldIDs(constraints json.RawMessage) []int64 {
 	if len(constraints) == 0 {
@@ -808,10 +814,16 @@ func (s *FieldService) validateReferenceRefs(ctx context.Context, currentID int6
 	return nil
 }
 
-// detectCyclicRef 检测循环引用（DFS）
+// detectCyclicRef 检测循环引用（DFS）—— 方法壳，委托到 detectCyclicRefImpl。
 // currentID: 当前正在创建/编辑的字段 ID（新建时为 0）
 // refIDs: 当前字段要引用的字段 ID 列表
 func (s *FieldService) detectCyclicRef(ctx context.Context, currentID int64, refIDs []int64) *errcode.Error {
+	return detectCyclicRefImpl(ctx, s.fieldStore, currentID, refIDs)
+}
+
+// detectCyclicRefImpl 循环引用 DFS 算法本体。抽成包级函数 + fieldLookup 接口，
+// 让单测能注入 map-backed fake 而不依赖 DB；生产路径等价于旧实现。
+func detectCyclicRefImpl(ctx context.Context, lookup fieldLookup, currentID int64, refIDs []int64) *errcode.Error {
 	visited := make(map[int64]bool)
 	if currentID > 0 {
 		visited[currentID] = true
@@ -825,7 +837,7 @@ func (s *FieldService) detectCyclicRef(ctx context.Context, currentID int64, ref
 			}
 			visited[id] = true
 
-			field, err := s.fieldStore.GetByID(ctx, id)
+			field, err := lookup.GetByID(ctx, id)
 			if err != nil || field == nil {
 				continue
 			}
