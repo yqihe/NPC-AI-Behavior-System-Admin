@@ -135,9 +135,78 @@ func TestRegion_CollectExportRefs_Multi(t *testing.T) {
 	}
 }
 
+// TestRegion_CollectExportRefs_NilSpawnTableSkipped 触发 len(r.SpawnTable)==0 continue 分支
+// （'[]' 有 2 字节不走此分支，需要 SpawnTable=nil 才命中）
+func TestRegion_CollectExportRefs_NilSpawnTableSkipped(t *testing.T) {
+	s := &RegionService{}
+	rows := []model.Region{
+		{RegionID: "nil_spawn", DisplayName: "x", RegionType: "wilderness", SpawnTable: nil},
+		mkRegion("has_entry", "y", "town",
+			`[{"template_ref":"a","count":1,"spawn_points":[{"x":0,"z":0}]}]`),
+	}
+	refs, err := s.CollectExportRefs(rows)
+	if err != nil {
+		t.Fatalf("want nil err, got %v", err)
+	}
+	// 只有 has_entry 贡献索引
+	if got := refs.TemplateIndex["a"]; len(got) != 1 || got[0] != "has_entry" {
+		t.Errorf("want TemplateIndex[a]=[has_entry], got %v", got)
+	}
+}
+
+// TestRegion_CollectExportRefs_BadJSON 触发 spawn_table unmarshal err 分支
+func TestRegion_CollectExportRefs_BadJSON(t *testing.T) {
+	s := &RegionService{}
+	rows := []model.Region{
+		mkRegion("bad_spawn", "x", "wilderness", `{not-json}`),
+	}
+	_, err := s.CollectExportRefs(rows)
+	if err == nil {
+		t.Fatal("want err, got nil")
+	}
+	if !strings.Contains(err.Error(), "unmarshal spawn_table") {
+		t.Errorf("err 应含 'unmarshal spawn_table', got %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "bad_spawn") {
+		t.Errorf("err 应含 region_id 'bad_spawn', got %q", err.Error())
+	}
+}
+
+// TestRegion_CollectExportRefs_EmptyTemplateRefSkipped 触发 entry template_ref=="" continue
+// （实际数据不会有空 template_ref 因为写入侧有校验，但代码有这个 guard）
+func TestRegion_CollectExportRefs_EmptyTemplateRefSkipped(t *testing.T) {
+	s := &RegionService{}
+	rows := []model.Region{
+		mkRegion("mix", "x", "wilderness", `[
+			{"template_ref":"","count":1,"spawn_points":[{"x":0,"z":0}]},
+			{"template_ref":"valid","count":1,"spawn_points":[{"x":1,"z":1}]}
+		]`),
+	}
+	refs, err := s.CollectExportRefs(rows)
+	if err != nil {
+		t.Fatalf("want nil err, got %v", err)
+	}
+	if _, ok := refs.TemplateIndex[""]; ok {
+		t.Error("空 template_ref 不应入索引")
+	}
+	if len(refs.TemplateIndex["valid"]) != 1 {
+		t.Errorf("valid 条目应正常入索引, got %v", refs.TemplateIndex["valid"])
+	}
+}
+
 // ============================================================
 // BuildExportDanglingError
 // ============================================================
+
+// TestRegion_BuildExportDanglingError_DefensiveEmptyDetails 触发 notOK 非空但反查索引无匹配的防御分支
+func TestRegion_BuildExportDanglingError_DefensiveEmptyDetails(t *testing.T) {
+	s := &RegionService{}
+	refs := &RegionExportRefs{TemplateIndex: map[string][]string{}}
+	got := s.BuildExportDanglingError(refs, []string{"ghost_template"})
+	if got != nil {
+		t.Errorf("防御分支：反查索引空 → 应返回 nil，got %+v", got)
+	}
+}
 
 func TestRegion_BuildExportDanglingError_AllValid(t *testing.T) {
 	s := &RegionService{}

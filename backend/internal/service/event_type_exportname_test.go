@@ -59,4 +59,22 @@ func TestInjectNameIntoConfig(t *testing.T) {
 			t.Fatal("want err, got nil")
 		}
 	})
+
+	// null config 触发 m == nil → 重建空 map 分支
+	t.Run("null config 仍能注入 name", func(t *testing.T) {
+		out, err := injectNameIntoConfig("only_name", json.RawMessage(`null`))
+		if err != nil {
+			t.Fatalf("want nil err, got %v", err)
+		}
+		var m map[string]interface{}
+		if err := json.Unmarshal(out, &m); err != nil {
+			t.Fatalf("unmarshal result: %v", err)
+		}
+		if m["name"] != "only_name" {
+			t.Errorf("name want=only_name got=%v", m["name"])
+		}
+		if len(m) != 1 {
+			t.Errorf("null config 重建 map 后只应有 name, got %v", m)
+		}
+	})
 }

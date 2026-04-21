@@ -94,6 +94,28 @@ func TestCheckConstraintTightened(t *testing.T) {
 	}
 }
 
+// TestCheckConstraintTightened_InvalidJSON 非法 constraints JSON 直接返 nil
+// （业务语义：无法判断就不拦截，留给 ValidateConstraintsSelf 专门报错）
+func TestCheckConstraintTightened_InvalidJSON(t *testing.T) {
+	// oldConstraints 非法 JSON → 第 22 行 ParseConstraintsMap err → return nil
+	err := CheckConstraintTightened("integer",
+		json.RawMessage(`{not-json}`),
+		json.RawMessage(`{"min":10}`),
+		errcode.ErrFieldRefTighten)
+	if err != nil {
+		t.Errorf("oldConstraints 非法: want nil, got %v", err)
+	}
+
+	// newConstraints 非法 JSON → 第 26 行 ParseConstraintsMap err → return nil
+	err = CheckConstraintTightened("integer",
+		json.RawMessage(`{"min":10}`),
+		json.RawMessage(`{not-json}`),
+		errcode.ErrFieldRefTighten)
+	if err != nil {
+		t.Errorf("newConstraints 非法: want nil, got %v", err)
+	}
+}
+
 // TestCheckConstraintTightened_ErrCodeTransparency 验证 errCode 透传
 // field 模块用 ErrFieldRefTighten，扩展字段模块用 ErrExtSchemaRefTighten。
 func TestCheckConstraintTightened_ErrCodeTransparency(t *testing.T) {

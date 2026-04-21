@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/yqihe/npc-ai-admin/backend/internal/cache"
@@ -73,6 +74,19 @@ func TestBuildConfigJSON(t *testing.T) {
 		_ = json.Unmarshal(data, &m)
 		if m["display_name"] != "X" {
 			t.Errorf("display_name 错: %v", m)
+		}
+	})
+
+	// 触发 json.Marshal 失败分支：chan 无法被 json 序列化
+	t.Run("不可序列化扩展字段返 marshal err", func(t *testing.T) {
+		_, err := s.buildConfigJSON("X", "area", 0, 0, 0, map[string]interface{}{
+			"bad": make(chan int),
+		})
+		if err == nil {
+			t.Fatal("want err, got nil")
+		}
+		if !strings.Contains(err.Error(), "marshal config_json") {
+			t.Errorf("err 应含 'marshal config_json', got %q", err.Error())
 		}
 	})
 }
@@ -182,6 +196,23 @@ func TestValidateExtensions(t *testing.T) {
 		if codeErr.Code != errcode.ErrEventTypeExtValueInvalid {
 			t.Errorf("want code=%d, got code=%d (msg=%q)",
 				errcode.ErrEventTypeExtValueInvalid, codeErr.Code, codeErr.Message)
+		}
+	})
+
+	// 触发 json.Marshal(val) 失败分支：damage schema 存在，但 value 是 chan 无法序列化
+	t.Run("扩展字段值不可序列化返 ErrEventTypeExtValueInvalid", func(t *testing.T) {
+		err := s.validateExtensions(map[string]interface{}{
+			"damage": make(chan int),
+		})
+		var codeErr *errcode.Error
+		if !errors.As(err, &codeErr) {
+			t.Fatalf("want *errcode.Error, got %T: %v", err, err)
+		}
+		if codeErr.Code != errcode.ErrEventTypeExtValueInvalid {
+			t.Errorf("want code=%d, got code=%d", errcode.ErrEventTypeExtValueInvalid, codeErr.Code)
+		}
+		if !strings.Contains(codeErr.Message, "序列化失败") {
+			t.Errorf("err 应含 '序列化失败', got %q", codeErr.Message)
 		}
 	})
 }

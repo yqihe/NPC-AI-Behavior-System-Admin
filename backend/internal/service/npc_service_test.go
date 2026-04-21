@@ -211,6 +211,62 @@ func TestAssembleExportItems_Empty(t *testing.T) {
 	}
 }
 
+// TestAssembleExportItems_BadFieldsPropagates 触发 assembleExportItem fields unmarshal err
+// + AssembleExportItems 外层 return nil, fmt.Errorf 包装路径
+func TestAssembleExportItems_BadFieldsPropagates(t *testing.T) {
+	s := &NpcService{}
+	rows := []model.NPC{
+		{
+			Name:   "bad_fields",
+			Fields: json.RawMessage(`{not-json}`),
+			BtRefs: json.RawMessage(`{}`),
+		},
+	}
+	_, err := s.AssembleExportItems(rows)
+	if err == nil {
+		t.Fatal("want err, got nil")
+	}
+	if !strings.Contains(err.Error(), "assemble export item for npc") {
+		t.Errorf("want 外层包装前缀, got %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "unmarshal fields") {
+		t.Errorf("want 'unmarshal fields' 内层前缀, got %q", err.Error())
+	}
+}
+
+// TestAssembleExportItems_BadBtRefsPropagates 触发 assembleExportItem bt_refs unmarshal err
+func TestAssembleExportItems_BadBtRefsPropagates(t *testing.T) {
+	s := &NpcService{}
+	rows := []model.NPC{
+		{
+			Name:   "bad_bt",
+			Fields: json.RawMessage(`[]`),
+			BtRefs: json.RawMessage(`{not-json}`),
+		},
+	}
+	_, err := s.AssembleExportItems(rows)
+	if err == nil {
+		t.Fatal("want err, got nil")
+	}
+	if !strings.Contains(err.Error(), "unmarshal bt_refs") {
+		t.Errorf("want 'unmarshal bt_refs', got %q", err.Error())
+	}
+}
+
+// TestBuildExportDanglingError_DefensiveEmptyDetails 触发 notOK 非空但反查索引无匹配的防御分支
+// （理论上 handler 不会这么调用，但代码有这个 guard）
+func TestBuildExportDanglingError_DefensiveEmptyDetails(t *testing.T) {
+	s := &NpcService{}
+	refs := &NPCExportRefs{
+		FsmIndex: map[string][]string{}, // 没有任何 NPC 引用 "ghost_fsm"
+		BtIndex:  map[string][]NPCExportBtUsage{},
+	}
+	got := s.BuildExportDanglingError(refs, []string{"ghost_fsm"}, []string{"ghost_bt"})
+	if got != nil {
+		t.Errorf("防御分支：反查索引空 → 应返回 nil，避免空 Details 错误，got %+v", got)
+	}
+}
+
 func TestAssembleExportItems_OneRow(t *testing.T) {
 	s := &NpcService{}
 	rows := []model.NPC{
