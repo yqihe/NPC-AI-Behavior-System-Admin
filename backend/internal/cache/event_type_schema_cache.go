@@ -67,6 +67,19 @@ func (c *EventTypeSchemaCache) ListEnabled() []model.EventTypeSchemaLite {
 	return result
 }
 
+// SetSchemasForTest 测试用：直接注入 schemas，绕过 Load 的 DB 依赖。
+// 生产路径永远不应调用此方法。
+func (c *EventTypeSchemaCache) SetSchemasForTest(items []model.EventTypeSchemaLite) {
+	byName := make(map[string]*model.EventTypeSchemaLite, len(items))
+	for i := range items {
+		byName[items[i].FieldName] = &items[i]
+	}
+	c.mu.Lock()
+	c.schemas = items
+	c.byName = byName
+	c.mu.Unlock()
+}
+
 // GetByFieldName 按 field_name 查找扩展字段定义
 //
 // 找不到返回 nil, false。
