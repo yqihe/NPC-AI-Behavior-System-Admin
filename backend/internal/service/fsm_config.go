@@ -144,12 +144,9 @@ func (s *FsmConfigService) validateConfig(initialState string, states []model.Fs
 
 // validateCondition 递归校验条件树
 func (s *FsmConfigService) validateCondition(cond *model.FsmCondition, depth, maxDepth int) *errcode.Error {
-	// 空条件 = 无条件转换，始终 true
 	if cond.IsEmpty() {
 		return nil
 	}
-
-	// 深度限制
 	if depth > maxDepth {
 		return errcode.Newf(errcode.ErrFsmConfigConditionInvalid, "条件嵌套深度超过 %d 层", maxDepth)
 	}
@@ -158,48 +155,54 @@ func (s *FsmConfigService) validateCondition(cond *model.FsmCondition, depth, ma
 	hasAnd := len(cond.And) > 0
 	hasOr := len(cond.Or) > 0
 
-	// 叶/组合互斥
+	if err := validateConditionStructure(isLeaf, hasAnd, hasOr); err != nil {
+		return err
+	}
+	if isLeaf {
+		return validateLeafCondition(cond)
+	}
+	return s.validateCompositeChildren(cond, depth, maxDepth)
+}
+
+// validateConditionStructure 叶/组合互斥 + and/or 互斥
+func validateConditionStructure(isLeaf, hasAnd, hasOr bool) *errcode.Error {
 	if isLeaf && (hasAnd || hasOr) {
 		return errcode.Newf(errcode.ErrFsmConfigConditionInvalid, "条件节点不能同时有 key 和 and/or")
 	}
 	if hasAnd && hasOr {
 		return errcode.Newf(errcode.ErrFsmConfigConditionInvalid, "条件节点不能同时有 and 和 or")
 	}
+	return nil
+}
 
-	// 叶节点校验
-	if isLeaf {
-		if !validConditionOps[cond.Op] {
-			return errcode.Newf(errcode.ErrFsmConfigConditionInvalid, "不支持的操作符 '%s'", cond.Op)
-		}
-		// value 和 ref_key 不能同时非空
-		hasValue := len(cond.Value) > 0 && string(cond.Value) != "null"
-		hasRefKey := cond.RefKey != ""
-		if hasValue && hasRefKey {
-			return errcode.Newf(errcode.ErrFsmConfigConditionInvalid, "value 和 ref_key 不能同时设置")
-		}
-		// value 和 ref_key 不能同时为空（除非空条件，已在上面处理）
-		if !hasValue && !hasRefKey {
-			return errcode.Newf(errcode.ErrFsmConfigConditionInvalid, "value 和 ref_key 不能同时为空")
-		}
-		return nil
+// validateLeafCondition 叶节点 op + value/ref_key 互斥与非空校验
+func validateLeafCondition(cond *model.FsmCondition) *errcode.Error {
+	if !validConditionOps[cond.Op] {
+		return errcode.Newf(errcode.ErrFsmConfigConditionInvalid, "不支持的操作符 '%s'", cond.Op)
 	}
+	hasValue := len(cond.Value) > 0 && string(cond.Value) != "null"
+	hasRefKey := cond.RefKey != ""
+	if hasValue && hasRefKey {
+		return errcode.Newf(errcode.ErrFsmConfigConditionInvalid, "value 和 ref_key 不能同时设置")
+	}
+	if !hasValue && !hasRefKey {
+		return errcode.Newf(errcode.ErrFsmConfigConditionInvalid, "value 和 ref_key 不能同时为空")
+	}
+	return nil
+}
 
-	// 组合节点校验
-	if hasAnd {
-		for i := range cond.And {
-			if e := s.validateCondition(&cond.And[i], depth+1, maxDepth); e != nil {
-				return e
-			}
-		}
-	}
-	if hasOr {
-		for i := range cond.Or {
-			if e := s.validateCondition(&cond.Or[i], depth+1, maxDepth); e != nil {
-				return e
-			}
+// validateCompositeChildren 递归 and/or 子节点；结构校验已保证最多一侧非空，两循环互斥执行
+func (s *FsmConfigService) validateCompositeChildren(cond *model.FsmCondition, depth, maxDepth int) *errcode.Error {
+	for i := range cond.And {
+		if e := s.validateCondition(&cond.And[i], depth+1, maxDepth); e != nil {
+			return e
 		}
 	}
-
+	for i := range cond.Or {
+		if e := s.validateCondition(&cond.Or[i], depth+1, maxDepth); e != nil {
+			return e
+		}
+	}
 	return nil
 }
 
