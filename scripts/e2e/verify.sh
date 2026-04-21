@@ -187,8 +187,9 @@ fi
 
 if [ "$MODE" = "dangling-fsm" ]; then
 	echo
-	echo "=== [dangling-fsm] HTTP 错误锚点 ==="
-	assert_count_ge 'msg=config\.http_error.*api/configs/npc_templates.*status 500'  1 "config.http_error npc_templates status 500"
+	echo "=== [dangling-fsm] HTTP 错误锚点（Server PR #41 合入后精确匹配 code=45016）==="
+	assert_count_ge 'msg=config\.http\.npc_templates\.dangling.*npc_name=e2e_full.*ref_type=fsm_ref.*ref_value=missing_fsm_xxx.*reason=missing_or_disabled' 1 "config.http.npc_templates.dangling 详情行（ref_type=fsm_ref）"
+	assert_count_ge 'msg=config\.http_error.*code=45016'                              1 "config.http_error code=45016"
 
 	echo
 	echo "=== [dangling-fsm] 前 3 端点已 loaded（npc_templates 未到）==="
