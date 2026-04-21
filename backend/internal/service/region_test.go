@@ -224,3 +224,41 @@ func TestRegion_AssembleExportItems_OneRow(t *testing.T) {
 		t.Fatalf("spawn_table 应原样透传，实际 %s", items[0].Config.SpawnTable)
 	}
 }
+
+// ============================================================
+// validateRegionType 白名单枚举校验
+// ============================================================
+
+func TestRegion_ValidateRegionType(t *testing.T) {
+	s := &RegionService{}
+
+	cases := []struct {
+		name     string
+		input    string
+		wantCode int // 0 = 期望 nil
+	}{
+		{"合法 wilderness", "wilderness", 0},
+		{"合法 town", "town", 0},
+		{"空串非法", "", errcode.ErrRegionTypeInvalid},
+		{"大小写敏感（wilderness != Wilderness）", "Wilderness", errcode.ErrRegionTypeInvalid},
+		{"未知枚举", "dungeon", errcode.ErrRegionTypeInvalid},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := s.validateRegionType(c.input)
+			if c.wantCode == 0 {
+				if err != nil {
+					t.Fatalf("want nil, got %v", err)
+				}
+				return
+			}
+			var codeErr *errcode.Error
+			if !errors.As(err, &codeErr) {
+				t.Fatalf("want *errcode.Error, got %T: %v", err, err)
+			}
+			if codeErr.Code != c.wantCode {
+				t.Errorf("want code=%d, got code=%d (msg=%q)", c.wantCode, codeErr.Code, codeErr.Message)
+			}
+		})
+	}
+}
