@@ -787,11 +787,17 @@ func parseRefFieldIDs(constraints json.RawMessage) []int64 {
 // 存量不动：已有的 ref 即使后来被停用或目标类型变成 reference 也保留，
 // 只有新增/替换产生的新 ref 才走严格校验。nil oldRefSet 等价于"所有 ref 都是新增"。
 func (s *FieldService) validateReferenceRefs(ctx context.Context, currentID int64, newRefIDs []int64, oldRefSet map[int64]bool) error {
+	return validateReferenceRefsImpl(ctx, s.fieldStore, currentID, newRefIDs, oldRefSet)
+}
+
+// validateReferenceRefsImpl reference refs 校验本体（含末尾的循环检测委托）。
+// 抽成包级函数 + fieldLookup 接口，让单测能注入 map-backed fake 而不依赖 DB。
+func validateReferenceRefsImpl(ctx context.Context, lookup fieldLookup, currentID int64, newRefIDs []int64, oldRefSet map[int64]bool) error {
 	if len(newRefIDs) == 0 {
 		return errcode.New(errcode.ErrFieldRefEmpty)
 	}
 	for _, refID := range newRefIDs {
-		f, err := s.fieldStore.GetByID(ctx, refID)
+		f, err := lookup.GetByID(ctx, refID)
 		if err != nil {
 			return fmt.Errorf("check ref field %d: %w", refID, err)
 		}
@@ -808,21 +814,14 @@ func (s *FieldService) validateReferenceRefs(ctx context.Context, currentID int6
 			return errcode.Newf(errcode.ErrFieldRefNested, "字段 '%s' 是 reference 类型，不允许嵌套引用", f.Name)
 		}
 	}
-	if err := s.detectCyclicRef(ctx, currentID, newRefIDs); err != nil {
+	if err := detectCyclicRefImpl(ctx, lookup, currentID, newRefIDs); err != nil {
 		return err
 	}
 	return nil
 }
 
-// detectCyclicRef 检测循环引用（DFS）—— 方法壳，委托到 detectCyclicRefImpl。
-// currentID: 当前正在创建/编辑的字段 ID（新建时为 0）
-// refIDs: 当前字段要引用的字段 ID 列表
-func (s *FieldService) detectCyclicRef(ctx context.Context, currentID int64, refIDs []int64) *errcode.Error {
-	return detectCyclicRefImpl(ctx, s.fieldStore, currentID, refIDs)
-}
-
-// detectCyclicRefImpl 循环引用 DFS 算法本体。抽成包级函数 + fieldLookup 接口，
-// 让单测能注入 map-backed fake 而不依赖 DB；生产路径等价于旧实现。
+// detectCyclicRefImpl 循环引用 DFS。抽成包级函数 + fieldLookup 接口，
+// 供 validateReferenceRefsImpl 和单测共用；生产通过 validateReferenceRefs 间接进入。
 func detectCyclicRefImpl(ctx context.Context, lookup fieldLookup, currentID int64, refIDs []int64) *errcode.Error {
 	visited := make(map[int64]bool)
 	if currentID > 0 {
