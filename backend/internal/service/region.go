@@ -64,18 +64,29 @@ func (s *RegionService) validateRegionType(regionType string) error {
 	return nil
 }
 
+// npcNameLookup 窄接口：validateSpawnTableImpl 用，注入后可单测不依赖 NpcService
+type npcNameLookup interface {
+	LookupByNames(ctx context.Context, names []string) (map[string]bool, error)
+}
+
 // validateSpawnTable 校验 spawn_table 自洽性 + template_ref 引用完整性
 //
-// 两段式：
+// 1 行委托到包级 validateSpawnTableImpl；后者注入 npcNameLookup 便于单测。
+func (s *RegionService) validateSpawnTable(ctx context.Context, raw json.RawMessage) error {
+	return validateSpawnTableImpl(ctx, s.npcService, raw)
+}
+
+// validateSpawnTableImpl 两段式校验实现（纯包级，便于注入 fake 单测）
+//
 //  1. 结构校验：JSON 解码 + 每条 SpawnEntry 字段自洽（template_ref 非空 / count>=1 /
 //     len(spawn_points) >= count / wander_radius,respawn_seconds 非负）
-//  2. 引用校验：批量 npcService.LookupByNames 分类"不存在" vs "存在未启用"
+//  2. 引用校验：批量 lookup.LookupByNames 分类"不存在" vs "存在未启用"
 //
 // 空数组 '[]' 合法——允许策划先占坑后续填刷怪。
 //
 // 错误分类优先级：结构错 → 不存在 template → 未启用 template。
 // 两类 ref 错都发生时按顺序返回第一类，未来如需 details 数组结构再开 spec 扩展。
-func (s *RegionService) validateSpawnTable(ctx context.Context, raw json.RawMessage) error {
+func validateSpawnTableImpl(ctx context.Context, lookup npcNameLookup, raw json.RawMessage) error {
 	if len(raw) == 0 {
 		return errcode.Newf(errcode.ErrRegionSpawnEntryInvalid, "spawn_table 不能为空（空数组请传 '[]'）")
 	}
@@ -91,38 +102,52 @@ func (s *RegionService) validateSpawnTable(ctx context.Context, raw json.RawMess
 	}
 
 	// 1. 结构自洽校验 + 收集去重后的 template_ref
+	names, err := validateSpawnEntriesAndCollectNames(entries)
+	if err != nil {
+		return err
+	}
+
+	// 2. 批量 npc 引用校验
+	statusMap, err := lookup.LookupByNames(ctx, names)
+	if err != nil {
+		slog.Error("service.校验 spawn_table-npc 批量查询失败", "error", err, "names", names)
+		return fmt.Errorf("lookup npcs by names: %w", err)
+	}
+
+	return classifySpawnTableRefs(names, statusMap)
+}
+
+// validateSpawnEntriesAndCollectNames 逐条校验 SpawnEntry 结构 + 去重收集 template_ref
+func validateSpawnEntriesAndCollectNames(entries []model.SpawnEntry) ([]string, error) {
 	seen := make(map[string]bool, len(entries))
 	names := make([]string, 0, len(entries))
 	for i, e := range entries {
 		if e.TemplateRef == "" {
-			return errcode.Newf(errcode.ErrRegionSpawnEntryInvalid, "spawn_table[%d] template_ref 不能为空", i)
+			return nil, errcode.Newf(errcode.ErrRegionSpawnEntryInvalid, "spawn_table[%d] template_ref 不能为空", i)
 		}
 		if e.Count < 1 {
-			return errcode.Newf(errcode.ErrRegionSpawnEntryInvalid, "spawn_table[%d] count 必须 >= 1（当前 %d）", i, e.Count)
+			return nil, errcode.Newf(errcode.ErrRegionSpawnEntryInvalid, "spawn_table[%d] count 必须 >= 1（当前 %d）", i, e.Count)
 		}
 		if len(e.SpawnPoints) < e.Count {
-			return errcode.Newf(errcode.ErrRegionSpawnEntryInvalid,
+			return nil, errcode.Newf(errcode.ErrRegionSpawnEntryInvalid,
 				"spawn_table[%d] 刷怪点数 (%d) 少于 count (%d)", i, len(e.SpawnPoints), e.Count)
 		}
 		if e.WanderRadius < 0 {
-			return errcode.Newf(errcode.ErrRegionSpawnEntryInvalid, "spawn_table[%d] wander_radius 不能为负", i)
+			return nil, errcode.Newf(errcode.ErrRegionSpawnEntryInvalid, "spawn_table[%d] wander_radius 不能为负", i)
 		}
 		if e.RespawnSeconds < 0 {
-			return errcode.Newf(errcode.ErrRegionSpawnEntryInvalid, "spawn_table[%d] respawn_seconds 不能为负", i)
+			return nil, errcode.Newf(errcode.ErrRegionSpawnEntryInvalid, "spawn_table[%d] respawn_seconds 不能为负", i)
 		}
 		if !seen[e.TemplateRef] {
 			seen[e.TemplateRef] = true
 			names = append(names, e.TemplateRef)
 		}
 	}
+	return names, nil
+}
 
-	// 2. 批量 npc 引用校验
-	statusMap, err := s.npcService.LookupByNames(ctx, names)
-	if err != nil {
-		slog.Error("service.校验 spawn_table-npc 批量查询失败", "error", err, "names", names)
-		return fmt.Errorf("lookup npcs by names: %w", err)
-	}
-
+// classifySpawnTableRefs 按"不存在 → 未启用"优先级把 lookup 结果翻译为业务错
+func classifySpawnTableRefs(names []string, statusMap map[string]bool) error {
 	missing := make([]string, 0)
 	disabled := make([]string, 0)
 	for _, n := range names {
@@ -143,7 +168,6 @@ func (s *RegionService) validateSpawnTable(ctx context.Context, raw json.RawMess
 		return errcode.Newf(errcode.ErrRegionTemplateRefDisabled,
 			"spawn_table 引用的 NPC 模板未启用: %v", disabled)
 	}
-
 	return nil
 }
 
