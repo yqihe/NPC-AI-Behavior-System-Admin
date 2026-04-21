@@ -297,55 +297,25 @@ func (h *TemplateHandler) Get(ctx context.Context, req *model.IDRequest) (*model
 //  4. fields 集合变了 → 跨模块 Detach + Attach
 //  5. Commit → 清两个模块缓存
 func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateRequest) (*string, error) {
-	// 1. 格式校验
-	if err := shared.CheckID(req.ID); err != nil {
-		return nil, err
-	}
-	if err := shared.CheckVersion(req.Version); err != nil {
-		return nil, err
-	}
-	if err := shared.CheckLabel(req.Label, h.valCfg.FieldLabelMaxLength, "中文标签"); err != nil {
-		return nil, err
-	}
-	if err := h.checkDescription(req.Description); err != nil {
-		return nil, err
-	}
-	if err := checkTemplateFields(req.Fields); err != nil {
+	if err := h.validateUpdateRequest(req); err != nil {
 		return nil, err
 	}
 
 	slog.Debug("handler.编辑模板", "id", req.ID, "version", req.Version)
 
-	// 2. 拿旧 tpl 与 oldEntries
-	old, err := h.templateService.GetByID(ctx, req.ID)
+	old, oldEntries, err := h.loadOldTemplate(ctx, req.ID)
 	if err != nil {
 		return nil, err
 	}
-	oldEntries, err := h.templateService.ParseFieldEntries(old.Fields)
-	if err != nil {
-		slog.Error("handler.解析模板 fields JSON 失败", "error", err, "id", req.ID)
-		return nil, fmt.Errorf("parse old fields: %w", err)
+
+	if err := h.preValidateNewFieldsDiff(ctx, oldEntries, req.Fields); err != nil {
+		return nil, err
 	}
 
-	// 3. 跨模块校验（仅校验新增字段）
-	//    在事务外预校验：先计算 toAdd（service 同样会算一次，但耗时极小）
-	toAddPre, _ := h.templateService.DiffFieldIDs(oldEntries, req.Fields)
-	if len(toAddPre) > 0 {
-		if err := h.fieldService.ValidateFieldsForTemplate(ctx, toAddPre); err != nil {
-			return nil, err
-		}
+	if err := h.ensureNoNPCRefsForFieldChange(ctx, req.ID, oldEntries, req.Fields); err != nil {
+		return nil, err
 	}
 
-	// 字段有变更时：存在 NPC 引用则拒绝修改字段配置
-	if h.templateService.IsFieldsChanged(oldEntries, req.Fields) {
-		if count, err := h.npcService.CountByTemplateID(ctx, req.ID); err != nil {
-			return nil, err
-		} else if count > 0 {
-			return nil, errcode.New(errcode.ErrTemplateRefEditFields)
-		}
-	}
-
-	// 4. 跨模块事务
 	tx, err := h.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
@@ -361,33 +331,12 @@ func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateR
 		return nil, err
 	}
 
-	var attachAffected, detachAffected []int64
-	// 集合变更才需要操作 field_refs（required-only 变化没有 add/remove）
-	if fieldsChanged && (len(toAdd) > 0 || len(toRemove) > 0) {
-		// 先 detach 再 attach（顺序无关，但保持一致便于排查死锁）
-		if len(toRemove) > 0 {
-			detachAffected, err = h.fieldService.DetachFromTemplateTx(ctx, tx, req.ID, toRemove)
-			if err != nil {
-				return nil, err
-			}
-		}
-		if len(toAdd) > 0 {
-			attachAffected, err = h.fieldService.AttachToTemplateTx(ctx, tx, req.ID, toAdd)
-			if err != nil {
-				return nil, err
-			}
-		}
+	attachAffected, detachAffected, err := h.syncFieldRefsDiffTx(ctx, tx, req.ID, fieldsChanged, toAdd, toRemove)
+	if err != nil {
+		return nil, err
 	}
 
-	// 5. 先清缓存再 Commit（消除 Commit 后清缓存窗口期的脏读风险）
-	h.templateService.InvalidateDetail(ctx, req.ID)
-	h.templateService.InvalidateList(ctx)
-	if len(detachAffected) > 0 {
-		h.fieldService.InvalidateDetails(ctx, detachAffected)
-	}
-	if len(attachAffected) > 0 {
-		h.fieldService.InvalidateDetails(ctx, attachAffected)
-	}
+	h.invalidateUpdateCache(ctx, req.ID, detachAffected, attachAffected)
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit: %w", err)
@@ -395,6 +344,119 @@ func (h *TemplateHandler) Update(ctx context.Context, req *model.UpdateTemplateR
 
 	slog.Info("handler.编辑模板成功", "id", req.ID, "fields_changed", fieldsChanged)
 	return shared.SuccessMsg("保存成功"), nil
+}
+
+// validateUpdateRequest 汇总 Update 的 5 项前置格式校验
+func (h *TemplateHandler) validateUpdateRequest(req *model.UpdateTemplateRequest) error {
+	if err := shared.CheckID(req.ID); err != nil {
+		return err
+	}
+	if err := shared.CheckVersion(req.Version); err != nil {
+		return err
+	}
+	if err := shared.CheckLabel(req.Label, h.valCfg.FieldLabelMaxLength, "中文标签"); err != nil {
+		return err
+	}
+	if err := h.checkDescription(req.Description); err != nil {
+		return err
+	}
+	if err := checkTemplateFields(req.Fields); err != nil {
+		return err
+	}
+	return nil
+}
+
+// loadOldTemplate 读取旧模板 + 解析 oldEntries（Update 第 2 步）
+func (h *TemplateHandler) loadOldTemplate(ctx context.Context, id int64) (*model.Template, []model.TemplateFieldEntry, error) {
+	old, err := h.templateService.GetByID(ctx, id)
+	if err != nil {
+		return nil, nil, err
+	}
+	oldEntries, err := h.templateService.ParseFieldEntries(old.Fields)
+	if err != nil {
+		slog.Error("handler.解析模板 fields JSON 失败", "error", err, "id", id)
+		return nil, nil, fmt.Errorf("parse old fields: %w", err)
+	}
+	return old, oldEntries, nil
+}
+
+// preValidateNewFieldsDiff 仅对新增字段做跨模块校验（存在 + 启用）
+func (h *TemplateHandler) preValidateNewFieldsDiff(
+	ctx context.Context,
+	oldEntries []model.TemplateFieldEntry,
+	newFields []model.TemplateFieldEntry,
+) error {
+	toAddPre, _ := h.templateService.DiffFieldIDs(oldEntries, newFields)
+	if len(toAddPre) == 0 {
+		return nil
+	}
+	return h.fieldService.ValidateFieldsForTemplate(ctx, toAddPre)
+}
+
+// ensureNoNPCRefsForFieldChange 字段集合有变更时拒绝修改已被 NPC 引用的模板字段
+func (h *TemplateHandler) ensureNoNPCRefsForFieldChange(
+	ctx context.Context,
+	templateID int64,
+	oldEntries []model.TemplateFieldEntry,
+	newFields []model.TemplateFieldEntry,
+) error {
+	if !h.templateService.IsFieldsChanged(oldEntries, newFields) {
+		return nil
+	}
+	count, err := h.npcService.CountByTemplateID(ctx, templateID)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return errcode.New(errcode.ErrTemplateRefEditFields)
+	}
+	return nil
+}
+
+// syncFieldRefsDiffTx 事务内按 diff 结果同步 field_refs，返回受影响 fieldIDs
+//
+// 集合变更才进 field_refs（required-only 变化无 add/remove）。
+// 先 detach 再 attach：顺序无关，保持一致便于排查死锁。
+func (h *TemplateHandler) syncFieldRefsDiffTx(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	templateID int64,
+	fieldsChanged bool,
+	toAdd []int64,
+	toRemove []int64,
+) (attachAffected, detachAffected []int64, err error) {
+	if !fieldsChanged || (len(toAdd) == 0 && len(toRemove) == 0) {
+		return nil, nil, nil
+	}
+	if len(toRemove) > 0 {
+		detachAffected, err = h.fieldService.DetachFromTemplateTx(ctx, tx, templateID, toRemove)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	if len(toAdd) > 0 {
+		attachAffected, err = h.fieldService.AttachToTemplateTx(ctx, tx, templateID, toAdd)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	return attachAffected, detachAffected, nil
+}
+
+// invalidateUpdateCache Commit 前清理模板 + 受影响字段缓存
+func (h *TemplateHandler) invalidateUpdateCache(
+	ctx context.Context,
+	templateID int64,
+	detachAffected, attachAffected []int64,
+) {
+	h.templateService.InvalidateDetail(ctx, templateID)
+	h.templateService.InvalidateList(ctx)
+	if len(detachAffected) > 0 {
+		h.fieldService.InvalidateDetails(ctx, detachAffected)
+	}
+	if len(attachAffected) > 0 {
+		h.fieldService.InvalidateDetails(ctx, attachAffected)
+	}
 }
 
 // Delete 删除模板
