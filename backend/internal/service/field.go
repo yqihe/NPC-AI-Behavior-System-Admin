@@ -262,16 +262,8 @@ func (s *FieldService) GetByID(ctx context.Context, id int64) (*model.Field, err
 
 // Update 编辑字段（仅未启用时可编辑）
 func (s *FieldService) Update(ctx context.Context, req *model.UpdateFieldRequest) error {
-	// 业务校验：type/category 存在性
-	if err := s.checkTypeExists(req.Type); err != nil {
-		return err
-	}
-	if err := s.checkCategoryExists(req.Category); err != nil {
-		return err
-	}
-
-	// 业务校验：constraints 自洽
-	if err := s.validatePropertiesConstraints(req.Type, req.Properties); err != nil {
+	// 预检 1：type/category/constraints 自洽
+	if err := s.preCheckUpdateRequest(req); err != nil {
 		return err
 	}
 
@@ -280,28 +272,16 @@ func (s *FieldService) Update(ctx context.Context, req *model.UpdateFieldRequest
 	if err != nil {
 		return err
 	}
-
-	// 硬约束：必须未启用才能编辑
 	if old.Enabled {
 		return errcode.New(errcode.ErrFieldEditNotDisabled)
 	}
 
-	// 硬约束：取消 expose_bb 时，检查是否有 FSM/BT 引用该 BB Key
-	// 使用非事务读（GetByFieldID），风险低（仅可能过度拒绝，不会放行非法操作）
 	oldProps, _ := parseProperties(old.Properties)
 	newProps, _ := parseProperties(req.Properties)
-	if oldProps != nil && newProps != nil && oldProps.ExposeBB && !newProps.ExposeBB {
-		// FSM/BT 引用检查：field_refs 表中 ref_type=fsm/bt 均代表行为配置引用
-		refs, err := s.fieldRefStore.GetByFieldID(ctx, req.ID)
-		if err != nil {
-			slog.Error("service.查字段引用失败", "error", err, "id", req.ID)
-			return fmt.Errorf("get field refs: %w", err)
-		}
-		for _, r := range refs {
-			if r.RefType == util.RefTypeFsm || r.RefType == util.RefTypeBt {
-				return errcode.New(errcode.ErrFieldBBKeyInUse)
-			}
-		}
+
+	// 预检 2：取消 expose_bb 时的 FSM/BT 引用检查（非事务读）
+	if err := s.checkExposeBBRevocation(ctx, req.ID, oldProps, newProps); err != nil {
+		return err
 	}
 
 	// ── 开事务，FOR SHARE 锁住 field_refs，原子执行 HasRefs + Update ──
@@ -315,48 +295,20 @@ func (s *FieldService) Update(ctx context.Context, req *model.UpdateFieldRequest
 		}
 	}()
 
-	// FOR SHARE：锁住 field_refs 行，阻塞并发写入
 	hasRefs, err := s.fieldRefStore.HasRefsTx(ctx, tx, req.ID)
 	if err != nil {
 		slog.Error("service.查询字段引用失败", "error", err, "id", req.ID)
 		return fmt.Errorf("check field refs: %w", err)
 	}
 
-	// 硬约束：被引用时禁止改 type
-	if old.Type != req.Type && hasRefs {
-		return errcode.New(errcode.ErrFieldRefChangeType)
+	// 被引用时的 type-change / 约束收紧拦截
+	if err := enforceRefIntegrityOnUpdate(hasRefs, old.Type, req.Type, oldProps, newProps); err != nil {
+		return err
 	}
 
-	// 硬约束：被引用时禁止收紧约束（只能放宽）
-	if hasRefs && old.Type == req.Type {
-		if oldProps != nil && newProps != nil {
-			if err := CheckConstraintTightened(old.Type, oldProps.Constraints, newProps.Constraints, errcode.ErrFieldRefTighten); err != nil {
-				return err
-			}
-		}
-	}
-
-	// reference 类型：通过 validateReferenceRefs 统一校验（只读，在事务内调用无问题）
-	// 规则：非空 + 目标存在 + 新增 ref 必须启用非 reference + 无循环
-	// 已有 ref（在 oldRefSet 中）不重新校验启用/嵌套，保持"存量不动"
-	if req.Type == util.FieldTypeReference {
-		var newRefIDs []int64
-		if newProps != nil {
-			newRefIDs = parseRefFieldIDs(newProps.Constraints)
-		}
-		// 旧 ref 集合（仅旧类型也是 reference 时才有意义）
-		var oldRefSet map[int64]bool
-		if old.Type == util.FieldTypeReference {
-			oldRefSet = make(map[int64]bool)
-			if oldProps != nil {
-				for _, rid := range parseRefFieldIDs(oldProps.Constraints) {
-					oldRefSet[rid] = true
-				}
-			}
-		}
-		if err := s.validateReferenceRefs(ctx, req.ID, newRefIDs, oldRefSet); err != nil {
-			return err
-		}
+	// reference 类型：refs 业务规则 + 循环检测
+	if err := s.validateReferenceRefsForUpdate(ctx, req.ID, old.Type, req.Type, oldProps, newProps); err != nil {
+		return err
 	}
 
 	// 乐观锁写入（事务内）
@@ -376,42 +328,117 @@ func (s *FieldService) Update(ctx context.Context, req *model.UpdateFieldRequest
 		return fmt.Errorf("commit: %w", err)
 	}
 
-	// Commit 后：同步引用关系（syncFieldRefs 自带独立事务，不产生嵌套事务）
-	var refAffected []int64
-	if req.Type == util.FieldTypeReference {
-		var oldRefIDs, newRefIDs []int64
-		if oldProps != nil && old.Type == util.FieldTypeReference {
-			oldRefIDs = parseRefFieldIDs(oldProps.Constraints)
-		}
-		if newProps != nil {
-			newRefIDs = parseRefFieldIDs(newProps.Constraints)
-		}
-		affected, err := s.syncFieldRefs(ctx, req.ID, oldRefIDs, newRefIDs)
-		if err != nil {
-			slog.Error("service.编辑字段-同步引用失败", "error", err, "id", req.ID)
-			return fmt.Errorf("sync field refs: %w", err)
-		}
-		refAffected = affected
-	} else if old.Type == util.FieldTypeReference && req.Type != util.FieldTypeReference {
-		// 类型从 reference 改为其他：清除所有引用关系
-		if oldProps != nil {
-			oldRefIDs := parseRefFieldIDs(oldProps.Constraints)
-			affected, err := s.syncFieldRefs(ctx, req.ID, oldRefIDs, nil)
-			if err != nil {
-				slog.Error("service.编辑字段-清除引用失败", "error", err, "id", req.ID)
-				return fmt.Errorf("clear field refs: %w", err)
-			}
-			refAffected = affected
-		}
+	// Commit 后：同步引用关系（自带独立事务，不嵌套）
+	refAffected, err := s.syncFieldRefsAfterCommit(ctx, req.ID, old.Type, req.Type, oldProps, newProps)
+	if err != nil {
+		return err
 	}
-
-	// ref 受影响的被引用方缓存清除（在 syncFieldRefs 后）
 	for _, affectedID := range refAffected {
 		s.fieldCache.DelDetail(ctx, affectedID)
 	}
 
 	slog.Info("service.编辑字段成功", "id", req.ID)
 	return nil
+}
+
+// preCheckUpdateRequest Update 的纯请求自洽校验：type/category 存在性 + constraints 自洽
+func (s *FieldService) preCheckUpdateRequest(req *model.UpdateFieldRequest) error {
+	if err := s.checkTypeExists(req.Type); err != nil {
+		return err
+	}
+	if err := s.checkCategoryExists(req.Category); err != nil {
+		return err
+	}
+	if err := s.validatePropertiesConstraints(req.Type, req.Properties); err != nil {
+		return err
+	}
+	return nil
+}
+
+// checkExposeBBRevocation 取消 expose_bb 时，禁止存在 FSM/BT 引用。
+// 使用非事务读（GetByFieldID），风险低（仅可能过度拒绝，不会放行非法操作）。
+func (s *FieldService) checkExposeBBRevocation(ctx context.Context, fieldID int64, oldProps, newProps *model.FieldProperties) error {
+	if oldProps == nil || newProps == nil || !oldProps.ExposeBB || newProps.ExposeBB {
+		return nil
+	}
+	refs, err := s.fieldRefStore.GetByFieldID(ctx, fieldID)
+	if err != nil {
+		slog.Error("service.查字段引用失败", "error", err, "id", fieldID)
+		return fmt.Errorf("get field refs: %w", err)
+	}
+	for _, r := range refs {
+		if r.RefType == util.RefTypeFsm || r.RefType == util.RefTypeBt {
+			return errcode.New(errcode.ErrFieldBBKeyInUse)
+		}
+	}
+	return nil
+}
+
+// enforceRefIntegrityOnUpdate 被引用时的两条硬约束：禁止改 type / 禁止收紧约束。
+// 纯函数：不依赖 store/cache，便于单测。
+func enforceRefIntegrityOnUpdate(hasRefs bool, oldType, newType string, oldProps, newProps *model.FieldProperties) error {
+	if !hasRefs {
+		return nil
+	}
+	if oldType != newType {
+		return errcode.New(errcode.ErrFieldRefChangeType)
+	}
+	if oldProps != nil && newProps != nil {
+		if err := CheckConstraintTightened(oldType, oldProps.Constraints, newProps.Constraints, errcode.ErrFieldRefTighten); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateReferenceRefsForUpdate 新类型为 reference 时校验 refs。
+// 存量不动：旧类型也是 reference 时的 oldRefSet 用于跳过对已有 ref 的启用/嵌套校验。
+func (s *FieldService) validateReferenceRefsForUpdate(ctx context.Context, fieldID int64, oldType, newType string, oldProps, newProps *model.FieldProperties) error {
+	if newType != util.FieldTypeReference {
+		return nil
+	}
+	var newRefIDs []int64
+	if newProps != nil {
+		newRefIDs = parseRefFieldIDs(newProps.Constraints)
+	}
+	var oldRefSet map[int64]bool
+	if oldType == util.FieldTypeReference && oldProps != nil {
+		oldRefSet = make(map[int64]bool)
+		for _, rid := range parseRefFieldIDs(oldProps.Constraints) {
+			oldRefSet[rid] = true
+		}
+	}
+	return s.validateReferenceRefs(ctx, fieldID, newRefIDs, oldRefSet)
+}
+
+// syncFieldRefsAfterCommit Commit 后同步 field_refs：reference 类型正常同步 /
+// 从 reference 改为其他时清空。syncFieldRefs 自带独立事务不嵌套。
+func (s *FieldService) syncFieldRefsAfterCommit(ctx context.Context, fieldID int64, oldType, newType string, oldProps, newProps *model.FieldProperties) ([]int64, error) {
+	if newType == util.FieldTypeReference {
+		var oldRefIDs, newRefIDs []int64
+		if oldProps != nil && oldType == util.FieldTypeReference {
+			oldRefIDs = parseRefFieldIDs(oldProps.Constraints)
+		}
+		if newProps != nil {
+			newRefIDs = parseRefFieldIDs(newProps.Constraints)
+		}
+		affected, err := s.syncFieldRefs(ctx, fieldID, oldRefIDs, newRefIDs)
+		if err != nil {
+			slog.Error("service.编辑字段-同步引用失败", "error", err, "id", fieldID)
+			return nil, fmt.Errorf("sync field refs: %w", err)
+		}
+		return affected, nil
+	}
+	if oldType == util.FieldTypeReference && oldProps != nil {
+		oldRefIDs := parseRefFieldIDs(oldProps.Constraints)
+		affected, err := s.syncFieldRefs(ctx, fieldID, oldRefIDs, nil)
+		if err != nil {
+			slog.Error("service.编辑字段-清除引用失败", "error", err, "id", fieldID)
+			return nil, fmt.Errorf("clear field refs: %w", err)
+		}
+		return affected, nil
+	}
+	return nil, nil
 }
 
 // Delete 软删除字段
