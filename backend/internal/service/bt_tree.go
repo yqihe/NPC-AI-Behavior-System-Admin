@@ -140,48 +140,8 @@ func validateBtNode(node map[string]any, nodeTypes map[string]string, paramSchem
 		}
 	}
 
-	switch category {
-	case "composite":
-		children, ok := node["children"].([]any)
-		if !ok || len(children) == 0 {
-			return errcode.Newf(errcode.ErrBtTreeConfigInvalid, "composite 节点 %q 必须有非空 children", typeName)
-		}
-		if _, hasChild := node["child"]; hasChild {
-			return errcode.Newf(errcode.ErrBtTreeConfigInvalid, "composite 节点不应有 child 字段")
-		}
-		for _, c := range children {
-			child, ok := c.(map[string]any)
-			if !ok {
-				return errcode.New(errcode.ErrBtTreeConfigInvalid)
-			}
-			if err := validateBtNode(child, nodeTypes, paramSchemas, depth+1); err != nil {
-				return err
-			}
-		}
-
-	case "decorator":
-		childRaw, ok := node["child"]
-		if !ok || childRaw == nil {
-			return errcode.Newf(errcode.ErrBtTreeConfigInvalid, "decorator 节点 %q 必须有 child", typeName)
-		}
-		child, ok := childRaw.(map[string]any)
-		if !ok {
-			return errcode.New(errcode.ErrBtTreeConfigInvalid)
-		}
-		if _, hasChildren := node["children"]; hasChildren {
-			return errcode.Newf(errcode.ErrBtTreeConfigInvalid, "decorator 节点不应有 children 字段")
-		}
-		if err := validateBtNode(child, nodeTypes, paramSchemas, depth+1); err != nil {
-			return err
-		}
-
-	case "leaf":
-		if _, hasChildren := node["children"]; hasChildren {
-			return errcode.Newf(errcode.ErrBtTreeConfigInvalid, "leaf 节点不能有 children 字段")
-		}
-		if _, hasChild := node["child"]; hasChild {
-			return errcode.Newf(errcode.ErrBtTreeConfigInvalid, "leaf 节点不能有 child 字段")
-		}
+	if err := validateBtCategory(category, typeName, node, nodeTypes, paramSchemas, depth); err != nil {
+		return err
 	}
 
 	// 消费 param_schema 校验 params（仅当该节点类型声明了参数）
@@ -191,6 +151,67 @@ func validateBtNode(node map[string]any, nodeTypes map[string]string, paramSchem
 		}
 	}
 
+	return nil
+}
+
+// validateBtCategory 按 category 分派到具体分支校验器。
+func validateBtCategory(category, typeName string, node map[string]any, nodeTypes map[string]string, paramSchemas map[string]*nodeParamSchema, depth int) error {
+	switch category {
+	case "composite":
+		return validateBtComposite(typeName, node, nodeTypes, paramSchemas, depth)
+	case "decorator":
+		return validateBtDecorator(typeName, node, nodeTypes, paramSchemas, depth)
+	case "leaf":
+		return validateBtLeaf(node)
+	}
+	return nil
+}
+
+// validateBtComposite 校验 composite 节点结构并递归子节点。
+func validateBtComposite(typeName string, node map[string]any, nodeTypes map[string]string, paramSchemas map[string]*nodeParamSchema, depth int) error {
+	children, ok := node["children"].([]any)
+	if !ok || len(children) == 0 {
+		return errcode.Newf(errcode.ErrBtTreeConfigInvalid, "composite 节点 %q 必须有非空 children", typeName)
+	}
+	if _, hasChild := node["child"]; hasChild {
+		return errcode.Newf(errcode.ErrBtTreeConfigInvalid, "composite 节点不应有 child 字段")
+	}
+	for _, c := range children {
+		child, ok := c.(map[string]any)
+		if !ok {
+			return errcode.New(errcode.ErrBtTreeConfigInvalid)
+		}
+		if err := validateBtNode(child, nodeTypes, paramSchemas, depth+1); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateBtDecorator 校验 decorator 节点结构并递归 child。
+func validateBtDecorator(typeName string, node map[string]any, nodeTypes map[string]string, paramSchemas map[string]*nodeParamSchema, depth int) error {
+	childRaw, ok := node["child"]
+	if !ok || childRaw == nil {
+		return errcode.Newf(errcode.ErrBtTreeConfigInvalid, "decorator 节点 %q 必须有 child", typeName)
+	}
+	child, ok := childRaw.(map[string]any)
+	if !ok {
+		return errcode.New(errcode.ErrBtTreeConfigInvalid)
+	}
+	if _, hasChildren := node["children"]; hasChildren {
+		return errcode.Newf(errcode.ErrBtTreeConfigInvalid, "decorator 节点不应有 children 字段")
+	}
+	return validateBtNode(child, nodeTypes, paramSchemas, depth+1)
+}
+
+// validateBtLeaf 校验 leaf 节点不应有 children / child 字段。
+func validateBtLeaf(node map[string]any) error {
+	if _, hasChildren := node["children"]; hasChildren {
+		return errcode.Newf(errcode.ErrBtTreeConfigInvalid, "leaf 节点不能有 children 字段")
+	}
+	if _, hasChild := node["child"]; hasChild {
+		return errcode.Newf(errcode.ErrBtTreeConfigInvalid, "leaf 节点不能有 child 字段")
+	}
 	return nil
 }
 
