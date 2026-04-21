@@ -74,21 +74,33 @@ type nodeParamSchema struct {
 
 func (s *nodeParamSchema) hasParams() bool { return len(s.Params) > 0 }
 
-// validateConfig 解析 JSON 并递归校验节点树结构
+// btNodeTypeLookup 给 validateConfigImpl 做的最小只读抽象。
+// *storemysql.BtNodeTypeStore 天然满足；单测可注入 map-backed fake 避免 DB。
+type btNodeTypeLookup interface {
+	ListEnabledTypes(ctx context.Context) (map[string]string, error)
+	ListParamSchemas(ctx context.Context) (map[string]json.RawMessage, error)
+}
+
+// validateConfig 解析 JSON 并递归校验节点树结构 —— 方法壳，委托到 validateConfigImpl。
 func (s *BtTreeService) validateConfig(ctx context.Context, config json.RawMessage) error {
+	return validateConfigImpl(ctx, s.nodeTypeStore, config)
+}
+
+// validateConfigImpl 行为树结构校验本体。抽成包级函数 + btNodeTypeLookup 接口，
+// 预加载失败 / param_schema 解析失败 fail-fast（audit-T4 Q2 决策：不静默降级）。
+func validateConfigImpl(ctx context.Context, lookup btNodeTypeLookup, config json.RawMessage) error {
 	if len(config) == 0 {
 		return errcode.Newf(errcode.ErrBtTreeConfigInvalid, "行为树 config 不能为空")
 	}
 
 	// 预加载节点类型（type_name → category）
-	nodeTypes, err := s.nodeTypeStore.ListEnabledTypes(ctx)
+	nodeTypes, err := lookup.ListEnabledTypes(ctx)
 	if err != nil {
 		return fmt.Errorf("load enabled node types: %w", err)
 	}
 
 	// 预加载 param_schema（原始 JSON）并逐条解析为 nodeParamSchema
-	// seed 数据损坏时 fail-fast（audit-T4 Q2 决策：不静默降级）
-	rawSchemas, err := s.nodeTypeStore.ListParamSchemas(ctx)
+	rawSchemas, err := lookup.ListParamSchemas(ctx)
 	if err != nil {
 		return fmt.Errorf("load param schemas: %w", err)
 	}
